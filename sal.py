@@ -1,8 +1,11 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+# આ લાઈન ખાસ ચેક કરજો, આ રીતે લખવાનું છે:
+from streamlit_gsheets import GSheetsConnection 
 import pandas as pd
 from datetime import datetime, time
 
+# કનેક્શન માટે આ લાઈન વાપરો:
+conn = st.connection("gsheets", type=GSheetsConnection)
 # પેજ સેટઅપ
 st.set_page_config(page_title="Salary Calculator", layout="wide")
 st.markdown("<h1 style='text-align: center;'>💎 Salary Calculator</h1>", unsafe_allow_html=True)
