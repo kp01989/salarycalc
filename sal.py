@@ -9,7 +9,7 @@ st.markdown("<h1 style='text-align: center;'>💎 Salary Calculator</h1>", unsaf
 st.markdown("---")
 
 # ગૂગલ શીટ કનેક્શન
-conn = st.connection("gsheets", type=GSheetsConnection)
+conn = st.experimental_connection("gsheets", type=GSheetsConnection)
 
 # --- UI Layout ---
 t1, t2, t3 = st.columns(3)
