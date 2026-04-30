@@ -41,17 +41,16 @@ with st.sidebar:
     
     st.divider()
     
-    # ડિફોલ્ટ વેલ્યુઝ સેટ કરવી (બધું 0)
     last_data = {
         "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, "PL_Bal": 0
     }
     
     user_file = get_user_file(emp_sidebar_name)
     
-    # જો ફાઈલ હોય તો છેલ્લો ડેટા ખેંચવો
+    # એરર ફિક્સ: on_bad_lines='skip' ઉમેર્યું છે
     if user_file and os.path.exists(user_file):
         try:
-            df_hist = pd.read_csv(user_file)
+            df_hist = pd.read_csv(user_file, on_bad_lines='skip')
             if not df_hist.empty:
                 last_row = df_hist.iloc[-1]
                 last_data["CTC"] = int(last_row.get("CTC", 0))
@@ -60,7 +59,7 @@ with st.sidebar:
                 last_data["Late"] = int(last_row.get("Late Mins", 0))
                 last_data["Food"] = int(last_row.get("Food", 0))
                 last_data["Gratuity"] = int(last_row.get("Gratuity", 0))
-                last_data["PT"] = 200 if "Net Salary" in last_row else 0 # ડિફોલ્ટ PT Tax
+                last_data["PT"] = 200 if "Net Salary" in last_row else 0
                 last_data["PL_Bal"] = int(last_row.get("PL Balance", 0))
         except:
             pass
@@ -68,7 +67,7 @@ with st.sidebar:
     st.subheader("📊 Current PL Balance")
     st.title(f"{last_data['PL_Bal']} Days")
 
-# ૫. મેઈન ફોર્મ - જો નવું નામ હોય તો 0, જૂનું હોય તો Last Data
+# ૫. મેઈન ફોર્મ
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -76,7 +75,6 @@ with col1:
         st.subheader("💰 Basic Details")
         emp_name = st.text_input("Full Name :red[*]", value=emp_sidebar_name, disabled=True)
         month = st.selectbox("Select Month", ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26"])
-        
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=last_data["CTC"])
         work_hrs = st.number_input("Standard Work Hrs", min_value=0, value=last_data["Std_Hrs"])
 
@@ -136,19 +134,22 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             st.success(f"✅ ડેટા સેવ થયો!")
             st.balloons()
             st.rerun()
-            
         except Exception as e:
             st.error(f"❌ એરર: {e}")
 
-# ૭. હિસ્ટ્રી અને ડાઉનલોડ
+# ૭. હિસ્ટ્રી (એરર ફિક્સ સાથે)
 st.divider()
 if emp_sidebar_name:
     st.subheader(f"📂 Recent History for {emp_sidebar_name}")
     if os.path.exists(user_file):
-        history_df = pd.read_csv(user_file)
-        st.dataframe(history_df.tail(10), use_container_width=True)
-        
-        with open(user_file, "rb") as f:
-            st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv")
+        try:
+            # અહીં પણ on_bad_lines='skip' ઉમેર્યું છે
+            history_df = pd.read_csv(user_file, on_bad_lines='skip')
+            st.dataframe(history_df.tail(10), use_container_width=True)
+            
+            with open(user_file, "rb") as f:
+                st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv")
+        except Exception as e:
+            st.error(f"ફાઈલ વાંચવામાં સમસ્યા છે. કદાચ ફાઈલ કરપ્ટ થઈ ગઈ છે.")
     else:
-        st.info(f"{emp_sidebar_name} માટે કોઈ જૂનો રેકોર્ડ નથી, તેથી બધી ફિલ્ડ્સ ખાલી છે.")
+        st.info(f"{emp_sidebar_name} માટે કોઈ જૂનો રેકોર્ડ નથી.")
