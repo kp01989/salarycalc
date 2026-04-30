@@ -97,6 +97,17 @@ with col2:
         present_hrs = st.number_input("Present Hrs", min_value=0, value=last_data["Present_Hrs"])
         late_mins = st.number_input("Late Minutes", min_value=0, value=last_data["Late"])
         ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
+        
+        # --- Final Present Hours Formula ---
+        # 120 minutes grace period logic
+        deductible_late_mins = max(0, late_mins - 120) 
+        
+        # Convert minutes to hours and calculate Final Present Hours
+        calculated_final_hrs = present_hrs - (deductible_late_mins / 60) + (ot_mins / 60)
+        
+        # Display the calculated value automatically
+        final_present_hrs = st.number_input("Final Present Hours", value=float(calculated_final_hrs), disabled=True)
+        
         # PL વપરાશ લિમિટ
         used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl if display_pl > 0 else 0, value=0)
 
@@ -139,6 +150,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
                 "Present Hrs": present_hrs,
                 "Late Mins": late_mins,
                 "OT Mins": ot_mins,
+                "Final Present Hrs": final_present_hrs,
                 "Food": food,
                 "Gratuity": gratuity,
                 "Net Salary": round(net_salary, 2),
