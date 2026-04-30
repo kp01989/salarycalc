@@ -42,7 +42,7 @@ with st.sidebar:
     st.divider()
     
     last_data = {
-        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, "PL_Bal": 0, 
+        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, 
         "Last_Month": "", "Last_Year": 0
     }
     
@@ -60,7 +60,6 @@ with st.sidebar:
                 last_data["Food"] = int(last_row.get("Food", 0))
                 last_data["Gratuity"] = int(last_row.get("Gratuity", 0))
                 last_data["PT"] = 200 if "Net Salary" in last_row else 0
-                last_data["PL_Bal"] = int(last_row.get("PL Balance", 0))
                 last_data["Last_Month"] = str(last_row.get("Month", ""))
                 last_data["Last_Year"] = int(last_row.get("Year", 0))
         except:
@@ -81,12 +80,26 @@ with col1:
         with y_col:
             year = st.number_input("Year", min_value=2024, max_value=2030, value=2026)
         
-        # --- ઓટોમેટિક PL ઉમેરવાનું લોજિક (Month + Year Check) ---
-        display_pl = last_data["PL_Bal"]
-        if emp_sidebar_name and last_data["Last_Month"] != "":
-            # જો મહિનો અથવા વર્ષ બદલાય, તો +1 PL ઉમેરો
-            if month != last_data["Last_Month"] or year != last_data["Last_Year"]:
-                 display_pl = last_data["PL_Bal"] + 1
+        # --- કેલેન્ડર મુજબ PL ની ગણતરી (Calendar PL Logic) ---
+        month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+        selected_month_num = month_dict[month]
+        
+        past_used_pl = 0
+        if emp_sidebar_name and os.path.exists(user_file):
+            try:
+                df_hist = pd.read_csv(user_file, on_bad_lines='skip')
+                if not df_hist.empty and "PL Used" in df_hist.columns and "Month" in df_hist.columns and "Year" in df_hist.columns:
+                    # Create numeric month for comparison
+                    df_hist['Month_Num'] = df_hist['Month'].map(month_dict)
+                    # Filter history to find PLs used in the SAME year, but strictly BEFORE the selected month
+                    df_past = df_hist[(df_hist['Year'] == year) & (df_hist['Month_Num'] < selected_month_num)]
+                    past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').fillna(0).sum()
+            except Exception as e:
+                pass
+        
+        # Total Available PL before current month usage
+        available_pl = selected_month_num - past_used_pl
+        available_pl = max(0, int(available_pl)) 
 
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=last_data["CTC"])
         work_hrs = st.number_input("Standard Work Hrs", min_value=0, value=last_data["Std_Hrs"])
@@ -109,7 +122,7 @@ with col2:
         
         final_present_hrs = st.number_input("Final Present Hours", value=float(calculated_final_hrs), format="%.2f", disabled=True)
         
-        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl if display_pl > 0 else 0, value=0)
+        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=available_pl, value=0)
 
 with col3:
     with st.container(border=True):
@@ -121,7 +134,7 @@ with col3:
 # સાઈડબારમાં ફાઈનલ PL
 with st.sidebar:
     st.subheader("📊 Current PL Balance")
-    st.title(f"{display_pl - used_pl} Days")
+    st.title(f"{available_pl - used_pl} Days")
 
 # ૬. ગણતરી અને સેવિંગ
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
@@ -152,7 +165,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             
             net_salary = net_salary_before_deductions - food - pt_tax
             
-            final_pl_save = display_pl - used_pl
+            final_pl_save = available_pl - used_pl
             
             new_record = pd.DataFrame([{
                 "Date": datetime.now().strftime("%d-%m-%Y"),
@@ -177,7 +190,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
                 try:
                     # Read the old file
                     old_df = pd.read_csv(user_file, on_bad_lines='skip')
-                    # Concatenate old data with the new record (this auto-creates missing columns)
+                    # Concatenate old data with the new record
                     updated_df = pd.concat([old_df, new_record], ignore_index=True)
                     # Overwrite the file cleanly
                     updated_df.to_csv(user_file, index=False)
@@ -199,7 +212,6 @@ if emp_sidebar_name:
     st.subheader(f"📂 Recent History for {emp_sidebar_name}")
     if os.path.exists(user_file):
         try:
-            # fillna(0) ensures old records without 'OT Mins' show 0 instead of NaN
             history_df = pd.read_csv(user_file, on_bad_lines='skip').fillna(0)
             st.dataframe(history_df.tail(10), use_container_width=True)
             with open(user_file, "rb") as f:
