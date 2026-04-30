@@ -28,22 +28,18 @@ if not st.session_state.logged_in:
 st.markdown("<h1 style='text-align: center;'>💎 Salary & PL Management</h1>", unsafe_allow_html=True)
 st.divider()
 
-# ૩. ફાઈલ પાથ સેટઅપ (Local Storage)
+# ૩. ફાઈલ મેનેજમેન્ટ ફંક્શન્સ
 PL_FILE = "pl_data.csv"
-SALARY_HISTORY_FILE = "salary_history.csv"
 
-def load_data(file_path):
+def get_user_file(name):
+    # નામમાંથી સ્પેસ કાઢીને ફાઈલનું નામ બનાવવું (દા.ત. Krutinkumar_Patel_salary.csv)
+    safe_name = name.strip().replace(" ", "_")
+    return f"{safe_name}_salary.csv"
+
+def load_csv(file_path):
     if os.path.exists(file_path):
         return pd.read_csv(file_path)
     return pd.DataFrame()
-
-def save_data(file_path, new_df):
-    if os.path.exists(file_path):
-        old_df = pd.read_csv(file_path)
-        final_df = pd.concat([old_df, new_df], ignore_index=True)
-    else:
-        final_df = new_df
-    final_df.to_csv(file_path, index=False)
 
 # ૪. Sidebar - પ્રોફાઇલ
 with st.sidebar:
@@ -52,16 +48,20 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("sidebar_name", value="", placeholder="Enter Name Here...", label_visibility="collapsed")
     
     st.divider()
-    # PL બેલેન્સ લોડ કરવું
-    pl_df = load_data(PL_FILE)
+    # PL લોડ કરવું
+    pl_df = load_csv(PL_FILE)
     current_pl = int(pl_df.iloc[-1]['balance']) if not pl_df.empty else 0
     
     st.subheader("📊 PL Balance")
     st.title(f"{current_pl} Days")
     
     if st.button("Add 1 Monthly PL", use_container_width=True):
-        new_pl_df = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": current_pl + 1}])
-        save_data(PL_FILE, new_pl_df)
+        new_bal = current_pl + 1
+        new_pl_data = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": new_bal}])
+        if os.path.exists(PL_FILE):
+            new_pl_data.to_csv(PL_FILE, mode='a', header=False, index=False)
+        else:
+            new_pl_data.to_csv(PL_FILE, index=False)
         st.success("✅ 1 PL Added!")
         st.rerun()
 
@@ -90,18 +90,22 @@ with col3:
         gratuity = st.number_input("Gratuity", min_value=0, value=1200)
         pt_tax = st.number_input("PT Tax", min_value=0, value=200)
 
-# ૬. ગણતરી અને Local CSV માં સેવ
+# ૬. ગણતરી અને નામ મુજબ અલગ ફાઈલમાં સેવ
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
     if not emp_sidebar_name:
         st.error("❗ મહારબાની કરીને સાઈડબારમાં નામ લખો!")
     else:
         try:
+            # ગણતરી લોજિક
             hr_rate = (ctc_salary - gratuity) / work_hrs
             min_rate = hr_rate / 60
             actual_late = max(0, late_mins - 120)
             deduction = actual_late * min_rate
             ot_pay = ot_mins * min_rate
             net_salary = ctc_salary - deduction - food - gratuity - pt_tax + ot_pay
+            
+            # ફાઈલ પાથ નક્કી કરવો
+            user_file = get_user_file(emp_sidebar_name)
             
             # નવો રેકોર્ડ
             new_record = pd.DataFrame([{
@@ -112,32 +116,32 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
                 "PL Used": used_pl
             }])
             
-            # Local CSV માં સેવ કરો
-            save_data(SALARY_HISTORY_FILE, new_record)
+            # ફાઈલમાં ઉમેરો (Append)
+            if os.path.exists(user_file):
+                new_record.to_csv(user_file, mode='a', header=False, index=False)
+            else:
+                new_record.to_csv(user_file, index=False)
             
-            # PL વપરાઈ હોય તો બેલેન્સ અપડેટ કરો
+            # PL વપરાઈ હોય તો PL ફાઈલ અપડેટ
             if used_pl > 0:
-                new_pl_bal = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": current_pl - used_pl}])
-                save_data(PL_FILE, new_pl_bal)
+                new_pl_row = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": current_pl - used_pl}])
+                new_pl_row.to_csv(PL_FILE, mode='a', header=False, index=False)
             
-            st.success(f"✅ ગણતરી સફળ અને સેવ થઈ ગઈ! Net Salary: ₹{round(net_salary, 2)}")
+            st.success(f"✅ ડેટા '{user_file}' માં સેવ થઈ ગયો!")
             st.balloons()
-            st.rerun() # ડેટા સેવ થયા પછી રિફ્રેશ કરો
+            st.rerun()
             
         except Exception as e:
             st.error(f"❌ એરર: {e}")
 
-# ૭. સુરક્ષિત હિસ્ટ્રી (Local CSV માંથી)
+# ૭. હિસ્ટ્રી બતાવવી (માત્ર અત્યારના યુઝરની ફાઈલમાંથી)
 st.divider()
 if emp_sidebar_name:
+    user_file = get_user_file(emp_sidebar_name)
     st.subheader(f"📂 Recent History for {emp_sidebar_name}")
-    salary_df = load_data(SALARY_HISTORY_FILE)
-    if not salary_df.empty:
-        # માત્ર અત્યારના યુઝરનો ડેટા ફિલ્ટર કરો
-        user_history = salary_df[salary_df['Name'] == emp_sidebar_name]
-        if not user_history.empty:
-            st.dataframe(user_history.tail(10), use_container_width=True)
-        else:
-            st.info(f"{emp_sidebar_name} માટે કોઈ રેકોર્ડ નથી.")
+    
+    if os.path.exists(user_file):
+        history_df = pd.read_csv(user_file)
+        st.dataframe(history_df.tail(10), use_container_width=True)
     else:
-        st.info("હજુ સુધી કોઈ ડેટા સેવ થયો નથી.")
+        st.info(f"{emp_sidebar_name} માટે હજુ સુધી કોઈ ફાઈલ બની નથી.")
