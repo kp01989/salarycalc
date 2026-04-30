@@ -139,7 +139,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             final_h = total_minutes // 60
             final_m = total_minutes % 60
             
-            # 2. Salary Calculation Logic (As per your example)
+            # 2. Salary Calculation Logic 
             base_salary = ctc_salary - gratuity
             
             hr_rate = base_salary / work_hrs if work_hrs > 0 else 0
@@ -172,8 +172,18 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
                 "PL Balance": final_pl_save
             }])
             
+            # --- AUTO FIX LOGIC FOR OLD FILES ---
             if os.path.exists(user_file):
-                new_record.to_csv(user_file, mode='a', header=False, index=False)
+                try:
+                    # Read the old file
+                    old_df = pd.read_csv(user_file, on_bad_lines='skip')
+                    # Concatenate old data with the new record (this auto-creates missing columns)
+                    updated_df = pd.concat([old_df, new_record], ignore_index=True)
+                    # Overwrite the file cleanly
+                    updated_df.to_csv(user_file, index=False)
+                except:
+                    # Fallback just in case
+                    new_record.to_csv(user_file, mode='a', header=False, index=False)
             else:
                 new_record.to_csv(user_file, index=False)
             
@@ -189,7 +199,8 @@ if emp_sidebar_name:
     st.subheader(f"📂 Recent History for {emp_sidebar_name}")
     if os.path.exists(user_file):
         try:
-            history_df = pd.read_csv(user_file, on_bad_lines='skip')
+            # fillna(0) ensures old records without 'OT Mins' show 0 instead of NaN
+            history_df = pd.read_csv(user_file, on_bad_lines='skip').fillna(0)
             st.dataframe(history_df.tail(10), use_container_width=True)
             with open(user_file, "rb") as f:
                 st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv")
