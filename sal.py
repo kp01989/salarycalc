@@ -32,7 +32,6 @@ st.divider()
 PL_FILE = "pl_data.csv"
 
 def get_user_file(name):
-    # નામમાંથી સ્પેસ કાઢીને ફાઈલનું નામ બનાવવું (દા.ત. Krutinkumar_Patel_salary.csv)
     safe_name = name.strip().replace(" ", "_")
     return f"{safe_name}_salary.csv"
 
@@ -48,7 +47,6 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("sidebar_name", value="", placeholder="Enter Name Here...", label_visibility="collapsed")
     
     st.divider()
-    # PL લોડ કરવું
     pl_df = load_csv(PL_FILE)
     current_pl = int(pl_df.iloc[-1]['balance']) if not pl_df.empty else 0
     
@@ -90,13 +88,12 @@ with col3:
         gratuity = st.number_input("Gratuity", min_value=0, value=1200)
         pt_tax = st.number_input("PT Tax", min_value=0, value=200)
 
-# ૬. ગણતરી અને નામ મુજબ અલગ ફાઈલમાં સેવ
+# ૬. ગણતરી અને સેવ
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
     if not emp_sidebar_name:
         st.error("❗ મહારબાની કરીને સાઈડબારમાં નામ લખો!")
     else:
         try:
-            # ગણતરી લોજિક
             hr_rate = (ctc_salary - gratuity) / work_hrs
             min_rate = hr_rate / 60
             actual_late = max(0, late_mins - 120)
@@ -104,10 +101,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             ot_pay = ot_mins * min_rate
             net_salary = ctc_salary - deduction - food - gratuity - pt_tax + ot_pay
             
-            # ફાઈલ પાથ નક્કી કરવો
             user_file = get_user_file(emp_sidebar_name)
-            
-            # નવો રેકોર્ડ
             new_record = pd.DataFrame([{
                 "Date": datetime.now().strftime("%d-%m-%Y"),
                 "Name": emp_name,
@@ -116,25 +110,22 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
                 "PL Used": used_pl
             }])
             
-            # ફાઈલમાં ઉમેરો (Append)
             if os.path.exists(user_file):
                 new_record.to_csv(user_file, mode='a', header=False, index=False)
             else:
                 new_record.to_csv(user_file, index=False)
             
-            # PL વપરાઈ હોય તો PL ફાઈલ અપડેટ
             if used_pl > 0:
                 new_pl_row = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": current_pl - used_pl}])
                 new_pl_row.to_csv(PL_FILE, mode='a', header=False, index=False)
             
-            st.success(f"✅ ડેટા '{user_file}' માં સેવ થઈ ગયો!")
+            st.success(f"✅ ડેટા સેવ થઈ ગયો!")
             st.balloons()
             st.rerun()
-            
         except Exception as e:
             st.error(f"❌ એરર: {e}")
 
-# ૭. હિસ્ટ્રી બતાવવી (માત્ર અત્યારના યુઝરની ફાઈલમાંથી)
+# ૭. હિસ્ટ્રી અને ડાઉનલોડ બટન
 st.divider()
 if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
@@ -143,13 +134,14 @@ if emp_sidebar_name:
     if os.path.exists(user_file):
         history_df = pd.read_csv(user_file)
         st.dataframe(history_df.tail(10), use_container_width=True)
-    else:
-        st.info(f"{emp_sidebar_name} માટે હજુ સુધી કોઈ ફાઈલ બની નથી.")
-            if os.path.exists(user_file):
-        with open(user_file, "rb") as file:
+        
+        # ડાઉનલોડ બટન - હવે તે સીધું જ લાઈન ૧૪૮ ની ભૂલ વગર છે
+        with open(user_file, "rb") as f:
             st.download_button(
-                label=f"📥 Download {emp_sidebar_name}'s Salary File",
-                data=file,
+                label="📥 Download This Report",
+                data=f,
                 file_name=user_file,
-                mime="text/csv",
+                mime="text/csv"
             )
+    else:
+        st.info(f"{emp_sidebar_name} માટે કોઈ રેકોર્ડ નથી.")
