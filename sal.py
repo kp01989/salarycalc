@@ -98,17 +98,27 @@ with col2:
         late_mins = st.number_input("Late Minutes", min_value=0, value=last_data["Late"])
         ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
         
-        # --- Final Present Hours Formula ---
+        # --- Final Present Hours Formula (HH.MM Format) ---
         # 120 minutes grace period logic
         deductible_late_mins = max(0, late_mins - 120) 
         
-        # Convert minutes to hours and calculate Final Present Hours
-        calculated_final_hrs = present_hrs - (deductible_late_mins / 60) + (ot_mins / 60)
+        # Convert Present Hrs to minutes and calculate total net minutes
+        total_minutes = (present_hrs * 60) - deductible_late_mins + ot_mins
         
-        # Display the calculated value automatically
-        final_present_hrs = st.number_input("Final Present Hours", value=float(calculated_final_hrs), disabled=True)
+        # Ensure it doesn't go below 0
+        total_minutes = max(0, total_minutes)
         
-        # PL વપરાશ લિમિટ
+        # Extract Hours and remaining Minutes
+        final_h = total_minutes // 60
+        final_m = total_minutes % 60
+        
+        # Combine them in HH.MM format
+        calculated_final_hrs = final_h + (final_m / 100)
+        
+        # Display the calculated value automatically with 2 decimal places
+        final_present_hrs = st.number_input("Final Present Hours", value=float(calculated_final_hrs), format="%.2f", disabled=True)
+        
+        # PL Limits
         used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl if display_pl > 0 else 0, value=0)
 
 with col3:
