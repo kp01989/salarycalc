@@ -145,3 +145,11 @@ if emp_sidebar_name:
         st.dataframe(history_df.tail(10), use_container_width=True)
     else:
         st.info(f"{emp_sidebar_name} માટે હજુ સુધી કોઈ ફાઈલ બની નથી.")
+            if os.path.exists(user_file):
+        with open(user_file, "rb") as file:
+            st.download_button(
+                label=f"📥 Download {emp_sidebar_name}'s Salary File",
+                data=file,
+                file_name=user_file,
+                mime="text/csv",
+            )
