@@ -5,23 +5,39 @@ import os
 from datetime import datetime
 
 # ૧. પેજ સેટઅપ
-st.set_page_config(page_title="Salary & PL System", layout="wide")
-st.markdown("<h1 style='text-align: center;'>💎 Salary & PL Management System</h1>", unsafe_allow_html=True)
-st.markdown("---")
+st.set_page_config(page_title="Salary System", layout="wide")
 
-# ૨. ગૂગલ શીટ કનેક્શન (માત્ર Read કરવા માટે)
+# ૨. પાસવર્ડ પ્રોટેક્શન (Login)
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.markdown("<h2 style='text-align: center;'>🔐 Salary System Login</h2>", unsafe_allow_html=True)
+    col_l, col_m, col_r = st.columns([1,1,1])
+    with col_m:
+        pwd_input = st.text_input("Enter Password", type="password")
+        if st.button("Login", use_container_width=True):
+            if pwd_input == "123": 
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("❌ ખોટો પાસવર્ડ!")
+    st.stop()
+
+# --- લોગિન પછીનો કોડ ---
+st.markdown("<h1 style='text-align: center;'>💎 Salary & PL Management</h1>", unsafe_allow_html=True)
+st.divider()
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# ૩. PL Balance માટે CSV ફાઈલ લોજિક (Error વગર કામ કરવા માટે)
+# ૩. PL Balance લોજિક
 PL_FILE = "pl_data.csv"
-
 def load_pl_balance():
     if os.path.exists(PL_FILE):
         try:
             df = pd.read_csv(PL_FILE)
             return int(df.iloc[-1]['balance'])
-        except:
-            return 0
+        except: return 0
     return 0
 
 def save_pl_balance(new_balance):
@@ -30,12 +46,12 @@ def save_pl_balance(new_balance):
 
 current_pl = load_pl_balance()
 
-# ૪. Sidebar - પ્રોફાઇલ અને PL મેનેજમેન્ટ
+# ૪. Sidebar - પ્રોફાઇલ (અહીં એક જ વાર નામ લખવાનું રહેશે)
 with st.sidebar:
     st.header("👤 Profile")
     st.write("**Employee Name :red[*]**")
-    # Placeholder સાથે નામનું ઇનપુટ (Maulik Patel કાઢી નાખ્યું છે)
-    display_name = st.text_input("Name Display", value="", placeholder="Enter Name Here...", label_visibility="collapsed")
+    # સાઈડબારમાં નામ ઇનપુટ
+    emp_sidebar_name = st.text_input("sidebar_name", value="", placeholder="Enter Name Here...", label_visibility="collapsed")
     
     st.divider()
     st.subheader("📊 PL Balance")
@@ -44,7 +60,7 @@ with st.sidebar:
     if st.button("Add 1 Monthly PL", use_container_width=True):
         new_bal = current_pl + 1
         save_pl_balance(new_bal)
-        st.success("✅ 1 PL ઉમેરાઈ ગઈ!")
+        st.success("✅ 1 PL Added!")
         st.rerun()
 
 # ૫. મેઈન ફોર્મ - સેલરી વિગતો
@@ -53,8 +69,10 @@ col1, col2, col3 = st.columns(3)
 with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Details")
-        # લાલ ફૂદડી અને Compulsory Field
-        emp_name = st.text_input("Full Name :red[*]", value="", placeholder="Enter Employee Name (Required)")
+        # સ્માર્ટ ફેરફાર: સાઈડબારના નામને જ અહીં ડિસ્પ્લે કરવું
+        # 'disabled=True' રાખવાથી યુઝરને અહીં ફરી ટાઈપ કરવાની જરૂર નહીં રહે
+        emp_name = st.text_input("Full Name :red[*]", value=emp_sidebar_name, placeholder="Sidebar માં નામ લખો...", disabled=True)
+        
         month = st.selectbox("Select Month", ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26"])
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=40000)
         work_hrs = st.number_input("Standard Work Hrs", min_value=1, value=248)
@@ -74,58 +92,38 @@ with col3:
         gratuity = st.number_input("Gratuity", min_value=0, value=1200)
         pt_tax = st.number_input("PT Tax", min_value=0, value=200)
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ૬. ગણતરી અને સેવ કરવાનું લોજિક
+# ૬. ગણતરી બટન
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
-    # ફરજિયાત નામ ચેક કરો
-    if not emp_name or emp_name.strip() == "":
-        st.error("❗ મહેરબાની કરીને કર્મચારીનું નામ લખો! (Name is Compulsory)")
+    if not emp_sidebar_name or emp_sidebar_name.strip() == "":
+        st.error("❗ મહારબાની કરીને સાઈડબારમાં નામ લખો!")
     else:
         try:
-            # પગારની ગણતરી
             hr_rate = (ctc_salary - gratuity) / work_hrs
             min_rate = hr_rate / 60
-            
-            # ૧૨૦ મિનિટ માફી બાદ લેટ કપાત
             actual_late = max(0, late_mins - 120)
             deduction = actual_late * min_rate
             ot_pay = ot_mins * min_rate
-            
             net_salary = ctc_salary - deduction - food - gratuity - pt_tax + ot_pay
             
-            # નવો રેકોર્ડ તૈયાર કરવો
-            new_data = pd.DataFrame([{
-                "Entry Date": datetime.now().strftime("%d-%m-%Y %H:%M"),
-                "Name": emp_name,
-                "Month": month,
-                "CTC": ctc_salary,
-                "Net Salary": round(net_salary, 2),
-                "PL Balance": current_pl - used_pl
-            }])
+            st.success(f"✅ ગણતરી સફળ! {emp_sidebar_name} ની Net Salary: ₹{round(net_salary, 2)}")
             
-            # જો PL વપરાઈ હોય તો CSV માં બેલેન્સ અપડેટ કરો
+            # PL વપરાઈ હોય તો CSV અપડેટ
             if used_pl > 0:
-                new_pl_bal = current_pl - used_pl
-                save_pl_balance(new_pl_bal)
-            
-            # અહીં તમે ડેટા ગૂગલ શીટમાં Read કરી શકો છો, 
-            # પણ Update કરવા માટે Service Account જોઈશે.
-            # હાલ પૂરતું આપણે લાઈવ ગણતરી બતાવીએ છીએ.
-            st.success(f"✅ ગણતરી સફળ! {emp_name} ની Net Salary: ₹{round(net_salary, 2)}")
+                save_pl_balance(current_pl - used_pl)
             st.balloons()
-            
-            # હિસ્ટ્રી માટે ટેબલ (તમારા રેફરન્સ માટે)
-            st.table(new_data)
-            
         except Exception as e:
-            st.error(f"❌ એરર આવી: {e}")
+            st.error(f"❌ એરર: {e}")
 
-# ૭. હિસ્ટ્રી બતાવવી (Google Sheet માંથી Read)
+# ૭. સિક્યોર હિસ્ટ્રી
 st.divider()
-st.subheader("📂 Sheet Data (Read Only)")
-try:
-    df_history = conn.read(ttl=0)
-    st.dataframe(df_history.tail(5), use_container_width=True)
-except:
-    st.info("શીટમાંથી ડેટા લોડ થઈ શક્યો નથી. લિંક ચેક કરો.")
+if emp_sidebar_name:
+    st.subheader(f"📂 Recent History for {emp_sidebar_name}")
+    try:
+        df_history = conn.read(ttl=0)
+        user_only_df = df_history[df_history['Name'] == emp_sidebar_name]
+        if not user_only_df.empty:
+            st.dataframe(user_only_df.tail(10), use_container_width=True)
+        else:
+            st.info(f"{emp_sidebar_name} માટે કોઈ રેકોર્ડ નથી.")
+    except:
+        st.info("ડેટા લોડ થઈ શક્યો નથી.")
