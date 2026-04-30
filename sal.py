@@ -24,6 +24,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # --- લોગિન પછીનો કોડ ---
+# અહીં હેડિંગ પાછું ઉમેર્યું છે
 st.markdown("<h1 style='text-align: center;'>💎 Salary & PL Management</h1>", unsafe_allow_html=True)
 st.divider()
 
@@ -47,7 +48,7 @@ with st.sidebar:
     
     user_file = get_user_file(emp_sidebar_name)
     
-    # એરર ફિક્સ: on_bad_lines='skip' ઉમેર્યું છે
+    # એરર ફિક્સ: on_bad_lines='skip'
     if user_file and os.path.exists(user_file):
         try:
             df_hist = pd.read_csv(user_file, on_bad_lines='skip')
@@ -137,19 +138,18 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
         except Exception as e:
             st.error(f"❌ એરર: {e}")
 
-# ૭. હિસ્ટ્રી (એરર ફિક્સ સાથે)
+# ૭. હિસ્ટ્રી
 st.divider()
 if emp_sidebar_name:
     st.subheader(f"📂 Recent History for {emp_sidebar_name}")
     if os.path.exists(user_file):
         try:
-            # અહીં પણ on_bad_lines='skip' ઉમેર્યું છે
             history_df = pd.read_csv(user_file, on_bad_lines='skip')
             st.dataframe(history_df.tail(10), use_container_width=True)
             
             with open(user_file, "rb") as f:
                 st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv")
-        except Exception as e:
-            st.error(f"ફાઈલ વાંચવામાં સમસ્યા છે. કદાચ ફાઈલ કરપ્ટ થઈ ગઈ છે.")
+        except:
+            st.error(f"ફાઈલ વાંચવામાં સમસ્યા છે.")
     else:
         st.info(f"{emp_sidebar_name} માટે કોઈ જૂનો રેકોર્ડ નથી.")
