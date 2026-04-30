@@ -99,26 +99,16 @@ with col2:
         ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
         
         # --- Final Present Hours Formula (HH.MM Format) ---
-        # 120 minutes grace period logic
         deductible_late_mins = max(0, late_mins - 120) 
-        
-        # Convert Present Hrs to minutes and calculate total net minutes
         total_minutes = (present_hrs * 60) - deductible_late_mins + ot_mins
-        
-        # Ensure it doesn't go below 0
         total_minutes = max(0, total_minutes)
         
-        # Extract Hours and remaining Minutes
         final_h = total_minutes // 60
         final_m = total_minutes % 60
-        
-        # Combine them in HH.MM format
         calculated_final_hrs = final_h + (final_m / 100)
         
-        # Display the calculated value automatically with 2 decimal places
         final_present_hrs = st.number_input("Final Present Hours", value=float(calculated_final_hrs), format="%.2f", disabled=True)
         
-        # PL Limits
         used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl if display_pl > 0 else 0, value=0)
 
 with col3:
@@ -141,12 +131,26 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
         st.error("❗ Standard Work Hrs 0 ન હોઈ શકે!")
     else:
         try:
-            hr_rate = (ctc_salary - gratuity) / work_hrs if work_hrs > 0 else 0
+            # 1. Final Present Hours and Minutes Calculation
+            deductible_late_mins = max(0, late_mins - 120) 
+            total_minutes = (present_hrs * 60) - deductible_late_mins + ot_mins
+            total_minutes = max(0, total_minutes)
+            
+            final_h = total_minutes // 60
+            final_m = total_minutes % 60
+            
+            # 2. Salary Calculation Logic (As per your example)
+            base_salary = ctc_salary - gratuity
+            
+            hr_rate = base_salary / work_hrs if work_hrs > 0 else 0
             min_rate = hr_rate / 60
-            actual_late = max(0, late_mins - 120)
-            deduction = actual_late * min_rate
-            ot_pay = ot_mins * min_rate
-            net_salary = ctc_salary - deduction - food - gratuity - pt_tax + ot_pay
+            
+            salary_for_hours = final_h * hr_rate
+            salary_for_minutes = final_m * min_rate
+            
+            net_salary_before_deductions = salary_for_hours + salary_for_minutes
+            
+            net_salary = net_salary_before_deductions - food - pt_tax
             
             final_pl_save = display_pl - used_pl
             
