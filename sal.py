@@ -42,7 +42,8 @@ with st.sidebar:
     st.divider()
     
     last_data = {
-        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, "PL_Bal": 0, "Last_Month": ""
+        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, "PL_Bal": 0, 
+        "Last_Month": "", "Last_Year": 0
     }
     
     user_file = get_user_file(emp_sidebar_name)
@@ -61,6 +62,7 @@ with st.sidebar:
                 last_data["PT"] = 200 if "Net Salary" in last_row else 0
                 last_data["PL_Bal"] = int(last_row.get("PL Balance", 0))
                 last_data["Last_Month"] = str(last_row.get("Month", ""))
+                last_data["Last_Year"] = int(last_row.get("Year", 0))
         except:
             pass
 
@@ -71,15 +73,20 @@ with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Details")
         emp_name = st.text_input("Full Name :red[*]", value=emp_sidebar_name, disabled=True)
-        # મહિનો સિલેક્શન
-        all_months = ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26", "Jul'26", "Aug'26", "Sep'26", "Oct'26", "Nov'26", "Dec'26"]
-        month = st.selectbox("Select Month", all_months)
         
-        # --- ઓટોમેટિક PL ઉમેરવાનું લોજિક ---
+        # --- Month અને Year અલગ બોક્સ ---
+        m_col, y_col = st.columns(2)
+        with m_col:
+            month = st.selectbox("Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
+        with y_col:
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=2026)
+        
+        # --- ઓટોમેટિક PL ઉમેરવાનું લોજિક (Month + Year Check) ---
         display_pl = last_data["PL_Bal"]
-        # જો સિલેક્ટ કરેલો મહિનો જૂના સેવ કરેલા મહિના કરતા અલગ હોય તો +1 PL
-        if emp_sidebar_name and last_data["Last_Month"] != "" and month != last_data["Last_Month"]:
-             display_pl = last_data["PL_Bal"] + 1
+        if emp_sidebar_name and last_data["Last_Month"] != "":
+            # જો મહિનો અથવા વર્ષ બદલાય, તો +1 PL ઉમેરો
+            if month != last_data["Last_Month"] or year != last_data["Last_Year"]:
+                 display_pl = last_data["PL_Bal"] + 1
 
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=last_data["CTC"])
         work_hrs = st.number_input("Standard Work Hrs", min_value=0, value=last_data["Std_Hrs"])
@@ -90,8 +97,8 @@ with col2:
         present_hrs = st.number_input("Present Hrs", min_value=0, value=last_data["Present_Hrs"])
         late_mins = st.number_input("Late Minutes", min_value=0, value=last_data["Late"])
         ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
-        # PL વપરાશ (માઈનસમાં ન જાય તે માટે લિમિટ)
-        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl, value=0)
+        # PL વપરાશ લિમિટ
+        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl if display_pl > 0 else 0, value=0)
 
 with col3:
     with st.container(border=True):
@@ -100,7 +107,7 @@ with col3:
         gratuity = st.number_input("Gratuity", min_value=0, value=last_data["Gratuity"])
         pt_tax = st.number_input("PT Tax", min_value=0, value=last_data["PT"])
 
-# સાઈડબારમાં ફાઈનલ PL બતાવવું
+# સાઈડબારમાં ફાઈનલ PL
 with st.sidebar:
     st.subheader("📊 Current PL Balance")
     st.title(f"{display_pl - used_pl} Days")
@@ -120,13 +127,13 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             ot_pay = ot_mins * min_rate
             net_salary = ctc_salary - deduction - food - gratuity - pt_tax + ot_pay
             
-            # નવું બેલેન્સ સેવ કરવું
             final_pl_save = display_pl - used_pl
             
             new_record = pd.DataFrame([{
                 "Date": datetime.now().strftime("%d-%m-%Y"),
                 "Name": emp_name,
                 "Month": month,
+                "Year": year,
                 "CTC": ctc_salary,
                 "Std Hrs": work_hrs,
                 "Present Hrs": present_hrs,
@@ -162,5 +169,3 @@ if emp_sidebar_name:
                 st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv")
         except:
             st.error(f"ફાઈલ વાંચવામાં સમસ્યા છે.")
-    else:
-        st.info(f"{emp_sidebar_name} માટે કોઈ જૂનો રેકોર્ડ નથી.")
