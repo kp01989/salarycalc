@@ -24,7 +24,6 @@ if not st.session_state.logged_in:
     st.stop()
 
 # --- લોગિન પછીનો કોડ ---
-# અહીં હેડિંગ પાછું ઉમેર્યું છે
 st.markdown("<h1 style='text-align: center;'>💎 Salary & PL Management</h1>", unsafe_allow_html=True)
 st.divider()
 
@@ -43,12 +42,11 @@ with st.sidebar:
     st.divider()
     
     last_data = {
-        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, "PL_Bal": 0
+        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, "PL_Bal": 0, "Last_Month": ""
     }
     
     user_file = get_user_file(emp_sidebar_name)
     
-    # એરર ફિક્સ: on_bad_lines='skip'
     if user_file and os.path.exists(user_file):
         try:
             df_hist = pd.read_csv(user_file, on_bad_lines='skip')
@@ -62,11 +60,9 @@ with st.sidebar:
                 last_data["Gratuity"] = int(last_row.get("Gratuity", 0))
                 last_data["PT"] = 200 if "Net Salary" in last_row else 0
                 last_data["PL_Bal"] = int(last_row.get("PL Balance", 0))
+                last_data["Last_Month"] = str(last_row.get("Month", ""))
         except:
             pass
-
-    st.subheader("📊 Current PL Balance")
-    st.title(f"{last_data['PL_Bal']} Days")
 
 # ૫. મેઈન ફોર્મ
 col1, col2, col3 = st.columns(3)
@@ -75,7 +71,16 @@ with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Details")
         emp_name = st.text_input("Full Name :red[*]", value=emp_sidebar_name, disabled=True)
-        month = st.selectbox("Select Month", ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26"])
+        # મહિનો સિલેક્શન
+        all_months = ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26", "Jul'26", "Aug'26", "Sep'26", "Oct'26", "Nov'26", "Dec'26"]
+        month = st.selectbox("Select Month", all_months)
+        
+        # --- ઓટોમેટિક PL ઉમેરવાનું લોજિક ---
+        display_pl = last_data["PL_Bal"]
+        # જો સિલેક્ટ કરેલો મહિનો જૂના સેવ કરેલા મહિના કરતા અલગ હોય તો +1 PL
+        if emp_sidebar_name and last_data["Last_Month"] != "" and month != last_data["Last_Month"]:
+             display_pl = last_data["PL_Bal"] + 1
+
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=last_data["CTC"])
         work_hrs = st.number_input("Standard Work Hrs", min_value=0, value=last_data["Std_Hrs"])
 
@@ -85,7 +90,8 @@ with col2:
         present_hrs = st.number_input("Present Hrs", min_value=0, value=last_data["Present_Hrs"])
         late_mins = st.number_input("Late Minutes", min_value=0, value=last_data["Late"])
         ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
-        used_pl = st.number_input("PL Used (Days)", min_value=0, value=0)
+        # PL વપરાશ (માઈનસમાં ન જાય તે માટે લિમિટ)
+        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=display_pl, value=0)
 
 with col3:
     with st.container(border=True):
@@ -93,6 +99,11 @@ with col3:
         food = st.number_input("Food Exp", min_value=0, value=last_data["Food"])
         gratuity = st.number_input("Gratuity", min_value=0, value=last_data["Gratuity"])
         pt_tax = st.number_input("PT Tax", min_value=0, value=last_data["PT"])
+
+# સાઈડબારમાં ફાઈનલ PL બતાવવું
+with st.sidebar:
+    st.subheader("📊 Current PL Balance")
+    st.title(f"{display_pl - used_pl} Days")
 
 # ૬. ગણતરી અને સેવિંગ
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
@@ -109,7 +120,8 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             ot_pay = ot_mins * min_rate
             net_salary = ctc_salary - deduction - food - gratuity - pt_tax + ot_pay
             
-            new_pl_balance = last_data["PL_Bal"] - used_pl
+            # નવું બેલેન્સ સેવ કરવું
+            final_pl_save = display_pl - used_pl
             
             new_record = pd.DataFrame([{
                 "Date": datetime.now().strftime("%d-%m-%Y"),
@@ -124,7 +136,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
                 "Gratuity": gratuity,
                 "Net Salary": round(net_salary, 2),
                 "PL Used": used_pl,
-                "PL Balance": new_pl_balance
+                "PL Balance": final_pl_save
             }])
             
             if os.path.exists(user_file):
@@ -132,7 +144,7 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             else:
                 new_record.to_csv(user_file, index=False)
             
-            st.success(f"✅ ડેટા સેવ થયો!")
+            st.success(f"✅ ડેટા સેવ થયો! નવું PL બેલેન્સ: {final_pl_save}")
             st.balloons()
             st.rerun()
         except Exception as e:
@@ -146,7 +158,6 @@ if emp_sidebar_name:
         try:
             history_df = pd.read_csv(user_file, on_bad_lines='skip')
             st.dataframe(history_df.tail(10), use_container_width=True)
-            
             with open(user_file, "rb") as f:
                 st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv")
         except:
