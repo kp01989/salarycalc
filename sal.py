@@ -4,32 +4,37 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# ૧. પેજ કન્ફિગરેશન
+# ૧. પેજ સેટઅપ
 st.set_page_config(page_title="Salary & PL System", layout="wide")
 st.markdown("<h1 style='text-align: center;'>💎 Salary & PL Management System</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ૨. ગૂગલ શીટ કનેક્શન સેટઅપ
+# ૨. ગૂગલ શીટ કનેક્શન (માત્ર Read કરવા માટે)
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# ૩. PL Balance મેળવવાનું ફંક્શન (Default 0)
-def get_pl_balance():
-    try:
-        # તમારી શીટમાં 'PL_Sheet' નામની ટેબ હોવી જોઈએ
-        df_pl = conn.read(worksheet="PL_Sheet", ttl=0)
-        if not df_pl.empty:
-            return int(df_pl.iloc[-1]["balance"])
-        return 0
-    except Exception:
-        return 0
+# ૩. PL Balance માટે CSV ફાઈલ લોજિક (Error વગર કામ કરવા માટે)
+PL_FILE = "pl_data.csv"
 
-current_pl = get_pl_balance()
+def load_pl_balance():
+    if os.path.exists(PL_FILE):
+        try:
+            df = pd.read_csv(PL_FILE)
+            return int(df.iloc[-1]['balance'])
+        except:
+            return 0
+    return 0
+
+def save_pl_balance(new_balance):
+    df = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": new_balance}])
+    df.to_csv(PL_FILE, index=False)
+
+current_pl = load_pl_balance()
 
 # ૪. Sidebar - પ્રોફાઇલ અને PL મેનેજમેન્ટ
 with st.sidebar:
     st.header("👤 Profile")
-    st.write("**Employee Name:**")
-    # Placeholder સાથે નામનું ઇનપુટ
+    st.write("**Employee Name :red[*]**")
+    # Placeholder સાથે નામનું ઇનપુટ (Maulik Patel કાઢી નાખ્યું છે)
     display_name = st.text_input("Name Display", value="", placeholder="Enter Name Here...", label_visibility="collapsed")
     
     st.divider()
@@ -37,9 +42,8 @@ with st.sidebar:
     st.title(f"{current_pl} Days")
     
     if st.button("Add 1 Monthly PL", use_container_width=True):
-        new_balance = current_pl + 1
-        pl_record = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": new_balance}])
-        conn.update(worksheet="PL_Sheet", data=pl_record)
+        new_bal = current_pl + 1
+        save_pl_balance(new_bal)
         st.success("✅ 1 PL ઉમેરાઈ ગઈ!")
         st.rerun()
 
@@ -49,8 +53,8 @@ col1, col2, col3 = st.columns(3)
 with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Details")
-        # Compulsory Name Field
-        emp_name = st.text_input("Full Name", value="", placeholder="Enter Employee Name")
+        # લાલ ફૂદડી અને Compulsory Field
+        emp_name = st.text_input("Full Name :red[*]", value="", placeholder="Enter Employee Name (Required)")
         month = st.selectbox("Select Month", ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26"])
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=40000)
         work_hrs = st.number_input("Standard Work Hrs", min_value=1, value=248)
@@ -73,7 +77,7 @@ with col3:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ૬. ગણતરી અને સેવ કરવાનું લોજિક
-if st.button("Calculate & Save to Google Sheet", type="primary", use_container_width=True):
+if st.button("Calculate & Save Data", type="primary", use_container_width=True):
     # ફરજિયાત નામ ચેક કરો
     if not emp_name or emp_name.strip() == "":
         st.error("❗ મહેરબાની કરીને કર્મચારીનું નામ લખો! (Name is Compulsory)")
@@ -100,28 +104,28 @@ if st.button("Calculate & Save to Google Sheet", type="primary", use_container_w
                 "PL Balance": current_pl - used_pl
             }])
             
-            # ગૂગલ શીટ અપડેટ (પહેલી ટેબમાં)
-            existing_df = conn.read(ttl=0)
-            updated_df = pd.concat([existing_df, new_data], ignore_index=True)
-            conn.update(data=updated_df)
-            
-            # જો PL વપરાઈ હોય તો PL_Sheet પણ અપડેટ કરો
+            # જો PL વપરાઈ હોય તો CSV માં બેલેન્સ અપડેટ કરો
             if used_pl > 0:
                 new_pl_bal = current_pl - used_pl
-                pl_upd = pd.DataFrame([{"date": datetime.now().strftime("%d-%m-%Y"), "balance": new_pl_bal}])
-                conn.update(worksheet="PL_Sheet", data=pl_upd)
+                save_pl_balance(new_pl_bal)
             
-            st.success(f"✅ સેવ થઈ ગયું! Net Salary: ₹{round(net_salary, 2)}")
+            # અહીં તમે ડેટા ગૂગલ શીટમાં Read કરી શકો છો, 
+            # પણ Update કરવા માટે Service Account જોઈશે.
+            # હાલ પૂરતું આપણે લાઈવ ગણતરી બતાવીએ છીએ.
+            st.success(f"✅ ગણતરી સફળ! {emp_name} ની Net Salary: ₹{round(net_salary, 2)}")
             st.balloons()
+            
+            # હિસ્ટ્રી માટે ટેબલ (તમારા રેફરન્સ માટે)
+            st.table(new_data)
             
         except Exception as e:
             st.error(f"❌ એરર આવી: {e}")
 
-# ૭. હિસ્ટ્રી બતાવવી
+# ૭. હિસ્ટ્રી બતાવવી (Google Sheet માંથી Read)
 st.divider()
-st.subheader("📂 Recent History")
+st.subheader("📂 Sheet Data (Read Only)")
 try:
     df_history = conn.read(ttl=0)
     st.dataframe(df_history.tail(5), use_container_width=True)
 except:
-    st.info("હજુ સુધી કોઈ ડેટા નથી.")
+    st.info("શીટમાંથી ડેટા લોડ થઈ શક્યો નથી. લિંક ચેક કરો.")
