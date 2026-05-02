@@ -6,38 +6,20 @@ from datetime import datetime
 # 1. Page Setup
 st.set_page_config(page_title="Salary Management System", layout="wide")
 
-# --- Optimized Custom CSS for Forced Zoom Effect ---
+# --- Custom CSS for Zoom & Checkbox ---
 st.markdown("""
 <style>
-    /* target all streamlit buttons */
     .stButton > button {
         transition: all 0.2s ease-in-out !important;
         cursor: pointer !important;
     }
-
-    /* Force zoom effect on hover */
     .stButton > button:hover {
-        transform: scale(1.08) !important; /* 8% Zoom for clear visibility */
+        transform: scale(1.08) !important;
         box-shadow: 0px 4px 15px rgba(255, 75, 75, 0.4) !important;
-        z-index: 999 !important;
     }
-
-    /* Primary button specific hover (Red buttons) */
-    .stButton > button[kind="primary"]:hover {
-        background-color: #ff4b4b !important;
-        border-color: white !important;
-    }
-
-    /* Keep data_editor checkboxes visible at all times */
-    [data-testid="stDataEditor"] [role="gridcell"] input[type="checkbox"],
-    [data-testid="stDataEditor"] [role="rowheader"] input[type="checkbox"] {
+    [data-testid="stDataEditor"] [role="gridcell"] input[type="checkbox"] {
         opacity: 1 !important;
         visibility: visible !important;
-    }
-    
-    div[data-testid="stDataEditor"] {
-        border: 1px solid #444;
-        border-radius: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -59,205 +41,132 @@ if not st.session_state.logged_in:
                 st.error("❌ Incorrect Password!")
     st.stop()
 
-# --- Post-Login UI ---
 st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
 st.divider()
 
-# 3. File Management Functions
+# 3. Helper Functions
 def get_user_file(name):
     if not name: return None
-    safe_name = name.strip().replace(" ", "_")
-    return f"{safe_name}_salary.csv"
+    return f"{name.strip().replace(' ', '_')}_salary.csv"
 
-# 4. Sidebar - Profile Section
+month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+
+# 4. Sidebar Profile
 with st.sidebar:
     st.header("👤 Profile")
-    st.write("**Employee Name :red[*]**")
-    emp_sidebar_name = st.text_input("sidebar_name", value="", placeholder="Enter Name Here...", label_visibility="collapsed")
+    emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {
-        "CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 0, 
-        "PF": 0, "ESIC": 0, "Bonus": 0, "Advance": 0,
-        "Last_Month": "", "Last_Year": 2026
-    }
-
+    last_data = {"CTC": 0, "Std_Hrs": 0, "Present_Hrs": 0, "Late": 0, "Food": 0, "Gratuity": 0, "PT": 200, "PF": 0, "ESIC": 0, "Bonus": 0, "Advance": 0}
+    
     user_file = get_user_file(emp_sidebar_name)
     if user_file and os.path.exists(user_file):
         try:
-            df_hist = pd.read_csv(user_file, on_bad_lines='skip')
+            df_hist = pd.read_csv(user_file)
             if not df_hist.empty:
                 last_row = df_hist.iloc[-1]
-                last_data["CTC"] = int(last_row.get("CTC", 0))
-                last_data["Std_Hrs"] = int(last_row.get("Std Hrs", 0))
-                last_data["Present_Hrs"] = int(last_row.get("Present Hrs", 0))
-                last_data["Late"] = int(last_row.get("Late Mins", 0))
-                last_data["Food"] = int(last_row.get("Food", 0))
-                last_data["Gratuity"] = int(last_row.get("Gratuity", 0))
-                last_data["PT"] = 200
-                last_data["PF"] = int(last_row.get("PF", 0))
-                last_data["ESIC"] = int(last_row.get("ESIC", 0))
-                last_data["Bonus"] = int(last_row.get("Bonus", 0))
-                last_data["Advance"] = int(last_row.get("Advance", 0))
-                last_data["Last_Month"] = str(last_row.get("Month", ""))
-                last_data["Last_Year"] = int(last_row.get("Year", 2026))
-        except:
-            pass
+                for key in last_data.keys():
+                    csv_key = key.replace("_", " ") if key != "Std_Hrs" else "Std Hrs"
+                    if csv_key in last_row: last_data[key] = last_row[csv_key]
+        except: pass
 
-# 5. Main Input Form
+# 5. Form Logic & PL Calculation
 col1, col2, col3 = st.columns(3)
 
 with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Details")
-        emp_name = st.text_input("Full Name :red[*]", value=emp_sidebar_name, disabled=True)
-        
+        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
         m_col, y_col = st.columns(2)
-        with m_col:
-            month = st.selectbox("Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])
-        with y_col:
-            year = st.number_input("Year", min_value=2024, max_value=2030, value=2026)
-
-        month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
-        selected_month_num = month_dict[month]
+        with m_col: month = st.selectbox("Month", list(month_dict.keys()))
+        with y_col: year = st.number_input("Year", min_value=2024, max_value=2030, value=2026)
+        
+        # PL Balance Logic
         past_used_pl = 0
-
-        if emp_sidebar_name and os.path.exists(user_file):
+        if user_file and os.path.exists(user_file):
             try:
-                df_hist = pd.read_csv(user_file, on_bad_lines='skip')
-                if not df_hist.empty and "PL Used" in df_hist.columns:
-                    df_hist['Month_Num'] = df_hist['Month'].map(month_dict)
-                    df_past = df_hist[(df_hist['Year'] == year) & (df_hist['Month_Num'] <= selected_month_num)]
-                    past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').fillna(0).sum()
-            except:
-                pass
-
-        available_pl = max(0, int(selected_month_num - past_used_pl))
-        ctc_salary = st.number_input("Monthly CTC", min_value=0, value=last_data["CTC"])
-        work_hrs = st.number_input("Standard Work Hrs", min_value=0, value=last_data["Std_Hrs"])
+                df_pl = pd.read_csv(user_file)
+                df_pl['Month_Num'] = df_pl['Month'].str.strip().map(month_dict)
+                # Only count PL used in the same year before the selected month
+                df_past = df_pl[(df_pl['Year'] == year) & (df_pl['Month_Num'] < month_dict[month])]
+                past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').sum()
+            except: pass
+        
+        available_pl = max(0, month_dict[month] - int(past_used_pl))
+        ctc_salary = st.number_input("Monthly CTC", value=int(last_data["CTC"]))
+        work_hrs = st.number_input("Standard Work Hrs", value=int(last_data["Std_Hrs"]))
 
 with col2:
     with st.container(border=True):
-        st.subheader("🕒 Attendance & OT")
-        present_hrs = st.number_input("Present Hrs", min_value=0, value=last_data["Present_Hrs"])
-        late_mins = st.number_input("Late Minutes", min_value=0, value=last_data["Late"])
-        ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
-        used_pl = st.number_input("Paid Leave Used (Days)", min_value=0, max_value=available_pl if available_pl > 0 else 0, value=0)
+        st.subheader("🕒 Attendance")
+        present_hrs = st.number_input("Present Hrs", value=int(last_data["Present_Hrs"]))
+        late_mins = st.number_input("Late Minutes", value=int(last_data["Late"]))
+        ot_mins = st.number_input("OT Minutes", value=0)
+        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=available_pl, value=0)
 
-        # PL logic: 10 hours per PL
-        pl_bonus_mins = used_pl * 10 * 60
-        deductible_late_mins = max(0, late_mins - 120) 
-        
-        total_minutes = (present_hrs * 60) + pl_bonus_mins - deductible_late_mins + ot_mins
-        total_minutes = max(0, total_minutes)
-
-        final_h = total_minutes // 60
-        final_m = total_minutes % 60
-        calculated_final_hrs = final_h + (final_m / 100)
-
-        final_present_hrs = st.number_input("Final Present Hours", value=float(calculated_final_hrs), format="%.2f", disabled=True)
+        total_min = (present_hrs * 60) + (used_pl * 10 * 60) - max(0, late_mins - 120) + ot_mins
+        calc_final_hrs = (total_min // 60) + ((total_min % 60) / 100)
+        st.number_input("Final Present Hours", value=float(calc_final_hrs), format="%.2f", disabled=True)
 
 with col3:
     with st.container(border=True):
-        st.subheader("📉 Deductions & Bonus")
-        food = st.number_input("Food Exp", min_value=0, value=last_data["Food"])
-        gratuity = st.number_input("Gratuity", min_value=0, value=last_data["Gratuity"])
-        pt_tax = st.number_input("PT Tax", min_value=0, value=last_data["PT"])
-        pf = st.number_input("Provident Fund (PF)", min_value=0, value=last_data["PF"])
-        esic = st.number_input("ESIC", min_value=0, value=last_data["ESIC"])
-        bonus = st.number_input("Performance Bonus", min_value=0, value=last_data["Bonus"])
-        advance = st.number_input("Salary Advance", min_value=0, value=last_data["Advance"])
+        st.subheader("📉 Deductions")
+        food = st.number_input("Food Exp", value=int(last_data["Food"]))
+        gratuity = st.number_input("Gratuity", value=int(last_data["Gratuity"]))
+        pt_tax = st.number_input("PT Tax", value=200)
+        bonus = st.number_input("Bonus", value=int(last_data["Bonus"]))
+        advance = st.number_input("Advance", value=int(last_data["Advance"]))
 
-# Sidebar PL status
 with st.sidebar:
-    st.subheader("📊 Current PL Balance")
+    st.subheader("📊 PL Balance")
     st.title(f"{available_pl - used_pl} Days")
 
-# 6. Saving Logic
+# 6. Save Data
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
-    if not emp_sidebar_name:
-        st.error("❗ Please enter employee name in the sidebar!")
-    elif work_hrs == 0:
-        st.error("❗ Standard Work Hours cannot be zero!")
+    if not emp_sidebar_name: st.error("Please enter name!")
     else:
-        try:
-            base_salary = ctc_salary - gratuity
-            hr_rate = base_salary / work_hrs if work_hrs > 0 else 0
-            min_rate = hr_rate / 60
+        base_sal = ctc_salary - gratuity
+        hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + bonus
+        
+        new_rec = pd.DataFrame([{
+            "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
+            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs, "Late Mins": late_mins,
+            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": available_pl - used_pl,
+            "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "Advance": advance, "Bonus": bonus
+        }])
+        
+        if os.path.exists(user_file):
+            pd.concat([pd.read_csv(user_file), new_rec], ignore_index=True).to_csv(user_file, index=False)
+        else: new_rec.to_csv(user_file, index=False)
+        st.success("Saved!"); st.rerun()
 
-            salary_for_hours = final_h * hr_rate
-            salary_for_minutes = final_m * min_rate
-            net_salary = salary_for_hours + salary_for_minutes - food - pt_tax - pf - esic - advance + bonus
-            final_pl_save = available_pl - used_pl
-
-            new_record = pd.DataFrame([{
-                "Date": datetime.now().strftime("%d-%m-%Y"),
-                "Name": emp_name, "Month": month, "Year": year,
-                "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs,
-                "Late Mins": late_mins, "OT Mins": ot_mins, "Final Present Hrs": calculated_final_hrs,
-                "Food": food, "Gratuity": gratuity, "PT Tax": pt_tax, "PF": pf,
-                "ESIC": esic, "Advance": advance, "Bonus": bonus,
-                "Net Salary": round(net_salary, 2), "PL Used": used_pl, "PL Balance": final_pl_save
-            }])
-
-            if os.path.exists(user_file):
-                old_df = pd.read_csv(user_file, on_bad_lines='skip')
-                updated_df = pd.concat([old_df, new_record], ignore_index=True)
-                updated_df.to_csv(user_file, index=False)
-            else:
-                new_record.to_csv(user_file, index=False)
-
-            st.success(f"✅ Record saved! Remaining PL: {final_pl_save}")
-            st.balloons()
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
-
-# 7. Compact Search Section
+# 7. Search Section (Fixed)
 st.divider()
-st.subheader("🔍 Quick Search Records")
+st.subheader("🔍 Search Records")
 with st.container(border=True):
-    sc1, sc2, sc3, sc4 = st.columns([4, 1.5, 1.5, 1.5])
-    with sc1:
-        search_name = st.text_input("Search Name", placeholder="Employee Name...", label_visibility="collapsed")
-    with sc2:
-        search_month = st.selectbox("Search Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], key="s_m", label_visibility="collapsed")
-    with sc3:
-        search_year = st.number_input("Search Year", min_value=2024, max_value=2030, value=2026, key="s_y", label_visibility="collapsed")
-    with sc4:
-        search_btn = st.button("🔍 Search", use_container_width=True)
+    s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
+    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed")
+    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
+    search_y = s3.number_input("Year", value=2026, key="sy", label_visibility="collapsed")
+    if s4.button("🔍 Search", use_container_width=True):
+        s_file = get_user_file(search_n)
+        if os.path.exists(s_file):
+            df_s = pd.read_csv(s_file)
+            # મહિના અને નામ માંથી સ્પેસ કાઢી ને સર્ચ કરો
+            res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
+            if not res.empty:
+                res.index = range(1, len(res) + 1)
+                st.dataframe(res, use_container_width=True)
+            else: st.warning("No record found.")
+        else: st.error("File not found.")
 
-if search_btn:
-    s_file = get_user_file(search_name)
-    if os.path.exists(s_file):
-        df_s = pd.read_csv(s_file)
-        res = df_s[(df_s['Month'] == search_month) & (df_s['Year'] == search_year)]
-        if not res.empty:
-            res.index = range(1, len(res) + 1)
-            st.dataframe(res, use_container_width=True)
-        else:
-            st.warning("No record found.")
-    else:
-        st.error("Employee file not found.")
-
-# 8. History Log
-st.divider()
-if emp_sidebar_name:
-    st.subheader(f"📂 History Log: {emp_sidebar_name}")
-    if os.path.exists(user_file):
-        try:
-            history_df = pd.read_csv(user_file, on_bad_lines='skip').fillna(0)
-            history_df.index = range(1, len(history_df) + 1)
-            edited_df = st.data_editor(history_df, num_rows="dynamic", use_container_width=True, key="h_editor")
-            
-            c_b1, c_b2 = st.columns(2)
-            with c_b1:
-                with open(user_file, "rb") as f:
-                    st.download_button(label="📥 Download CSV Report", data=f, file_name=user_file, mime="text/csv", use_container_width=True)
-            with c_b2:
-                if st.button("💾 Apply & Save Changes", type="primary", use_container_width=True):
-                    edited_df.to_csv(user_file, index=False)
-                    st.success("History updated successfully!")
-                    st.rerun()
-        except:
-            st.error("Failed to load history.")
+# 8. History
+if emp_sidebar_name and os.path.exists(user_file):
+    st.subheader(f"📂 History: {emp_sidebar_name}")
+    h_df = pd.read_csv(user_file).fillna(0)
+    h_df.index = range(1, len(h_df) + 1)
+    edited = st.data_editor(h_df, use_container_width=True)
+    if st.button("💾 Save Changes"):
+        edited.to_csv(user_file, index=False)
+        st.success("Updated!"); st.rerun()
