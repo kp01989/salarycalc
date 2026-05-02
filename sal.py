@@ -211,19 +211,41 @@ with st.container(border=True):
         search_btn = st.button("🔍 Search", use_container_width=True)
 
 if search_btn:
-    s_file = get_user_file(search_name)
-    if os.path.exists(s_file):
-        df_s = pd.read_csv(s_file)
-        res = df_s[(df_s['Month'] == search_month) & (df_s['Year'] == search_year)]
-        if not res.empty:
-            res.index = range(1, len(res) + 1)
-            st.dataframe(res, use_container_width=True)
-        else:
-            st.warning("No record found for the selected criteria.")
+    if not search_name:
+        st.warning("⚠️ Please enter a name to search.")
     else:
-        st.error("Employee file not found.")
+        s_file = get_user_file(search_name)
+        if os.path.exists(s_file):
+            df_s = pd.read_csv(s_file)
+            # Filter the dataframe
+            res = df_s[(df_s['Month'] == search_month) & (df_s['Year'] == search_year)]
+            if not res.empty:
+                # Reset index to start from 1
+                res.index = range(1, len(res) + 1)
+                st.dataframe(res, use_container_width=True)
+            else:
+                st.warning("No record found for this Month/Year.")
+        else:
+            st.error("Employee file not found.")
 
-# 8. Data History & Editing Section
+# 8. Data History Log
 st.divider()
 if emp_sidebar_name:
-    st
+    st.subheader(f"📂 History Log for {emp_sidebar_name}")
+    if os.path.exists(user_file):
+        try:
+            history_df = pd.read_csv(user_file, on_bad_lines='skip').fillna(0)
+            history_df.index = range(1, len(history_df) + 1)
+            edited_df = st.data_editor(history_df, num_rows="dynamic", use_container_width=True, key="h_editor")
+            
+            c_b1, c_b2 = st.columns(2)
+            with c_b1:
+                with open(user_file, "rb") as f:
+                    st.download_button(label="📥 Download CSV Report", data=f, file_name=user_file, mime="text/csv", use_container_width=True)
+            with c_b2:
+                if st.button("💾 Apply & Save Changes", type="primary", use_container_width=True):
+                    edited_df.to_csv(user_file, index=False)
+                    st.success("Changes saved successfully!")
+                    st.rerun()
+        except:
+            st.error("Failed to load history file.")
