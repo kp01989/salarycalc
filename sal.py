@@ -92,7 +92,6 @@ with col1:
                 df_hist = pd.read_csv(user_file, on_bad_lines='skip')
                 if not df_hist.empty and "PL Used" in df_hist.columns:
                     df_hist['Month_Num'] = df_hist['Month'].map(month_dict)
-                    # Deduct PLs used including current month records
                     df_past = df_hist[(df_hist['Year'] == year) & (df_hist['Month_Num'] <= selected_month_num)]
                     past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').fillna(0).sum()
             except:
@@ -205,4 +204,26 @@ with st.container(border=True):
         search_name = st.text_input("Search by Employee Name", placeholder="e.g. Krutinkumar Patel")
     with sc2:
         search_month = st.selectbox("Search Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], key="s_m")
-    with sc3
+    with sc3:
+        search_year = st.number_input("Search Year", min_value=2024, max_value=2030, value=2026, key="s_y")
+    with sc4:
+        st.write("##")
+        search_btn = st.button("🔍 Search", use_container_width=True)
+
+if search_btn:
+    s_file = get_user_file(search_name)
+    if os.path.exists(s_file):
+        df_s = pd.read_csv(s_file)
+        res = df_s[(df_s['Month'] == search_month) & (df_s['Year'] == search_year)]
+        if not res.empty:
+            res.index = range(1, len(res) + 1)
+            st.dataframe(res, use_container_width=True)
+        else:
+            st.warning("No record found for the selected criteria.")
+    else:
+        st.error("Employee file not found.")
+
+# 8. Data History & Editing Section
+st.divider()
+if emp_sidebar_name:
+    st
