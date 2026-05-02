@@ -6,20 +6,26 @@ from datetime import datetime
 # 1. Page Setup
 st.set_page_config(page_title="Salary Management System", layout="wide")
 
-# --- Custom CSS for Button Zoom & Persistent Checkbox ---
+# --- Optimized Custom CSS for Forced Zoom Effect ---
 st.markdown("""
 <style>
-    /* Zoom effect on all buttons */
-    div.stButton > button {
-        transition: transform 0.2s ease-in-out !important;
+    /* target all streamlit buttons */
+    .stButton > button {
+        transition: all 0.2s ease-in-out !important;
+        cursor: pointer !important;
     }
-    div.stButton > button:hover {
-        transform: scale(1.05) !important;
-        border: 1px solid #FF4B4B !important;
+
+    /* Force zoom effect on hover */
+    .stButton > button:hover {
+        transform: scale(1.08) !important; /* 8% Zoom for clear visibility */
+        box-shadow: 0px 4px 15px rgba(255, 75, 75, 0.4) !important;
+        z-index: 999 !important;
     }
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #FF4B4B !important;
-        color: white !important;
+
+    /* Primary button specific hover (Red buttons) */
+    .stButton > button[kind="primary"]:hover {
+        background-color: #ff4b4b !important;
+        border-color: white !important;
     }
 
     /* Keep data_editor checkboxes visible at all times */
@@ -29,7 +35,6 @@ st.markdown("""
         visibility: visible !important;
     }
     
-    /* Make the data editor layout cleaner */
     div[data-testid="stDataEditor"] {
         border: 1px solid #444;
         border-radius: 5px;
