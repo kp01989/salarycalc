@@ -86,18 +86,19 @@ with col1:
         selected_month_num = month_dict[month]
         past_used_pl = 0
 
+        # --- PL BALANCE LOGIC ---
         if emp_sidebar_name and os.path.exists(user_file):
             try:
                 df_hist = pd.read_csv(user_file, on_bad_lines='skip')
                 if not df_hist.empty and "PL Used" in df_hist.columns:
                     df_hist['Month_Num'] = df_hist['Month'].map(month_dict)
+                    # Check PL used UP TO the current month
                     df_past = df_hist[(df_hist['Year'] == year) & (df_hist['Month_Num'] <= selected_month_num)]
                     past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').fillna(0).sum()
             except:
                 pass
 
-        available_pl = selected_month_num - past_used_pl
-        available_pl = max(0, int(available_pl))
+        available_pl = max(0, int(selected_month_num - past_used_pl))
 
         ctc_salary = st.number_input("Monthly CTC", min_value=0, value=last_data["CTC"])
         work_hrs = st.number_input("Standard Work Hrs", min_value=0, value=last_data["Std_Hrs"])
@@ -111,6 +112,7 @@ with col2:
         
         used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=available_pl if available_pl > 0 else 0, value=0)
 
+        # ૧૦ કલાક પ્રતિ PL મુજબ ઉમેરવા
         pl_bonus_mins = used_pl * 10 * 60
         deductible_late_mins = max(0, late_mins - 120) 
         
@@ -191,45 +193,53 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             st.success(f"✅ ડેટા સેવ થયો! નવું PL બેલેન્સ: {final_pl_save}")
             st.balloons()
             st.rerun()
-
         except Exception as e:
             st.error(f"❌ એરર: {e}")
 
-# --- 🔍 નવી સર્ચ સિસ્ટમ (New Search System) ---
+# ૭. સર્ચ સેક્શન (Search Records)
 st.divider()
 st.subheader("🔍 Search Salary Records")
 with st.container(border=True):
     sc1, sc2, sc3, sc4 = st.columns([2, 1, 1, 1])
     with sc1:
-        search_name = st.text_input("Enter Employee Name to Search", placeholder="e.g. Krutin Patel")
+        search_name = st.text_input("Enter Employee Name to Search", placeholder="e.g. Krutinkumar Patel")
     with sc2:
-        search_month = st.selectbox("Select Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], key="s_month")
+        search_month = st.selectbox("Select Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], key="s_m")
     with sc3:
-        search_year = st.number_input("Select Year", min_value=2024, max_value=2030, value=2026, key="s_year")
+        search_year = st.number_input("Select Year", min_value=2024, max_value=2030, value=2026, key="s_y")
     with sc4:
-        st.write("##") # સ્પેસ માટે
-        search_btn = st.button("🔍 Search Record", use_container_width=True)
+        st.write("##")
+        search_btn = st.button("🔍 Search", use_container_width=True)
 
 if search_btn:
-    if not search_name:
-        st.warning("⚠️ સર્ચ કરવા માટે નામ લખો!")
-    else:
-        s_file = get_user_file(search_name)
-        if os.path.exists(s_file):
-            df_search = pd.read_csv(s_file)
-            # Filter logic: નામ, મહિનો અને વર્ષ મેચ કરવા
-            result = df_search[(df_search['Month'] == search_month) & (df_search['Year'] == search_year)]
-            
-            if not result.empty:
-                st.success(f"✅ {search_name} નો {search_month}-{search_year} નો રેકોર્ડ મળી ગયો છે:")
-                st.dataframe(result, use_container_width=True)
-            else:
-                st.error(f"❌ {search_month}-{search_year} માટે કોઈ રેકોર્ડ મળ્યો નથી.")
+    s_file = get_user_file(search_name)
+    if os.path.exists(s_file):
+        df_s = pd.read_csv(s_file)
+        res = df_s[(df_s['Month'] == search_month) & (df_s['Year'] == search_year)]
+        if not res.empty:
+            st.dataframe(res, use_container_width=True)
         else:
-            st.error("❌ આ નામની કોઈ ફાઈલ મળી નથી.")
+            st.warning("રેકોર્ડ મળ્યો નથી.")
+    else:
+        st.error("ફાઈલ મળી નથી.")
 
-# ૭. હિસ્ટ્રી
+# ૮. હિસ્ટ્રી
 st.divider()
 if emp_sidebar_name:
-    st.subheader(f"📂 Full History for {emp_sidebar_name}")
-    if os
+    st.subheader(f"📂 History for {emp_sidebar_name}")
+    if os.path.exists(user_file):
+        try:
+            history_df = pd.read_csv(user_file, on_bad_lines='skip').fillna(0)
+            edited_df = st.data_editor(history_df, num_rows="dynamic", use_container_width=True, key="h_editor")
+            
+            c_b1, c_b2 = st.columns(2)
+            with c_b1:
+                with open(user_file, "rb") as f:
+                    st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv", use_container_width=True)
+            with c_b2:
+                if st.button("💾 Save Changes", type="primary", use_container_width=True):
+                    edited_df.to_csv(user_file, index=False)
+                    st.success("સેવ થઈ ગયું!")
+                    st.rerun()
+        except:
+            st.error("ફાઈલ વાંચવામાં ભૂલ છે.")
