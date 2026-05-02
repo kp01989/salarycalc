@@ -86,7 +86,6 @@ with col1:
         selected_month_num = month_dict[month]
         past_used_pl = 0
 
-        # --- PL BALANCE LOGIC ---
         if emp_sidebar_name and os.path.exists(user_file):
             try:
                 df_hist = pd.read_csv(user_file, on_bad_lines='skip')
@@ -111,7 +110,6 @@ with col2:
         
         used_pl = st.number_input("Paid Leave Used (Days)", min_value=0, max_value=available_pl if available_pl > 0 else 0, value=0)
 
-        # Added 10 hours per Paid Leave
         pl_bonus_mins = used_pl * 10 * 60
         deductible_late_mins = max(0, late_mins - 120) 
         
@@ -195,19 +193,19 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
         except Exception as e:
             st.error(f"❌ Error occurred: {e}")
 
-# 7. Search Records Section
+# 7. Optimized One-Line Search Section
 st.divider()
-st.subheader("🔍 Search Employee Records")
+st.subheader("🔍 Quick Search")
 with st.container(border=True):
-    sc1, sc2, sc3, sc4 = st.columns([2, 1, 1, 1])
+    # Name gets more space (ratio 4), others get less (ratio 1)
+    sc1, sc2, sc3, sc4 = st.columns([4, 1.5, 1.5, 1.5])
     with sc1:
-        search_name = st.text_input("Search by Employee Name", placeholder="e.g. Krutinkumar Patel")
+        search_name = st.text_input("Name", placeholder="e.g. Krutinkumar Patel", label_visibility="collapsed")
     with sc2:
-        search_month = st.selectbox("Search Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], key="s_m")
+        search_month = st.selectbox("Month", ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], key="s_m", label_visibility="collapsed")
     with sc3:
-        search_year = st.number_input("Search Year", min_value=2024, max_value=2030, value=2026, key="s_y")
+        search_year = st.number_input("Year", min_value=2024, max_value=2030, value=2026, key="s_y", label_visibility="collapsed")
     with sc4:
-        st.write("##")
         search_btn = st.button("🔍 Search", use_container_width=True)
 
 if search_btn:
@@ -217,21 +215,19 @@ if search_btn:
         s_file = get_user_file(search_name)
         if os.path.exists(s_file):
             df_s = pd.read_csv(s_file)
-            # Filter the dataframe
             res = df_s[(df_s['Month'] == search_month) & (df_s['Year'] == search_year)]
             if not res.empty:
-                # Reset index to start from 1
                 res.index = range(1, len(res) + 1)
                 st.dataframe(res, use_container_width=True)
             else:
-                st.warning("No record found for this Month/Year.")
+                st.warning("No record found.")
         else:
-            st.error("Employee file not found.")
+            st.error("File not found.")
 
 # 8. Data History Log
 st.divider()
 if emp_sidebar_name:
-    st.subheader(f"📂 History Log for {emp_sidebar_name}")
+    st.subheader(f"📂 History Log: {emp_sidebar_name}")
     if os.path.exists(user_file):
         try:
             history_df = pd.read_csv(user_file, on_bad_lines='skip').fillna(0)
@@ -241,11 +237,11 @@ if emp_sidebar_name:
             c_b1, c_b2 = st.columns(2)
             with c_b1:
                 with open(user_file, "rb") as f:
-                    st.download_button(label="📥 Download CSV Report", data=f, file_name=user_file, mime="text/csv", use_container_width=True)
+                    st.download_button(label="📥 Download CSV", data=f, file_name=user_file, mime="text/csv", use_container_width=True)
             with c_b2:
-                if st.button("💾 Apply & Save Changes", type="primary", use_container_width=True):
+                if st.button("💾 Save Changes", type="primary", use_container_width=True):
                     edited_df.to_csv(user_file, index=False)
-                    st.success("Changes saved successfully!")
+                    st.success("Changes saved!")
                     st.rerun()
         except:
-            st.error("Failed to load history file.")
+            st.error("Failed to load history.")
