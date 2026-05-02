@@ -86,12 +86,14 @@ with col1:
         selected_month_num = month_dict[month]
         past_used_pl = 0
 
+        # --- UPDATED PL BALANCE LOGIC ---
         if emp_sidebar_name and os.path.exists(user_file):
             try:
                 df_hist = pd.read_csv(user_file, on_bad_lines='skip')
                 if not df_hist.empty and "PL Used" in df_hist.columns:
                     df_hist['Month_Num'] = df_hist['Month'].map(month_dict)
-                    df_past = df_hist[(df_hist['Year'] == year) & (df_hist['Month_Num'] < selected_month_num)]
+                    # Jo selected month no data pela save thai gayo hoy, to tene pan count karvo
+                    df_past = df_hist[(df_hist['Year'] == year) & (df_hist['Month_Num'] <= selected_month_num)]
                     past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').fillna(0).sum()
             except:
                 pass
@@ -109,14 +111,12 @@ with col2:
         late_mins = st.number_input("Late Minutes", min_value=0, value=last_data["Late"])
         ot_mins = st.number_input("OT Minutes", min_value=0, value=0)
         
-        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=available_pl, value=0)
+        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=available_pl if available_pl > 0 else 0, value=0)
 
-        # --- UPDATED FINAL PRESENT HOURS LOGIC ---
         # ૧૦ કલાક પ્રતિ PL મુજબ ઉમેરવા
         pl_bonus_mins = used_pl * 10 * 60
         deductible_late_mins = max(0, late_mins - 120) 
         
-        # કુલ મિનિટ ગણતરી (Present + PL Bonus - Late + OT)
         total_minutes = (present_hrs * 60) + pl_bonus_mins - deductible_late_mins + ot_mins
         total_minutes = max(0, total_minutes)
 
@@ -150,7 +150,6 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
         st.error("❗ Standard Work Hrs 0 ન હોઈ શકે!")
     else:
         try:
-            # Salary Calculation Logic Based on Final Present Hours
             base_salary = ctc_salary - gratuity
             hr_rate = base_salary / work_hrs if work_hrs > 0 else 0
             min_rate = hr_rate / 60
@@ -159,7 +158,6 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             salary_for_minutes = final_m * min_rate
             net_salary_before_deductions = salary_for_hours + salary_for_minutes
 
-            # Final Net Salary calculation
             net_salary = net_salary_before_deductions - food - pt_tax - pf - esic - advance + bonus
             final_pl_save = available_pl - used_pl
 
