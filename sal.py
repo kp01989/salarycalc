@@ -161,23 +161,32 @@ with st.container(border=True):
             else: st.warning("No record found.")
         else: st.error("File not found.")
 
-# 8. History
-if emp_sidebar_name and os.path.exists(user_file):
-    st.subheader(f"📂 History: {emp_sidebar_name}")
-    
-    # ફાઈલ લોડ કરો
-    h_df = pd.read_csv(user_file).fillna(0)
-    
-    # સેવ કરવા માટે કી બનાવીએ જેથી ડેટા અપડેટ થાય
-    # num_rows="dynamic" લખવાથી ટેબલમાં છેલ્લે ડિલીટ અને એડ કરવાનું બટન આવી જશે
-    edited_df = st.data_editor(
-        h_df, 
-        use_container_width=True, 
-        num_rows="dynamic"  # આનાથી ડિલીટ બટન આવશે
-    )
-    
-    if st.button("💾 Save Changes"):
-        # સુધારેલો ડેટા ફરીથી CSV માં સેવ કરો
-        edited_df.to_csv(user_file, index=False)
-        st.success("Record Updated/Deleted Successfully!")
-        st.rerun()
+# 8. History - નામ વાઈઝ સેવ અને ડિલીટ કરવા માટે
+if emp_sidebar_name:
+    user_file = get_user_file(emp_sidebar_name)
+    if os.path.exists(user_file):
+        st.subheader(f"📂 History: {emp_sidebar_name}")
+        
+        # ડેટા લોડ કરો
+        h_df = pd.read_csv(user_file)
+        
+        # ખાતરી કરો કે 'Date' અથવા બીજા જરૂરી કોલમ ખાલી ના હોય
+        h_df = h_df.fillna("")
+
+        # num_rows="dynamic" થી ડિલીટ ઓપ્શન આવશે
+        # key="history_editor" આપવાથી ડેટા સ્ટેબલ રહેશે
+        edited_df = st.data_editor(
+            h_df, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            key="history_editor"
+        )
+        
+        # સેવ કરવાનું લોજિક
+        if st.button("💾 Save Changes & Permanently Update History"):
+            # ફાઈલને ફરીથી તે જ યુઝરના નામથી સેવ કરો
+            edited_df.to_csv(user_file, index=False)
+            st.success(f"✅ {emp_sidebar_name} નો ડેટા સફળતાપૂર્વક અપડેટ થયો છે!")
+            st.rerun()
+    else:
+        st.info("આ નામ માટે હજુ સુધી કોઈ રેકોર્ડ સેવ થયો નથી.")
