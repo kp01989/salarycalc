@@ -164,9 +164,20 @@ with st.container(border=True):
 # 8. History
 if emp_sidebar_name and os.path.exists(user_file):
     st.subheader(f"📂 History: {emp_sidebar_name}")
+    
+    # ફાઈલ લોડ કરો
     h_df = pd.read_csv(user_file).fillna(0)
-    h_df.index = range(1, len(h_df) + 1)
-    edited = st.data_editor(h_df, use_container_width=True)
+    
+    # સેવ કરવા માટે કી બનાવીએ જેથી ડેટા અપડેટ થાય
+    # num_rows="dynamic" લખવાથી ટેબલમાં છેલ્લે ડિલીટ અને એડ કરવાનું બટન આવી જશે
+    edited_df = st.data_editor(
+        h_df, 
+        use_container_width=True, 
+        num_rows="dynamic"  # આનાથી ડિલીટ બટન આવશે
+    )
+    
     if st.button("💾 Save Changes"):
-        edited.to_csv(user_file, index=False)
-        st.success("Updated!"); st.rerun()
+        # સુધારેલો ડેટા ફરીથી CSV માં સેવ કરો
+        edited_df.to_csv(user_file, index=False)
+        st.success("Record Updated/Deleted Successfully!")
+        st.rerun()
