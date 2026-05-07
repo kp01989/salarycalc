@@ -3,6 +3,27 @@ import pandas as pd
 import os
 from datetime import datetime
 
+now = datetime.now()
+current_month_name = now.strftime("%b") # "Jan", "Feb" વગેરે ટૂંકા નામ આપશે
+current_year = now.year
+
+with col1:
+    with st.container(border=True):
+        st.subheader("💰 Basic Details")
+        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
+        
+        m_col, y_col = st.columns(2)
+        
+        with m_col:
+            # index નો ઉપયોગ કરીને લિસ્ટમાં અત્યારના મહિનાનું સ્થાન મેળવવું
+            month_list = list(month_dict.keys())
+            default_month_idx = month_list.index(current_month_name)
+            month = st.selectbox("Month", month_list, index=default_month_idx)
+            
+        with y_col:
+            # value માં current_year મુકવાથી તે અત્યારનું વર્ષ બતાવશે
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=current_year)
+
 # 1. Page Setup
 st.set_page_config(page_title="Salary Management System", layout="wide")
 
@@ -70,56 +91,25 @@ with st.sidebar:
                     if csv_key in last_row: last_data[key] = last_row[csv_key]
         except: pass
 
-# 5. Form Logic & PL Calculation
-col1, col2, col3 = st.columns(3)
+# 5. Form Logic & PL Calculation (સુધારેલું)
+user_file = get_user_file(emp_sidebar_name)
+last_pl_balance = 0
 
-with col1:
-    with st.container(border=True):
-        st.subheader("💰 Basic Details")
-        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
-        m_col, y_col = st.columns(2)
-        with m_col: month = st.selectbox("Month", list(month_dict.keys()))
-        with y_col: year = st.number_input("Year", min_value=2024, max_value=2030, value=2026)
-        
-        # PL Balance Logic
-        past_used_pl = 0
-        if user_file and os.path.exists(user_file):
-            try:
-                df_pl = pd.read_csv(user_file)
-                df_pl['Month_Num'] = df_pl['Month'].str.strip().map(month_dict)
-                # Only count PL used in the same year before the selected month
-                df_past = df_pl[(df_pl['Year'] == year) & (df_pl['Month_Num'] < month_dict[month])]
-                past_used_pl = pd.to_numeric(df_past['PL Used'], errors='coerce').sum()
-            except: pass
-        
-        available_pl = max(0, month_dict[month] - int(past_used_pl))
-        ctc_salary = st.number_input("Monthly CTC", value=int(last_data["CTC"]))
-        work_hrs = st.number_input("Standard Work Hrs", value=int(last_data["Std_Hrs"]))
+if user_file and os.path.exists(user_file):
+    try:
+        df_pl = pd.read_csv(user_file)
+        if not df_pl.empty:
+            # છેલ્લી રો (Last Record) માંથી PL Balance મેળવો
+            last_pl_balance = df_pl.iloc[-1]['PL Balance']
+    except:
+        last_pl_balance = 0
 
-with col2:
-    with st.container(border=True):
-        st.subheader("🕒 Attendance")
-        present_hrs = st.number_input("Present Hrs", value=int(last_data["Present_Hrs"]))
-        late_mins = st.number_input("Late Minutes", value=int(last_data["Late"]))
-        ot_mins = st.number_input("OT Minutes", value=0)
-        used_pl = st.number_input("PL Used (Days)", min_value=0, max_value=available_pl, value=0)
+# નવા મહિના માટે ઉપલબ્ધ PL = છેલ્લો બેલેન્સ + 1
+available_pl = int(last_pl_balance) + 1
 
-        total_min = (present_hrs * 60) + (used_pl * 10 * 60) - max(0, late_mins - 120) + ot_mins
-        calc_final_hrs = (total_min // 60) + ((total_min % 60) / 100)
-        st.number_input("Final Present Hours", value=float(calc_final_hrs), format="%.2f", disabled=True)
-
-with col3:
-    with st.container(border=True):
-        st.subheader("📉 Deductions")
-        food = st.number_input("Food Exp", value=int(last_data["Food"]))
-        gratuity = st.number_input("Gratuity", value=int(last_data["Gratuity"]))
-        pt_tax = st.number_input("PT Tax", value=200)
-        bonus = st.number_input("Bonus", value=int(last_data["Bonus"]))
-        advance = st.number_input("Advance", value=int(last_data["Advance"]))
-
-with st.sidebar:
-    st.subheader("📊 PL Balance")
-    st.title(f"{available_pl - used_pl} Days")
+# જો યુઝર જાન્યુઆરી સિલેક્ટ કરે, તો તમે ઈચ્છો તો રિસેટ લોજિક પણ રાખી શકો
+if month == "Jan":
+    available_pl = 1 # વર્ષની શરૂઆતમાં 1 થી શરૂ થાય
 
 # 6. Save Data
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
@@ -161,32 +151,22 @@ with st.container(border=True):
             else: st.warning("No record found.")
         else: st.error("File not found.")
 
-# 8. History - નામ વાઈઝ સેવ અને ડિલીટ કરવા માટે
+# 8. History - નામ પ્રમાણે અને ડિલીટ ઓપ્શન સાથે
 if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
-        
-        # ડેટા લોડ કરો
-        h_df = pd.read_csv(user_file)
-        
-        # ખાતરી કરો કે 'Date' અથવા બીજા જરૂરી કોલમ ખાલી ના હોય
-        h_df = h_df.fillna("")
+        h_df = pd.read_csv(user_file).fillna(0)
 
-        # num_rows="dynamic" થી ડિલીટ ઓપ્શન આવશે
-        # key="history_editor" આપવાથી ડેટા સ્ટેબલ રહેશે
+        # num_rows="dynamic" થી રો ડિલીટ કરી શકાશે
         edited_df = st.data_editor(
             h_df, 
             use_container_width=True, 
             num_rows="dynamic",
-            key="history_editor"
+            key=f"editor_{emp_sidebar_name.lower()}" # યુનિક કી
         )
         
-        # સેવ કરવાનું લોજિક
-        if st.button("💾 Save Changes & Permanently Update History"):
-            # ફાઈલને ફરીથી તે જ યુઝરના નામથી સેવ કરો
+        if st.button("💾 Save Changes (Update/Delete)"):
             edited_df.to_csv(user_file, index=False)
-            st.success(f"✅ {emp_sidebar_name} નો ડેટા સફળતાપૂર્વક અપડેટ થયો છે!")
+            st.success("Record updated successfully!")
             st.rerun()
-    else:
-        st.info("આ નામ માટે હજુ સુધી કોઈ રેકોર્ડ સેવ થયો નથી.")
