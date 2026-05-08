@@ -3,28 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 
-now = datetime.now()
-current_month_name = now.strftime("%b") # "Jan", "Feb" વગેરે ટૂંકા નામ આપશે
-current_year = now.year
-
-with col1:
-    with st.container(border=True):
-        st.subheader("💰 Basic Details")
-        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
-        
-        m_col, y_col = st.columns(2)
-        
-        with m_col:
-            # index નો ઉપયોગ કરીને લિસ્ટમાં અત્યારના મહિનાનું સ્થાન મેળવવું
-            month_list = list(month_dict.keys())
-            default_month_idx = month_list.index(current_month_name)
-            month = st.selectbox("Month", month_list, index=default_month_idx)
-            
-        with y_col:
-            # value માં current_year મુકવાથી તે અત્યારનું વર્ષ બતાવશે
-            year = st.number_input("Year", min_value=2024, max_value=2030, value=current_year)
-
-# 1. Page Setup
+# 1. Page Setup (આ હંમેશા સૌથી ઉપર જ હોવું જોઈએ)
 st.set_page_config(page_title="Salary Management System", layout="wide")
 
 # --- Custom CSS for Zoom & Checkbox ---
@@ -65,14 +44,14 @@ if not st.session_state.logged_in:
 st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
 st.divider()
 
-# 3. Helper Functions
+# 3. Helper Functions & Dictionaries (આ પહેલા ડિફાઇન કરવા પડે)
 def get_user_file(name):
     if not name: return None
     return f"{name.strip().replace(' ', '_')}_salary.csv"
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-# 4. Sidebar Profile
+# 4. Sidebar Profile (અહી emp_sidebar_name બને છે)
 with st.sidebar:
     st.header("👤 Profile")
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
@@ -91,7 +70,36 @@ with st.sidebar:
                     if csv_key in last_row: last_data[key] = last_row[csv_key]
         except: pass
 
-# 5. Form Logic & PL Calculation (સુધારેલું)
+# 5. Form Logic & UI (હવે col1 બનાવ્યા પછી જ વાપરી શકાશે)
+col1, col2 = st.columns(2)
+
+now = datetime.now()
+current_month_name = now.strftime("%b") 
+current_year = now.year
+
+with col1:
+    with st.container(border=True):
+        st.subheader("💰 Basic Details")
+        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
+        
+        m_col, y_col = st.columns(2)
+        
+        with m_col:
+            month_list = list(month_dict.keys())
+            # મહિનો મેચ ન થાય તો એરર ન આવે તે માટેનો સેફ્ટી ચેક 
+            default_month_idx = month_list.index(current_month_name) if current_month_name in month_list else 0
+            month = st.selectbox("Month", month_list, index=default_month_idx)
+            
+        with y_col:
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=current_year)
+
+
+# --- અગત્યની નોંધ: તમારે col2 માં ctc_salary, work_hrs વગેરેના ઇનપુટ ઉમેરવા પડશે ---
+with col2:
+    st.info("⚠️ અહી તમારે CTC, Work Hrs, Food વગેરેના ઇનપુટ બોક્સ બનાવવાના બાકી છે.")
+    # દા.ત: ctc_salary = st.number_input("CTC Salary", value=0)
+
+
 user_file = get_user_file(emp_sidebar_name)
 last_pl_balance = 0
 
@@ -99,39 +107,40 @@ if user_file and os.path.exists(user_file):
     try:
         df_pl = pd.read_csv(user_file)
         if not df_pl.empty:
-            # છેલ્લી રો (Last Record) માંથી PL Balance મેળવો
             last_pl_balance = df_pl.iloc[-1]['PL Balance']
     except:
         last_pl_balance = 0
 
-# નવા મહિના માટે ઉપલબ્ધ PL = છેલ્લો બેલેન્સ + 1
 available_pl = int(last_pl_balance) + 1
-
-# જો યુઝર જાન્યુઆરી સિલેક્ટ કરે, તો તમે ઈચ્છો તો રિસેટ લોજિક પણ રાખી શકો
 if month == "Jan":
-    available_pl = 1 # વર્ષની શરૂઆતમાં 1 થી શરૂ થાય
+    available_pl = 1 
 
 # 6. Save Data
 if st.button("Calculate & Save Data", type="primary", use_container_width=True):
-    if not emp_sidebar_name: st.error("Please enter name!")
+    if not emp_sidebar_name: 
+        st.error("Please enter name in the sidebar!")
     else:
-        base_sal = ctc_salary - gratuity
-        hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + bonus
-        
-        new_rec = pd.DataFrame([{
-            "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs, "Late Mins": late_mins,
-            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": available_pl - used_pl,
-            "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "Advance": advance, "Bonus": bonus
-        }])
-        
-        if os.path.exists(user_file):
-            pd.concat([pd.read_csv(user_file), new_rec], ignore_index=True).to_csv(user_file, index=False)
-        else: new_rec.to_csv(user_file, index=False)
-        st.success("Saved!"); st.rerun()
+        try:
+            # જ્યાં સુધી તમે ઉપર ઇનપુટ બોક્સ નહિ બનાવો ત્યાં સુધી આ લાઈન એરર આપશે
+            base_sal = ctc_salary - gratuity
+            hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
+            net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + bonus
+            
+            new_rec = pd.DataFrame([{
+                "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
+                "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs, "Late Mins": late_mins,
+                "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": available_pl - used_pl,
+                "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "Advance": advance, "Bonus": bonus
+            }])
+            
+            if os.path.exists(user_file):
+                pd.concat([pd.read_csv(user_file), new_rec], ignore_index=True).to_csv(user_file, index=False)
+            else: new_rec.to_csv(user_file, index=False)
+            st.success("Saved!"); st.rerun()
+        except NameError as e:
+            st.error(f"⚠️ ગણતરી માટેના અમુક બોક્સ હજુ ગાયબ છે: {e}")
 
-# 7. Search Section (Fixed)
+# 7. Search Section
 st.divider()
 st.subheader("🔍 Search Records")
 with st.container(border=True):
@@ -143,7 +152,6 @@ with st.container(border=True):
         s_file = get_user_file(search_n)
         if os.path.exists(s_file):
             df_s = pd.read_csv(s_file)
-            # મહિના અને નામ માંથી સ્પેસ કાઢી ને સર્ચ કરો
             res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
             if not res.empty:
                 res.index = range(1, len(res) + 1)
@@ -151,19 +159,18 @@ with st.container(border=True):
             else: st.warning("No record found.")
         else: st.error("File not found.")
 
-# 8. History - નામ પ્રમાણે અને ડિલીટ ઓપ્શન સાથે
+# 8. History
 if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
         h_df = pd.read_csv(user_file).fillna(0)
 
-        # num_rows="dynamic" થી રો ડિલીટ કરી શકાશે
         edited_df = st.data_editor(
             h_df, 
             use_container_width=True, 
             num_rows="dynamic",
-            key=f"editor_{emp_sidebar_name.lower()}" # યુનિક કી
+            key=f"editor_{emp_sidebar_name.lower()}" 
         )
         
         if st.button("💾 Save Changes (Update/Delete)"):
