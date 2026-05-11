@@ -7,10 +7,10 @@ from datetime import datetime
 # 1. Page Setup
 # ==========================================
 st.set_page_config(page_title="Salary Management System", layout="wide")
+
+# મહિનાનો સાચો ક્રમ અહીં ડિફાઇન કર્યો છે
 month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-month_order['Month'] = pd.Categorical(df['Month'], categories=month_order, ordered=True)
-month_order = month_order.sort_values('Month')
 # ==========================================
 # 2. Custom CSS
 # ==========================================
@@ -208,7 +208,7 @@ with st.container(border=True):
             st.error("File not found.")
 
 # ==========================================
-# 9. History - નામ પ્રમાણે અને ડિલીટ ઓપ્શન સાથે
+# 9. History - નામ પ્રમાણે અને મહિનાના ક્રમ મુજબ
 # ==========================================
 if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
@@ -216,7 +216,16 @@ if emp_sidebar_name:
         st.subheader(f"📂 History: {emp_sidebar_name}")
         h_df = pd.read_csv(user_file).fillna(0)
 
-        # num_rows="dynamic" થી રો ડિલીટ કરી શકાશે
+        # --- મહિના પ્રમાણે શોર્ટ કરવાનું લોજીક ---
+        if 'Month' in h_df.columns:
+            h_df['Month'] = pd.Categorical(h_df['Month'], categories=month_order, ordered=True)
+            # વર્ષ અને પછી મહિનાના આધારે ગોઠવણી
+            if 'Year' in h_df.columns:
+                h_df = h_df.sort_values(['Year', 'Month']).reset_index(drop=True)
+            else:
+                h_df = h_df.sort_values('Month').reset_index(drop=True)
+        # ----------------------------------------
+
         edited_df = st.data_editor(
             h_df, 
             use_container_width=True, 
