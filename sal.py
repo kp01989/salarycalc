@@ -7,8 +7,6 @@ from datetime import datetime
 # 1. Page Setup
 # ==========================================
 st.set_page_config(page_title="Salary Management System", layout="wide")
-
-# મહિનાનો સાચો ક્રમ અહીં ડિફાઇન કર્યો છે
 month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 # ==========================================
@@ -69,25 +67,40 @@ if 'form_key' not in st.session_state:
     st.session_state['form_key'] = 0
 
 # ==========================================
-# 5. Sidebar Profile
+# 5. Sidebar Profile & Logic Setup
 # ==========================================
 with st.sidebar:
     st.header("👤 Profile")
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "PL_Balance": 0.0}
+    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
+    is_new_employee = True
+    last_pl_balance = 0.0
+    last_saved_month = None
+
     if user_file and os.path.exists(user_file):
         try:
             df_hist = pd.read_csv(user_file)
             if not df_hist.empty:
+                is_new_employee = False
+                
+                # ગઈ વખતની PL બેલેન્સ અને છેલ્લો મહિનો કાઢવા માટે સોર્ટિંગ
+                df_hist['Month_Num'] = df_hist['Month'].astype(str).str.strip().map(month_dict)
+                df_hist_sorted = df_hist.sort_values(by=['Year', 'Month_Num'])
+                last_row_chronological = df_hist_sorted.iloc[-1]
+                
+                last_pl_balance = float(last_row_chronological.get("PL Balance", 0.0))
+                last_saved_month = str(last_row_chronological.get("Month", "")).strip()
+
+                # બાકીનો ડેટા સેટ કરવા
                 last_row = df_hist.iloc[-1]
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", "Present Hrs": "Present_Hrs", 
                     "Late Mins": "Late", "Food": "Food", "Gratuity": "Gratuity", 
-                    "Advance": "Advance", "Bonus": "Bonus", "PL Balance": "PL_Balance"
+                    "Advance": "Advance", "Bonus": "Bonus"
                 }
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row: last_data[data_k] = last_row[csv_k]
@@ -110,18 +123,48 @@ with col1:
         emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
         
         m_col, y_col = st.columns(2)
+        
+        # --- ઓટોમેટિક નેક્સ્ટ મહિનો લાવવાનું લોજીક ---
+        m_list = list(month_dict.keys())
+        default_month = current_month_name  # જો નવો કર્મચારી હોય તો આજનો મહિનો
+        
+        if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
+            last_idx = m_list.index(last_saved_month)
+            if last_idx < 11: # જો ડિસેમ્બર ન હોય તો પછીનો મહિનો
+                default_month = m_list[last_idx + 1]
+            else:
+                default_month = 'Jan' # જો છેલ્લો ડિસેમ્બર હોય તો નવો મહિનો જાન્યુઆરી
+
+        def_m_idx = m_list.index(default_month) if default_month in m_list else 0
+        # -----------------------------------------------
+
         with m_col:
-            m_list = list(month_dict.keys())
-            def_m_idx = m_list.index(current_month_name) if current_month_name in m_list else 0
             month = st.selectbox("Month", m_list, index=def_m_idx, key=f"month_{fk}")
         with y_col:
-            year = st.number_input("Year", min_value=2024, max_value=2030, value=current_year, key=f"year_{fk}")
+            # જો ડિસેમ્બર પછી જાન્યુઆરી થાય, તો વર્ષ પણ બદલવું પડે
+            def_year = current_year
+            if not is_new_employee and last_saved_month == 'Dec':
+                def_year += 1
+                
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, key=f"year_{fk}")
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
             ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{fk}")
             present_hrs = st.number_input("Present Hrs", value=float(last_data["Present_Hrs"]), key=f"phrs_{fk}")
+            
+            # --- PL UI LOGIC ---
+            if emp_sidebar_name and is_new_employee:
+                opening_pl = st.number_input("Opening PL Balance (First Time)", value=0.0, step=0.5, key=f"opl_{fk}")
+                available_pl = opening_pl
+            elif emp_sidebar_name and not is_new_employee:
+                available_pl = last_pl_balance + 1.0
+                st.text_input("Available PL (Auto +1)", value=str(available_pl), disabled=True)
+            else:
+                available_pl = 0.0
+
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{fk}")
+
         with c1_2:
             work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{fk}")
             late_mins = st.number_input("Late Mins", value=int(last_data["Late"]), key=f"late_{fk}")
@@ -139,9 +182,6 @@ with col2:
             advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{fk}")
 
 # --- PL & Time Calculation Logic ---
-available_pl = float(last_data["PL_Balance"]) + 1.0
-if month == "Jan": 
-    available_pl = 1.0 
 final_pl_balance = available_pl - used_pl
 
 total_min = int((present_hrs * 60) - late_mins)
@@ -208,7 +248,7 @@ with st.container(border=True):
             st.error("File not found.")
 
 # ==========================================
-# 9. History - નામ પ્રમાણે અને મહિનાના ક્રમ મુજબ
+# 9. History 
 # ==========================================
 if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
@@ -216,15 +256,12 @@ if emp_sidebar_name:
         st.subheader(f"📂 History: {emp_sidebar_name}")
         h_df = pd.read_csv(user_file).fillna(0)
 
-        # --- મહિના પ્રમાણે શોર્ટ કરવાનું લોજીક ---
         if 'Month' in h_df.columns:
             h_df['Month'] = pd.Categorical(h_df['Month'], categories=month_order, ordered=True)
-            # વર્ષ અને પછી મહિનાના આધારે ગોઠવણી
             if 'Year' in h_df.columns:
                 h_df = h_df.sort_values(['Year', 'Month']).reset_index(drop=True)
             else:
                 h_df = h_df.sort_values('Month').reset_index(drop=True)
-        # ----------------------------------------
 
         edited_df = st.data_editor(
             h_df, 
@@ -238,4 +275,4 @@ if emp_sidebar_name:
             st.success("Record updated successfully!")
             st.rerun()
     else:
-        st.info("આ કર્મચારી માટે હજુ કોઈ સેલરી ડેટા સેવ થયો નથી.")
+        st.info("આ કર્મચારી માટે હજુ કોઈ સેલરી ડેટા સેવ થયો નથી. (નવો કર્મચારી ઉમેરવા માટે ડેટા સેવ કરો)")
