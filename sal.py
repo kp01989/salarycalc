@@ -7,7 +7,10 @@ from datetime import datetime
 # 1. Page Setup
 # ==========================================
 st.set_page_config(page_title="Salary Management System", layout="wide")
+month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+df['Month'] = pd.Categorical(df['Month'], categories=month_order, ordered=True)
+df = df.sort_values('Month')
 # ==========================================
 # 2. Custom CSS
 # ==========================================
