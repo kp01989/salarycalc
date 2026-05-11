@@ -148,18 +148,16 @@ with col1:
         with c1_1:
             ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{kb}")
             
-            # --- કલાક અને મિનિટ છૂટા પાડવાનું લોજીક ---
+            # --- Present કલાક અને મિનિટ છૂટા પાડવાનું લોજીક ---
             saved_p_hrs_val = float(last_data["Present_Hrs"])
             def_p_hrs = int(saved_p_hrs_val)
             def_p_mins = int(round((saved_p_hrs_val - def_p_hrs) * 100))
             
-            # બે અલગ બોક્સ બનાવ્યા 
             p_h_col, p_m_col = st.columns(2)
             with p_h_col:
                 present_hrs_input = st.number_input("Present Hrs", value=def_p_hrs, step=1, key=f"phrs_{kb}")
             with p_m_col:
                 present_mins_input = st.number_input("Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
-            # ----------------------------------------
             
             if emp_sidebar_name and is_new_employee:
                 opening_pl = st.number_input("Opening PL Balance (First Time)", value=0.0, step=0.5, key=f"opl_{kb}")
@@ -174,7 +172,17 @@ with col1:
 
         with c1_2:
             work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
-            late_mins = st.number_input("Late Mins", value=int(last_data["Late"]), key=f"late_{kb}")
+            
+            # --- Late કલાક અને મિનિટ છૂટા પાડવાનું લોજીક ---
+            saved_late_val = int(last_data["Late"])
+            def_late_hrs = saved_late_val // 60
+            def_late_mins = saved_late_val % 60
+            
+            l_h_col, l_m_col = st.columns(2)
+            with l_h_col:
+                late_hrs_input = st.number_input("Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
+            with l_m_col:
+                late_mins_input = st.number_input("Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
 
 with col2:
     with st.container(border=True):
@@ -191,8 +199,11 @@ with col2:
 # --- PL & Time Calculation Logic ---
 final_pl_balance = available_pl - used_pl
 
-# હવે કલાક અને મિનિટ સીધા જ ગણતરીમાં લેવાશે 
-total_min = int((present_hrs_input * 60) + present_mins_input - late_mins)
+# લેટ ના ટોટલ મિનિટ ગણવા 
+total_late_mins = (late_hrs_input * 60) + late_mins_input
+
+# હાજરીના કલાક અને મિનિટમાંથી લેટ મિનિટ બાદ કરવા
+total_min = int((present_hrs_input * 60) + present_mins_input - total_late_mins)
 if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
@@ -212,12 +223,11 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             "name": emp_name, "month": month, "net": net_sal, "pl": final_pl_balance
         }
         
-        # ડેટાબેઝમાં જૂની સ્ટાઈલ પ્રમાણે જ સેવ કરવા ભેગું કર્યું (જેમ કે 251.44)
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, "Late Mins": late_mins,
+            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, "Late Mins": total_late_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus
         }])
