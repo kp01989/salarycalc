@@ -74,7 +74,8 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0}
+    # અહી Early અને OT ની વેલ્યુ ૦ સેટ કરી 
+    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
     is_new_employee = True
@@ -97,7 +98,8 @@ with st.sidebar:
 
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", "Present Hrs": "Present_Hrs", 
-                    "Late Mins": "Late", "Food": "Food", "Gratuity": "Gratuity", 
+                    "Late Mins": "Late", "Early Mins": "Early", "OT Mins": "OT",
+                    "Food": "Food", "Gratuity": "Gratuity", 
                     "Advance": "Advance", "Bonus": "Bonus"
                 }
                 for csv_k, data_k in key_mapping.items():
@@ -159,7 +161,6 @@ with col1:
             with p_m_col:
                 present_mins_input = st.number_input("Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
             
-            # --- SMART PL UI LOGIC ---
             available_pl = 0.0
             
             if month == "Jan":
@@ -183,22 +184,38 @@ with col1:
                     available_pl = last_pl_balance + 1.0
                     
                 st.text_input(f"Available PL (From {prev_month_str} + 1)", value=str(available_pl), disabled=True)
-            # ---------------------------
 
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
             work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
             
+            # --- LATE ---
             saved_late_val = int(last_data["Late"])
             def_late_hrs = saved_late_val // 60
             def_late_mins = saved_late_val % 60
             
             l_h_col, l_m_col = st.columns(2)
-            with l_h_col:
-                late_hrs_input = st.number_input("Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
-            with l_m_col:
-                late_mins_input = st.number_input("Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
+            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
+            with l_m_col: late_mins_input = st.number_input("Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
+
+            # --- EARLY GOING ---
+            saved_early_val = int(last_data["Early"])
+            def_early_hrs = saved_early_val // 60
+            def_early_mins = saved_early_val % 60
+            
+            e_h_col, e_m_col = st.columns(2)
+            with e_h_col: early_hrs_input = st.number_input("Early Hrs", value=def_early_hrs, step=1, key=f"ehrs_{kb}")
+            with e_m_col: early_mins_input = st.number_input("Early Mins", value=def_early_mins, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
+
+            # --- OT (Overtime) ---
+            saved_ot_val = int(last_data["OT"])
+            def_ot_hrs = saved_ot_val // 60
+            def_ot_mins = saved_ot_val % 60
+            
+            o_h_col, o_m_col = st.columns(2)
+            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=def_ot_hrs, step=1, key=f"othrs_{kb}")
+            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=def_ot_mins, min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
 
 with col2:
     with st.container(border=True):
@@ -215,13 +232,14 @@ with col2:
 # --- Time Calculation Logic ---
 final_pl_balance = available_pl - used_pl
 
-# PL ના 1 કલાકને 10 કલાક ગણીને હાજરીમાં ઉમેરવા
 pl_hours_to_add = used_pl * 10 
 
 total_late_mins = (late_hrs_input * 60) + late_mins_input
+total_early_mins = (early_hrs_input * 60) + early_mins_input
+total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
 
-# ટોટલ મિનિટ ગણતી વખતે: (હાજરીના કલાક + PL ના કલાક) - લેટ મિનિટ
-total_min = int(((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input - total_late_mins)
+# ગણતરી: (હાજરી + PL કલાક + OT) - (લેટ + વહેલા ગયા)
+total_min = int(((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input + total_ot_mins - total_late_mins - total_early_mins)
 if total_min < 0: total_min = 0
 
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
@@ -246,7 +264,8 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
         
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, "Late Mins": total_late_mins,
+            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
+            "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus
         }])
@@ -294,6 +313,7 @@ if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
+        # જૂની ફાઈલ જેમાં early કે OT ના હોય તેમાં જાતે જ ૦ (Zero) ભરી દેશે 
         h_df = pd.read_csv(user_file).fillna(0)
 
         if 'Month' in h_df.columns:
