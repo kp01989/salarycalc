@@ -87,17 +87,13 @@ with st.sidebar:
             if not df_hist.empty:
                 is_new_employee = False
                 
-                # ગઈ વખતની PL બેલેન્સ અને છેલ્લો મહિનો કાઢવા માટે સોર્ટિંગ
                 df_hist['Month_Num'] = df_hist['Month'].astype(str).str.strip().map(month_dict)
                 df_hist_sorted = df_hist.sort_values(by=['Year', 'Month_Num'])
-                
-                # સાચો છેલ્લો ડેટા લેવા માટે sorted ફ્રેમનો છેલ્લો રો વાપરવો 
                 last_row_chronological = df_hist_sorted.iloc[-1]
                 
                 last_pl_balance = float(last_row_chronological.get("PL Balance", 0.0))
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
-                # બાકીનો ડેટા સેટ કરવા (જેથી 0.0 ની જગ્યાએ જૂની સેલરી આવી જાય)
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", "Present Hrs": "Present_Hrs", 
                     "Late Mins": "Late", "Food": "Food", "Gratuity": "Gratuity", 
@@ -112,7 +108,6 @@ with st.sidebar:
 # ==========================================
 # 6. Form Logic & Input
 # ==========================================
-# ડાયનેમિક કી (Dynamic Key) જેથી નામ બદલાય ત્યારે ફોર્મ રિફ્રેશ થઈ જાય
 kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
 
 col1, col2 = st.columns(2)
@@ -128,24 +123,21 @@ with col1:
         
         m_col, y_col = st.columns(2)
         
-        # --- ઓટોમેટિક નેક્સ્ટ મહિનો લાવવાનું લોજીક ---
         m_list = list(month_dict.keys())
-        default_month = current_month_name  # જો નવો કર્મચારી હોય તો આજનો મહિનો
+        default_month = current_month_name 
         
         if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
             last_idx = m_list.index(last_saved_month)
-            if last_idx < 11: # જો ડિસેમ્બર ન હોય તો પછીનો મહિનો
+            if last_idx < 11: 
                 default_month = m_list[last_idx + 1]
             else:
-                default_month = 'Jan' # જો છેલ્લો ડિસેમ્બર હોય તો નવો મહિનો જાન્યુઆરી
+                default_month = 'Jan' 
 
         def_m_idx = m_list.index(default_month) if default_month in m_list else 0
-        # -----------------------------------------------
 
         with m_col:
             month = st.selectbox("Month", m_list, index=def_m_idx, key=f"month_{kb}")
         with y_col:
-            # જો ડિસેમ્બર પછી જાન્યુઆરી થાય, તો વર્ષ પણ બદલવું પડે
             def_year = current_year
             if not is_new_employee and last_saved_month == 'Dec':
                 def_year = int(last_row_chronological.get("Year", current_year)) + 1
@@ -155,9 +147,20 @@ with col1:
         c1_1, c1_2 = st.columns(2)
         with c1_1:
             ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{kb}")
-            present_hrs = st.number_input("Present Hrs", value=float(last_data["Present_Hrs"]), key=f"phrs_{kb}")
             
-            # --- PL UI LOGIC ---
+            # --- કલાક અને મિનિટ છૂટા પાડવાનું લોજીક ---
+            saved_p_hrs_val = float(last_data["Present_Hrs"])
+            def_p_hrs = int(saved_p_hrs_val)
+            def_p_mins = int(round((saved_p_hrs_val - def_p_hrs) * 100))
+            
+            # બે અલગ બોક્સ બનાવ્યા 
+            p_h_col, p_m_col = st.columns(2)
+            with p_h_col:
+                present_hrs_input = st.number_input("Present Hrs", value=def_p_hrs, step=1, key=f"phrs_{kb}")
+            with p_m_col:
+                present_mins_input = st.number_input("Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
+            # ----------------------------------------
+            
             if emp_sidebar_name and is_new_employee:
                 opening_pl = st.number_input("Opening PL Balance (First Time)", value=0.0, step=0.5, key=f"opl_{kb}")
                 available_pl = opening_pl
@@ -188,7 +191,8 @@ with col2:
 # --- PL & Time Calculation Logic ---
 final_pl_balance = available_pl - used_pl
 
-total_min = int((present_hrs * 60) - late_mins)
+# હવે કલાક અને મિનિટ સીધા જ ગણતરીમાં લેવાશે 
+total_min = int((present_hrs_input * 60) + present_mins_input - late_mins)
 if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
@@ -208,9 +212,12 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
             "name": emp_name, "month": month, "net": net_sal, "pl": final_pl_balance
         }
         
+        # ડેટાબેઝમાં જૂની સ્ટાઈલ પ્રમાણે જ સેવ કરવા ભેગું કર્યું (જેમ કે 251.44)
+        present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
+        
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs, "Late Mins": late_mins,
+            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, "Late Mins": late_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus
         }])
