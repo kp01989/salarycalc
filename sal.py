@@ -80,6 +80,7 @@ with st.sidebar:
     is_new_employee = True
     last_pl_balance = 0.0
     last_saved_month = None
+    df_hist_sorted = pd.DataFrame() # આને બહાર ડિફાઇન કર્યું જેથી નીચે વાપરી શકાય
 
     if user_file and os.path.exists(user_file):
         try:
@@ -148,7 +149,6 @@ with col1:
         with c1_1:
             ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{kb}")
             
-            # --- Present કલાક અને મિનિટ છૂટા પાડવાનું લોજીક ---
             saved_p_hrs_val = float(last_data["Present_Hrs"])
             def_p_hrs = int(saved_p_hrs_val)
             def_p_mins = int(round((saved_p_hrs_val - def_p_hrs) * 100))
@@ -159,21 +159,38 @@ with col1:
             with p_m_col:
                 present_mins_input = st.number_input("Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
             
-            if emp_sidebar_name and is_new_employee:
-                opening_pl = st.number_input("Opening PL Balance (First Time)", value=0.0, step=0.5, key=f"opl_{kb}")
-                available_pl = opening_pl
+            # --- SMART PL UI LOGIC ---
+            available_pl = 0.0
+            
+            if month == "Jan":
+                available_pl = 1.0
+                st.text_input("Available PL (Jan Reset = 1)", value="1.0", disabled=True)
+                
+            elif emp_sidebar_name and is_new_employee:
+                available_pl = st.number_input("Opening PL Balance", value=0.0, step=0.5, key=f"opl_{kb}")
+                
             elif emp_sidebar_name and not is_new_employee:
-                available_pl = last_pl_balance + 1.0
-                st.text_input("Available PL (Auto +1)", value=str(available_pl), disabled=True)
-            else:
-                available_pl = 0.0
+                prev_month_str = month_order[month_order.index(month) - 1]
+                
+                # બરાબર આગળના મહિનાનો ડેટા શોધવાનું લોજીક 
+                if not df_hist_sorted.empty:
+                    prev_rec = df_hist_sorted[(df_hist_sorted['Year'] == year) & (df_hist_sorted['Month'].str.strip() == prev_month_str)]
+                    if not prev_rec.empty:
+                        prev_pl_bal = float(prev_rec.iloc[-1].get("PL Balance", 0.0))
+                        available_pl = prev_pl_bal + 1.0
+                    else:
+                        available_pl = last_pl_balance + 1.0
+                else:
+                    available_pl = last_pl_balance + 1.0
+                    
+                st.text_input(f"Available PL (From {prev_month_str} + 1)", value=str(available_pl), disabled=True)
+            # ---------------------------
 
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
             work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
             
-            # --- Late કલાક અને મિનિટ છૂટા પાડવાનું લોજીક ---
             saved_late_val = int(last_data["Late"])
             def_late_hrs = saved_late_val // 60
             def_late_mins = saved_late_val % 60
@@ -196,13 +213,10 @@ with col2:
             gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
             advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
 
-# --- PL & Time Calculation Logic ---
+# --- Time Calculation Logic ---
 final_pl_balance = available_pl - used_pl
 
-# લેટ ના ટોટલ મિનિટ ગણવા 
 total_late_mins = (late_hrs_input * 60) + late_mins_input
-
-# હાજરીના કલાક અને મિનિટમાંથી લેટ મિનિટ બાદ કરવા
 total_min = int((present_hrs_input * 60) + present_mins_input - total_late_mins)
 if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
