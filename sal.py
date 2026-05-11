@@ -74,7 +74,6 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    # અહી Early અને OT ની વેલ્યુ ૦ સેટ કરી 
     last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
@@ -96,11 +95,11 @@ with st.sidebar:
                 last_pl_balance = float(last_row_chronological.get("PL Balance", 0.0))
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
+                # --- Auto-fill Logic ---
+                # Only fetch fixed details from the old data; variable fields will default to 0 automatically
                 key_mapping = {
-                    "CTC": "CTC", "Std Hrs": "Std_Hrs", "Present Hrs": "Present_Hrs", 
-                    "Late Mins": "Late", "Early Mins": "Early", "OT Mins": "OT",
-                    "Food": "Food", "Gratuity": "Gratuity", 
-                    "Advance": "Advance", "Bonus": "Bonus"
+                    "CTC": "CTC", "Std Hrs": "Std_Hrs", 
+                    "Gratuity": "Gratuity", "PT": "PT"
                 }
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row_chronological: 
@@ -238,7 +237,7 @@ total_late_mins = (late_hrs_input * 60) + late_mins_input
 total_early_mins = (early_hrs_input * 60) + early_mins_input
 total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
 
-# ગણતરી: (હાજરી + PL કલાક + OT) - (લેટ + વહેલા ગયા)
+# Calculation: (Present Hrs + PL Hrs + OT) - (Late Mins + Early Mins)
 total_min = int(((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input + total_ot_mins - total_late_mins - total_early_mins)
 if total_min < 0: total_min = 0
 
@@ -313,7 +312,7 @@ if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
-        # જૂની ફાઈલ જેમાં early કે OT ના હોય તેમાં જાતે જ ૦ (Zero) ભરી દેશે 
+        # Fill missing Early/OT columns with 0 for older files
         h_df = pd.read_csv(user_file).fillna(0)
 
         if 'Month' in h_df.columns:
@@ -335,4 +334,4 @@ if emp_sidebar_name:
             st.success("Record updated successfully!")
             st.rerun()
     else:
-        st.info("આ કર્મચારી માટે હજુ કોઈ સેલરી ડેટા સેવ થયો નથી. (નવો કર્મચારી ઉમેરવા માટે ડેટા સેવ કરો)")
+        st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
