@@ -80,7 +80,7 @@ with st.sidebar:
     is_new_employee = True
     last_pl_balance = 0.0
     last_saved_month = None
-    df_hist_sorted = pd.DataFrame() # આને બહાર ડિફાઇન કર્યું જેથી નીચે વાપરી શકાય
+    df_hist_sorted = pd.DataFrame() 
 
     if user_file and os.path.exists(user_file):
         try:
@@ -172,7 +172,6 @@ with col1:
             elif emp_sidebar_name and not is_new_employee:
                 prev_month_str = month_order[month_order.index(month) - 1]
                 
-                # બરાબર આગળના મહિનાનો ડેટા શોધવાનું લોજીક 
                 if not df_hist_sorted.empty:
                     prev_rec = df_hist_sorted[(df_hist_sorted['Year'] == year) & (df_hist_sorted['Month'].str.strip() == prev_month_str)]
                     if not prev_rec.empty:
@@ -216,9 +215,15 @@ with col2:
 # --- Time Calculation Logic ---
 final_pl_balance = available_pl - used_pl
 
+# PL ના 1 કલાકને 10 કલાક ગણીને હાજરીમાં ઉમેરવા
+pl_hours_to_add = used_pl * 10 
+
 total_late_mins = (late_hrs_input * 60) + late_mins_input
-total_min = int((present_hrs_input * 60) + present_mins_input - total_late_mins)
+
+# ટોટલ મિનિટ ગણતી વખતે: (હાજરીના કલાક + PL ના કલાક) - લેટ મિનિટ
+total_min = int(((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input - total_late_mins)
 if total_min < 0: total_min = 0
+
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
 # ==========================================
