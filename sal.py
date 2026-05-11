@@ -90,27 +90,31 @@ with st.sidebar:
                 # ગઈ વખતની PL બેલેન્સ અને છેલ્લો મહિનો કાઢવા માટે સોર્ટિંગ
                 df_hist['Month_Num'] = df_hist['Month'].astype(str).str.strip().map(month_dict)
                 df_hist_sorted = df_hist.sort_values(by=['Year', 'Month_Num'])
+                
+                # સાચો છેલ્લો ડેટા લેવા માટે sorted ફ્રેમનો છેલ્લો રો વાપરવો 
                 last_row_chronological = df_hist_sorted.iloc[-1]
                 
                 last_pl_balance = float(last_row_chronological.get("PL Balance", 0.0))
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
-                # બાકીનો ડેટા સેટ કરવા
-                last_row = df_hist.iloc[-1]
+                # બાકીનો ડેટા સેટ કરવા (જેથી 0.0 ની જગ્યાએ જૂની સેલરી આવી જાય)
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", "Present Hrs": "Present_Hrs", 
                     "Late Mins": "Late", "Food": "Food", "Gratuity": "Gratuity", 
                     "Advance": "Advance", "Bonus": "Bonus"
                 }
                 for csv_k, data_k in key_mapping.items():
-                    if csv_k in last_row: last_data[data_k] = last_row[csv_k]
+                    if csv_k in last_row_chronological: 
+                        last_data[data_k] = last_row_chronological[csv_k]
         except Exception as e:
             pass
 
 # ==========================================
 # 6. Form Logic & Input
 # ==========================================
-fk = st.session_state['form_key']
+# ડાયનેમિક કી (Dynamic Key) જેથી નામ બદલાય ત્યારે ફોર્મ રિફ્રેશ થઈ જાય
+kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
+
 col1, col2 = st.columns(2)
 
 now = datetime.now()
@@ -139,23 +143,23 @@ with col1:
         # -----------------------------------------------
 
         with m_col:
-            month = st.selectbox("Month", m_list, index=def_m_idx, key=f"month_{fk}")
+            month = st.selectbox("Month", m_list, index=def_m_idx, key=f"month_{kb}")
         with y_col:
             # જો ડિસેમ્બર પછી જાન્યુઆરી થાય, તો વર્ષ પણ બદલવું પડે
             def_year = current_year
             if not is_new_employee and last_saved_month == 'Dec':
-                def_year += 1
+                def_year = int(last_row_chronological.get("Year", current_year)) + 1
                 
-            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, key=f"year_{fk}")
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, key=f"year_{kb}")
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
-            ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{fk}")
-            present_hrs = st.number_input("Present Hrs", value=float(last_data["Present_Hrs"]), key=f"phrs_{fk}")
+            ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{kb}")
+            present_hrs = st.number_input("Present Hrs", value=float(last_data["Present_Hrs"]), key=f"phrs_{kb}")
             
             # --- PL UI LOGIC ---
             if emp_sidebar_name and is_new_employee:
-                opening_pl = st.number_input("Opening PL Balance (First Time)", value=0.0, step=0.5, key=f"opl_{fk}")
+                opening_pl = st.number_input("Opening PL Balance (First Time)", value=0.0, step=0.5, key=f"opl_{kb}")
                 available_pl = opening_pl
             elif emp_sidebar_name and not is_new_employee:
                 available_pl = last_pl_balance + 1.0
@@ -163,23 +167,23 @@ with col1:
             else:
                 available_pl = 0.0
 
-            used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{fk}")
+            used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
-            work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{fk}")
-            late_mins = st.number_input("Late Mins", value=int(last_data["Late"]), key=f"late_{fk}")
+            work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
+            late_mins = st.number_input("Late Mins", value=int(last_data["Late"]), key=f"late_{kb}")
 
 with col2:
     with st.container(border=True):
         st.subheader("📉 Deductions & Additions")
         c2_1, c2_2 = st.columns(2)
         with c2_1:
-            food = st.number_input("Food", value=float(last_data["Food"]), key=f"food_{fk}")
-            pt_tax = st.number_input("PT Tax", value=200.0, key=f"pt_{fk}")
-            bonus = st.number_input("Bonus", value=float(last_data["Bonus"]), key=f"bn_{fk}")
+            food = st.number_input("Food", value=float(last_data["Food"]), key=f"food_{kb}")
+            pt_tax = st.number_input("PT Tax", value=float(last_data["PT"]), key=f"pt_{kb}")
+            bonus = st.number_input("Bonus", value=float(last_data["Bonus"]), key=f"bn_{kb}")
         with c2_2:
-            gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{fk}")
-            advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{fk}")
+            gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
+            advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
 
 # --- PL & Time Calculation Logic ---
 final_pl_balance = available_pl - used_pl
