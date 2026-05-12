@@ -247,7 +247,15 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 # 7. Save Data
 # ==========================================
 st.write("")
-if st.button("Calculate & Save Data", type="primary", use_container_width=True):
+
+# Create 3 columns. The button will go in the middle column.
+# [1, 1.5, 1] controls the ratio. The middle one is slightly wider to fit the text perfectly.
+_, btn_col, _ = st.columns([1, 1.5, 1])
+
+with btn_col:
+    save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
+
+if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
@@ -280,11 +288,10 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
     
-    # Only show the success message if it belongs to the currently selected employee in the sidebar
+    # Only show the success message if it belongs to the currently selected employee
     if res['name'] == emp_sidebar_name:
         st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | PL Balance: {res['pl']}")
     else:
-        # Clear the old message when a new name is typed
         st.session_state['calc_result'] = None
 
 # ==========================================
