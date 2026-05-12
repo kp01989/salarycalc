@@ -279,7 +279,13 @@ if st.button("Calculate & Save Data", type="primary", use_container_width=True):
 
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
-    st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | PL Balance: {res['pl']}")
+    
+    # Only show the success message if it belongs to the currently selected employee in the sidebar
+    if res['name'] == emp_sidebar_name:
+        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | PL Balance: {res['pl']}")
+    else:
+        # Clear the old message when a new name is typed
+        st.session_state['calc_result'] = None
 
 # ==========================================
 # 8. Search Section
