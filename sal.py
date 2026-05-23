@@ -42,7 +42,7 @@ if not st.session_state.logged_in:
     with col_m:
         pwd_input = st.text_input("Enter Password", type="password")
         if st.button("Login", use_container_width=True):
-            if pwd_input == "123": 
+            if pwd_input == "1989": 
                 st.session_state.logged_in = True
                 st.rerun()
             else: 
