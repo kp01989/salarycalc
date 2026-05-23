@@ -342,9 +342,12 @@ if emp_sidebar_name:
             key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}" 
         )
         
-        if st.button("💾 Save Changes (Update/Delete)"):
+        # --- Auto-Save Logic ---
+        # Jo original dataframe ane edited dataframe match na thay, toh auto-save kari do
+        if not h_df.equals(edited_df):
             edited_df.to_csv(user_file, index=False)
-            st.success("Record updated successfully!")
+            st.toast("✅ Record auto-updated successfully!") # Toast message use karyo chhe jethi UI clean rahe
             st.rerun()
+            
     else:
         st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
