@@ -259,9 +259,9 @@ if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
-        base_sal = ctc_salary - gratuity
+        base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + bonus
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance 
         
         st.session_state['calc_result'] = {
             "name": emp_name, "month": month, "net": net_sal, "pl": final_pl_balance
