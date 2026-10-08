@@ -85,6 +85,10 @@ with st.sidebar:
     if user_file and os.path.exists(user_file):
         try:
             df_hist = pd.read_csv(user_file)
+            # Convert old 'Std Hrs' to 'Working Hrs' automatically
+            if 'Std Hrs' in df_hist.columns:
+                df_hist.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
+                
             if not df_hist.empty:
                 is_new_employee = False
                 
@@ -96,7 +100,7 @@ with st.sidebar:
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
                 key_mapping = {
-                    "CTC": "CTC", "Std Hrs": "Std_Hrs", 
+                    "CTC": "CTC", "Working Hrs": "Std_Hrs", 
                     "Gratuity": "Gratuity", "PT": "PT"
                 }
                 for csv_k, data_k in key_mapping.items():
@@ -185,7 +189,8 @@ with col1:
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
-            work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
+            # RENAMED TO WORKING HRS
+            work_hrs = st.number_input("Working Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
             
             # --- LATE ---
             saved_late_val = int(last_data["Late"])
@@ -253,7 +258,7 @@ if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
 # ==========================================
-# 7. Save Data
+# 7. Save Data & Formulas
 # ==========================================
 st.write("")
 _, btn_col, _ = st.columns([1, 1.5, 1])
@@ -265,18 +270,24 @@ if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
+        # Base Salary without Gratuity and Bonus
         base_sal = ctc_salary - gratuity - bonus
+        
+        # Hourly Rate based on Working Hrs
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60))
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + difference
+        # EXACT OT FORMULA: (CTC Salary - Gratuity - Bonus) / Working Hrs * OT Hrs and Minutes
+        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate / 60.0))
+        
+        # Net Salary Calculation
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate / 60.0)) - food - pt_tax - advance + difference
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
         st.session_state['calc_result'] = {
             "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": ot_salary, "pl": final_pl_balance,
             "slip_data": {
-                "std_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                "work_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
                 "present_hrs": f"{present_hrs_input}.{int(present_mins_input):02d}",
                 "ot_hrs": f"{total_ot_mins//60}.{total_ot_mins%60:02d}",
                 "late_hrs": f"{total_late_mins//60}.{total_late_mins%60:02d}",
@@ -288,7 +299,7 @@ if save_clicked:
         
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
+            "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
             "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "OT Salary": round(ot_salary, 2), "Net Salary": round(net_sal, 2), 
@@ -313,7 +324,7 @@ if st.session_state['calc_result']:
         
         sd = res['slip_data']
         slip_df = pd.DataFrame({
-            "Label": [f"{sd['std_hrs']}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Label": [f"{sd['work_hrs']}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
             "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", "-", "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
         })
         
@@ -357,7 +368,34 @@ if st.session_state['calc_result']:
         st.session_state['calc_result'] = None
 
 # ==========================================
-# 8. History & Download Old Slips
+# 8. Search Section & Download Old Slips
+# ==========================================
+st.divider()
+st.subheader("🔍 Search & Download Old Records")
+with st.container(border=True):
+    s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
+    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
+    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
+    search_y = s3.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
+    
+    if s4.button("🔍 Search", use_container_width=True):
+        s_file = get_user_file(search_n)
+        if os.path.exists(s_file):
+            df_s = pd.read_csv(s_file)
+            if 'Std Hrs' in df_s.columns:
+                df_s.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
+                
+            res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
+            if not res.empty:
+                res.index = range(1, len(res) + 1)
+                st.dataframe(res, use_container_width=True)
+            else: 
+                st.warning("No record found for this month/year.")
+        else: 
+            st.error("File not found.")
+
+# ==========================================
+# 9. History & Download Old Slips
 # ==========================================
 if emp_sidebar_name:
     st.divider()
@@ -365,6 +403,10 @@ if emp_sidebar_name:
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
         h_df = pd.read_csv(user_file).fillna(0)
+        
+        # Convert old column name for clean display
+        if 'Std Hrs' in h_df.columns:
+            h_df.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
 
         if 'Month' in h_df.columns:
             h_df['Month'] = pd.Categorical(h_df['Month'], categories=month_order, ordered=True)
@@ -422,7 +464,7 @@ if emp_sidebar_name:
                         pay_str = "0.00"
                         
                     slip_df_hist = pd.DataFrame({
-                        "Label": [f"{row.get('Std Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+                        "Label": [f"{row.get('Working Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
                         "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", "-", "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
                     })
                     
