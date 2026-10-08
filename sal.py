@@ -127,4 +127,269 @@ with col1:
         m_list = list(month_dict.keys())
         default_month = current_month_name 
         
-        if emp_sidebar_name and not is_new_employee and last_saved_
+        if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
+            last_idx = m_list.index(last_saved_month)
+            if last_idx < 11: 
+                default_month = m_list[last_idx + 1]
+            else:
+                default_month = 'Jan' 
+
+        def_m_idx = m_list.index(default_month) if default_month in m_list else 0
+
+        with m_col:
+            month = st.selectbox("Month", m_list, index=def_m_idx, key=f"month_{kb}")
+        with y_col:
+            def_year = current_year
+            if not is_new_employee and last_saved_month == 'Dec':
+                def_year = int(last_row_chronological.get("Year", current_year)) + 1
+                
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, key=f"year_{kb}")
+            
+        c1_1, c1_2 = st.columns(2)
+        with c1_1:
+            ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{kb}")
+            
+            saved_p_hrs_val = float(last_data["Present_Hrs"])
+            def_p_hrs = int(saved_p_hrs_val)
+            def_p_mins = int(round((saved_p_hrs_val - def_p_hrs) * 100))
+            
+            p_h_col, p_m_col = st.columns(2)
+            with p_h_col:
+                present_hrs_input = st.number_input("Present Hrs", value=def_p_hrs, step=1, key=f"phrs_{kb}")
+            with p_m_col:
+                present_mins_input = st.number_input("Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
+            
+            available_pl = 0.0
+            
+            if month == "Jan":
+                available_pl = 1.0
+                st.text_input("Available PL (Jan Reset = 1)", value="1.0", disabled=True)
+                
+            elif emp_sidebar_name and is_new_employee:
+                available_pl = st.number_input("Opening PL Balance", value=0.0, step=0.5, key=f"opl_{kb}")
+                
+            elif emp_sidebar_name and not is_new_employee:
+                prev_month_str = month_order[month_order.index(month) - 1]
+                
+                if not df_hist_sorted.empty:
+                    prev_rec = df_hist_sorted[(df_hist_sorted['Year'] == year) & (df_hist_sorted['Month'].str.strip() == prev_month_str)]
+                    if not prev_rec.empty:
+                        prev_pl_bal = float(prev_rec.iloc[-1].get("PL Balance", 0.0))
+                        available_pl = prev_pl_bal + 1.0
+                    else:
+                        available_pl = last_pl_balance + 1.0
+                else:
+                    available_pl = last_pl_balance + 1.0
+                    
+                st.text_input(f"Available PL (From {prev_month_str} + 1)", value=str(available_pl), disabled=True)
+
+            used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
+
+        with c1_2:
+            work_hrs = st.number_input("Std Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
+            
+            # --- LATE ---
+            saved_late_val = int(last_data["Late"])
+            def_late_hrs = saved_late_val // 60
+            def_late_mins = saved_late_val % 60
+            
+            l_h_col, l_m_col = st.columns(2)
+            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
+            with l_m_col: late_mins_input = st.number_input("Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
+
+            # --- EARLY GOING ---
+            saved_early_val = int(last_data["Early"])
+            def_early_hrs = saved_early_val // 60
+            def_early_mins = saved_early_val % 60
+            
+            e_h_col, e_m_col = st.columns(2)
+            with e_h_col: early_hrs_input = st.number_input("Early Hrs", value=def_early_hrs, step=1, key=f"ehrs_{kb}")
+            with e_m_col: early_mins_input = st.number_input("Early Mins", value=def_early_mins, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
+
+            # --- OT (Overtime) ---
+            saved_ot_val = int(last_data["OT"])
+            def_ot_hrs = saved_ot_val // 60
+            def_ot_mins = saved_ot_val % 60
+            
+            o_h_col, o_m_col = st.columns(2)
+            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=def_ot_hrs, step=1, key=f"othrs_{kb}")
+            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=def_ot_mins, min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
+
+with col2:
+    with st.container(border=True):
+        st.subheader("📉 Deductions & Additions")
+        c2_1, c2_2 = st.columns(2)
+        with c2_1:
+            food = st.number_input("Food", value=float(last_data["Food"]), key=f"food_{kb}")
+            pt_tax = st.number_input("PT Tax", value=float(last_data["PT"]), key=f"pt_{kb}")
+            bonus = st.number_input("Bonus", value=float(last_data["Bonus"]), key=f"bn_{kb}")
+        with c2_2:
+            gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
+            advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
+            difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
+
+# ==========================================
+# TIME CALCULATION LOGIC (WITH 2 HRS BONUS/CAPPING)
+# ==========================================
+final_pl_balance = available_pl - used_pl
+pl_hours_to_add = used_pl * 10 
+
+total_late_mins = (late_hrs_input * 60) + late_mins_input
+total_early_mins = (early_hrs_input * 60) + early_mins_input
+total_late_early_mins = total_late_mins + total_early_mins
+
+total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
+working_mins = int(work_hrs * 60)
+base_present_mins = int((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input
+
+if base_present_mins == 0:
+    total_min = total_ot_mins
+else:
+    adjusted_mins = base_present_mins - total_late_early_mins + 120
+    if adjusted_mins > working_mins:
+        adjusted_mins = working_mins
+    total_min = adjusted_mins + total_ot_mins
+
+if total_min < 0: total_min = 0
+calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
+
+# ==========================================
+# 7. Save Data
+# ==========================================
+st.write("")
+_, btn_col, _ = st.columns([1, 1.5, 1])
+
+with btn_col:
+    save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
+
+if save_clicked:
+    if not emp_sidebar_name: 
+        st.error("Please enter Employee Name in the sidebar!")
+    else:
+        base_sal = ctc_salary - gratuity - bonus
+        hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
+        
+        # EXCEL EXACT MATCH CALCULATION LOGIC
+        # 41 mins ne .41 banavi ne count karashe jem Excel kare chhe
+        excel_pay_hrs = (total_min // 60) + ((total_min % 60) / 100.0)
+        excel_ot_hrs = (total_ot_mins // 60) + ((total_ot_mins % 60) / 100.0)
+        
+        ot_salary = excel_ot_hrs * hr_rate
+        net_sal = (excel_pay_hrs * hr_rate) - food - pt_tax - advance + difference
+        
+        present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
+        
+        # SLIP MATE DICTIONARY DATA
+        st.session_state['calc_result'] = {
+            "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": ot_salary, "pl": final_pl_balance,
+            "slip_data": {
+                "std_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                "present_hrs": f"{present_hrs_input}.{int(present_mins_input):02d}",
+                "ot_hrs": f"{total_ot_mins//60}.{total_ot_mins%60:02d}",
+                "late_hrs": f"{total_late_mins//60}.{total_late_mins%60:02d}",
+                "out_hrs": f"{total_early_mins//60}.{total_early_mins%60:02d}",
+                "pay_hrs": f"{total_min//60}.{total_min%60:02d}",
+                "pt": pt_tax, "advance": advance, "food": food, "difference": difference
+            }
+        }
+        
+        new_rec = pd.DataFrame([{
+            "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
+            "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
+            "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
+            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
+            "OT Salary": round(ot_salary, 2), "Net Salary": round(net_sal, 2), 
+            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus, "Difference": difference
+        }])
+        
+        if os.path.exists(user_file):
+            pd.concat([pd.read_csv(user_file), new_rec], ignore_index=True).to_csv(user_file, index=False)
+        else: 
+            new_rec.to_csv(user_file, index=False)
+            
+        st.session_state['form_key'] += 1
+        st.rerun()
+
+# ==========================================
+# SLIP DOWNLOAD BUTTON & SUCCESS MESSAGE
+# ==========================================
+if st.session_state['calc_result']:
+    res = st.session_state['calc_result']
+    if res['name'] == emp_sidebar_name:
+        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | OT Salary: ₹{res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
+        
+        sd = res['slip_data']
+        # EXACT EXCEL FORMAT JEM PHOTO MA CHHE (Labels & Values)
+        slip_df = pd.DataFrame({
+            "Label": [f"{sd['std_hrs']}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", "-", "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
+        })
+        
+        csv_data = slip_df.to_csv(index=False, header=False).encode('utf-8')
+        
+        _, btn_col, _ = st.columns([1, 1.5, 1])
+        with btn_col:
+            st.download_button(
+                label="📄 Download Excel Slip",
+                data=csv_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+    else:
+        st.session_state['calc_result'] = None
+
+# ==========================================
+# 8. Search Section
+# ==========================================
+st.divider()
+st.subheader("🔍 Search Records")
+with st.container(border=True):
+    s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
+    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
+    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
+    search_y = s3.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
+    
+    if s4.button("🔍 Search", use_container_width=True):
+        s_file = get_user_file(search_n)
+        if os.path.exists(s_file):
+            df_s = pd.read_csv(s_file)
+            res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
+            if not res.empty:
+                res.index = range(1, len(res) + 1)
+                st.dataframe(res, use_container_width=True)
+            else: 
+                st.warning("No record found for this month/year.")
+        else: 
+            st.error("File not found.")
+
+# ==========================================
+# 9. History 
+# ==========================================
+if emp_sidebar_name:
+    user_file = get_user_file(emp_sidebar_name)
+    if os.path.exists(user_file):
+        st.subheader(f"📂 History: {emp_sidebar_name}")
+        h_df = pd.read_csv(user_file).fillna(0)
+
+        if 'Month' in h_df.columns:
+            h_df['Month'] = pd.Categorical(h_df['Month'], categories=month_order, ordered=True)
+            if 'Year' in h_df.columns:
+                h_df = h_df.sort_values(['Year', 'Month']).reset_index(drop=True)
+            else:
+                h_df = h_df.sort_values('Month').reset_index(drop=True)
+
+        edited_df = st.data_editor(
+            h_df, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}" 
+        )
+        
+        if not h_df.equals(edited_df):
+            edited_df.to_csv(user_file, index=False)
+            st.toast("✅ Record auto-updated successfully!") 
+            st.rerun()
+            
+    else:
+        st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
