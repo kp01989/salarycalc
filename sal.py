@@ -96,7 +96,6 @@ with st.sidebar:
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
                 # --- Auto-fill Logic ---
-                # Only fetch fixed details from the old data; variable fields will default to 0 automatically
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", 
                     "Gratuity": "Gratuity", "PT": "PT"
@@ -228,17 +227,36 @@ with col2:
             gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
             advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
 
-# --- Time Calculation Logic ---
+# ==========================================
+# NEW TIME CALCULATION LOGIC (WITH 2 HRS BONUS/CAPPING)
+# ==========================================
 final_pl_balance = available_pl - used_pl
 
 pl_hours_to_add = used_pl * 10 
 
 total_late_mins = (late_hrs_input * 60) + late_mins_input
 total_early_mins = (early_hrs_input * 60) + early_mins_input
+total_late_early_mins = total_late_mins + total_early_mins
+
 total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
 
-# Calculation: (Present Hrs + PL Hrs + OT) - (Late Mins + Early Mins)
-total_min = int(((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input + total_ot_mins - total_late_mins - total_early_mins)
+working_mins = int(work_hrs * 60)
+base_present_mins = int((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input
+
+# Rule 1: Aakho month absent
+if base_present_mins == 0:
+    total_min = total_ot_mins
+else:
+    # Rule 2: Deduct late/early, add 2 hours (120 mins) grace
+    adjusted_mins = base_present_mins - total_late_early_mins + 120
+    
+    # Rule 3: Capping - shouldn't exceed standard working hours (before OT)
+    if adjusted_mins > working_mins:
+        adjusted_mins = working_mins
+        
+    # Rule 4: Add OT finally
+    total_min = adjusted_mins + total_ot_mins
+
 if total_min < 0: total_min = 0
 
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
@@ -248,8 +266,6 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 # ==========================================
 st.write("")
 
-# Create 3 columns. The button will go in the middle column.
-# [1, 1.5, 1] controls the ratio. The middle one is slightly wider to fit the text perfectly.
 _, btn_col, _ = st.columns([1, 1.5, 1])
 
 with btn_col:
@@ -288,7 +304,6 @@ if save_clicked:
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
     
-    # Only show the success message if it belongs to the currently selected employee
     if res['name'] == emp_sidebar_name:
         st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | PL Balance: {res['pl']}")
     else:
@@ -325,7 +340,6 @@ if emp_sidebar_name:
     user_file = get_user_file(emp_sidebar_name)
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
-        # Fill missing Early/OT columns with 0 for older files
         h_df = pd.read_csv(user_file).fillna(0)
 
         if 'Month' in h_df.columns:
@@ -342,11 +356,9 @@ if emp_sidebar_name:
             key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}" 
         )
         
-        # --- Auto-Save Logic ---
-        # Jo original dataframe ane edited dataframe match na thay, toh auto-save kari do
         if not h_df.equals(edited_df):
             edited_df.to_csv(user_file, index=False)
-            st.toast("✅ Record auto-updated successfully!") # Toast message use karyo chhe jethi UI clean rahe
+            st.toast("✅ Record auto-updated successfully!") 
             st.rerun()
             
     else:
