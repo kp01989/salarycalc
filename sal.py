@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import io
 from datetime import datetime
 
 # ==========================================
@@ -95,7 +96,6 @@ with st.sidebar:
                 last_pl_balance = float(last_row_chronological.get("PL Balance", 0.0))
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
-                # --- Auto-fill Logic ---
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", 
                     "Gratuity": "Gratuity", "PT": "PT"
@@ -312,7 +312,7 @@ if save_clicked:
         st.rerun()
 
 # ==========================================
-# SLIP DOWNLOAD BUTTON & SUCCESS MESSAGE
+# SLIP DOWNLOAD BUTTON (NOW COLORFUL EXCEL)
 # ==========================================
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
@@ -325,15 +325,53 @@ if st.session_state['calc_result']:
             "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", "-", "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
         })
         
-        csv_data = slip_df.to_csv(index=False, header=False).encode('utf-8')
+        # COLORFUL EXCEL GENERATION USING XLSXWRITER
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
+            
+            workbook = writer.book
+            worksheet = writer.sheets['Salary_Slip']
+            
+            # --- FORMATTING STYLES ---
+            format_header = workbook.add_format({
+                'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'
+            })
+            format_label = workbook.add_format({
+                'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'
+            })
+            format_value = workbook.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter'
+            })
+            format_pay_salary = workbook.add_format({
+                'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'
+            })
+
+            # Set Column Widths
+            worksheet.set_column('A:A', 15)
+            worksheet.set_column('B:B', 25)
+            
+            # Write data row by row to apply correct style
+            for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
+                if row_num == 0:  # Top row (Std hrs & Name)
+                    worksheet.write(row_num, 0, lbl, format_header)
+                    worksheet.write(row_num, 1, val, format_header)
+                elif lbl == "Pay Salary":  # Highlight Main Salary Row
+                    worksheet.write(row_num, 0, lbl, format_pay_salary)
+                    worksheet.write(row_num, 1, val, format_pay_salary)
+                else:  # Normal rows
+                    worksheet.write(row_num, 0, lbl, format_label)
+                    worksheet.write(row_num, 1, val, format_value)
+                    
+        excel_data = output.getvalue()
         
         _, btn_col, _ = st.columns([1, 1.5, 1])
         with btn_col:
             st.download_button(
-                label="📄 Download Excel Slip",
-                data=csv_data,
-                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.csv",
-                mime="text/csv",
+                label="📄 Download Colorful Excel Slip",
+                data=excel_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
     else:
