@@ -64,7 +64,6 @@ def get_user_file(name):
     if not name: return None
     return f"{name.strip().replace(' ', '_')}_salary.csv"
 
-# FIX FOR STREAMLIT API EXCEPTION (DUPLICATE COLUMNS)
 def clean_legacy_columns(df):
     if 'Std Hrs' in df.columns:
         if 'Working Hrs' in df.columns:
@@ -73,7 +72,6 @@ def clean_legacy_columns(df):
             df = df.drop(columns=['Std Hrs'])
         else:
             df = df.rename(columns={'Std Hrs': 'Working Hrs'})
-    # Remove any completely duplicate columns to prevent Streamlit crashes
     df = df.loc[:, ~df.columns.duplicated()]
     return df
 
@@ -337,9 +335,12 @@ if st.session_state['calc_result']:
         
         sd = res['slip_data']
         
+        # Bank Salary = Pay Salary (Net Salary) + Difference
+        bank_salary_val = round(res['net'] + sd['difference'], 2)
+        
         slip_df = pd.DataFrame({
             "Label": [f"{sd['work_hrs']}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [res['name'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
+            "Value": [res['name'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], round(res['net'], 2), bank_salary_val, sd['difference']]
         })
         
         output = io.BytesIO()
@@ -474,9 +475,14 @@ if emp_sidebar_name:
                         
                     actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
                     
+                    # Bank Salary calculation for History Section
+                    net_sal_hist = float(row.get("Net Salary", 0))
+                    diff_hist = float(row.get("Difference", 0))
+                    bank_sal_hist = round(net_sal_hist + diff_hist, 2)
+                    
                     slip_df_hist = pd.DataFrame({
                         "Label": [f"{row.get('Working Hrs', 0)}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-                        "Value": [row.get("Name", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
+                        "Value": [row.get("Name", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), net_sal_hist, bank_sal_hist, diff_hist]
                     })
                     
                     output_hist = io.BytesIO()
