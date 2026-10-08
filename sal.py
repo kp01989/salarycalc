@@ -95,6 +95,7 @@ with st.sidebar:
                 last_pl_balance = float(last_row_chronological.get("PL Balance", 0.0))
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
+                # --- Auto-fill Logic ---
                 key_mapping = {
                     "CTC": "CTC", "Std Hrs": "Std_Hrs", 
                     "Gratuity": "Gratuity", "PT": "PT"
@@ -228,7 +229,7 @@ with col2:
             difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
-# TIME CALCULATION LOGIC (100% EXCEL FORMULA MATCH)
+# TIME CALCULATION LOGIC (Original 2 Hrs Logic)
 # ==========================================
 final_pl_balance = available_pl - used_pl
 pl_hours_to_add = used_pl * 10 
@@ -238,25 +239,22 @@ total_early_mins = (early_hrs_input * 60) + early_mins_input
 total_late_early_mins = total_late_mins + total_early_mins
 
 total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
-
 working_mins = int(work_hrs * 60)
 base_present_mins = int((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input
 
-bonus_penalty = 0
-if base_present_mins != 0:
-    is_absent = (working_mins - base_present_mins) >= 60
-    if is_absent:
-        bonus_penalty = 120 - total_late_early_mins
-    elif total_late_early_mins > 120:
-        bonus_penalty = 120 - total_late_early_mins
-    else:
-        bonus_penalty = 0
-
-total_min = base_present_mins + total_ot_mins + bonus_penalty
-
-# If no OT, cap to working mins
-if total_ot_mins == 0:
-    total_min = min(total_min, working_mins)
+# Rule 1: Aakho month absent
+if base_present_mins == 0:
+    total_min = total_ot_mins
+else:
+    # Rule 2: Deduct late/early, add 2 hours (120 mins) grace
+    adjusted_mins = base_present_mins - total_late_early_mins + 120
+    
+    # Rule 3: Capping - shouldn't exceed standard working hours (before OT)
+    if adjusted_mins > working_mins:
+        adjusted_mins = working_mins
+        
+    # Rule 4: Add OT finally
+    total_min = adjusted_mins + total_ot_mins
 
 if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
@@ -277,12 +275,9 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # EXACT CALCULATION BACK (REMOVED .41 HACKS TO FIX 42350 ISSUE)
-        pay_hrs_decimal = total_min / 60.0
-        ot_hrs_decimal = total_ot_mins / 60.0
-        
-        ot_salary = ot_hrs_decimal * hr_rate
-        net_sal = (pay_hrs_decimal * hr_rate) - food - pt_tax - advance + difference
+        # EXACT PREVIOUS MATHEMATICAL LOGIC
+        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60))
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + difference
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
