@@ -85,7 +85,6 @@ with st.sidebar:
     if user_file and os.path.exists(user_file):
         try:
             df_hist = pd.read_csv(user_file)
-            # Convert old 'Std Hrs' to 'Working Hrs' automatically
             if 'Std Hrs' in df_hist.columns:
                 df_hist.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
                 
@@ -105,7 +104,13 @@ with st.sidebar:
                 }
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row_chronological: 
-                        last_data[data_k] = last_row_chronological[csv_k]
+                        val = last_row_chronological[csv_k]
+                        # SAFE CHECK: Jo value blank na hoy toh j float ma convert karvu
+                        if pd.notna(val) and str(val).strip() != "":
+                            try:
+                                last_data[data_k] = float(val)
+                            except:
+                                pass
         except Exception as e:
             pass
 
@@ -189,7 +194,6 @@ with col1:
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
-            # RENAMED TO WORKING HRS
             work_hrs = st.number_input("Working Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
             
             # --- LATE ---
@@ -258,7 +262,7 @@ if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
 # ==========================================
-# 7. Save Data & Formulas
+# 7. Save Data
 # ==========================================
 st.write("")
 _, btn_col, _ = st.columns([1, 1.5, 1])
@@ -270,17 +274,11 @@ if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
-        # Base Salary without Gratuity and Bonus
         base_sal = ctc_salary - gratuity - bonus
-        
-        # Hourly Rate based on Working Hrs
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # EXACT OT FORMULA: (CTC Salary - Gratuity - Bonus) / Working Hrs * OT Hrs and Minutes
-        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate / 60.0))
-        
-        # Net Salary Calculation
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate / 60.0)) - food - pt_tax - advance + difference
+        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - advance + difference
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
@@ -404,7 +402,6 @@ if emp_sidebar_name:
         st.subheader(f"📂 History: {emp_sidebar_name}")
         h_df = pd.read_csv(user_file).fillna(0)
         
-        # Convert old column name for clean display
         if 'Std Hrs' in h_df.columns:
             h_df.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
 
@@ -427,7 +424,6 @@ if emp_sidebar_name:
             st.toast("✅ Record auto-updated successfully!") 
             st.rerun()
 
-        # DIRECTLY DOWNLOAD OLD SLIPS FROM HISTORY SECTION
         st.write("")
         with st.container(border=True):
             st.markdown("#### 📥 Download Slip from History")
