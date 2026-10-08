@@ -226,14 +226,12 @@ with col2:
         with c2_2:
             gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
             advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
-            # MEY AHI DIFFERENCE ADD KARYU CHHE (Additions)
             difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
 # TIME CALCULATION LOGIC (WITH 2 HRS BONUS/CAPPING)
 # ==========================================
 final_pl_balance = available_pl - used_pl
-
 pl_hours_to_add = used_pl * 10 
 
 total_late_mins = (late_hrs_input * 60) + late_mins_input
@@ -241,33 +239,24 @@ total_early_mins = (early_hrs_input * 60) + early_mins_input
 total_late_early_mins = total_late_mins + total_early_mins
 
 total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
-
 working_mins = int(work_hrs * 60)
 base_present_mins = int((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input
 
-# Rule 1: Aakho month absent
 if base_present_mins == 0:
     total_min = total_ot_mins
 else:
-    # Rule 2: Deduct late/early, add 2 hours (120 mins) grace
     adjusted_mins = base_present_mins - total_late_early_mins + 120
-    
-    # Rule 3: Capping - shouldn't exceed standard working hours (before OT)
     if adjusted_mins > working_mins:
         adjusted_mins = working_mins
-        
-    # Rule 4: Add OT finally
     total_min = adjusted_mins + total_ot_mins
 
 if total_min < 0: total_min = 0
-
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
 # ==========================================
 # 7. Save Data
 # ==========================================
 st.write("")
-
 _, btn_col, _ = st.columns([1, 1.5, 1])
 
 with btn_col:
@@ -280,23 +269,34 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # AHI NET SALARY MA DIFFERENCE PLUS (+) THAY CHHE
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + difference
+        # OT SALARY ALAG THI CALCULATE 
+        ot_salary = (total_ot_mins / 60) * hr_rate
         
-        st.session_state['calc_result'] = {
-            "name": emp_name, "month": month, "net": net_sal, "pl": final_pl_balance
-        }
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + difference
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
-        # AHI DICTIONARY MA "Difference" COLUMN ADD KARI CHHE EXCEL MATE
+        # SLIP MATE DICTIONARY DATA
+        st.session_state['calc_result'] = {
+            "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": ot_salary, "pl": final_pl_balance,
+            "slip_data": {
+                "std_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                "present_hrs": f"{present_hrs_input}.{int(present_mins_input):02d}",
+                "ot_hrs": f"{total_ot_mins//60}.{total_ot_mins%60:02d}",
+                "late_hrs": f"{total_late_mins//60}.{total_late_mins%60:02d}",
+                "out_hrs": f"{total_early_mins//60}.{total_early_mins%60:02d}",
+                "pay_hrs": f"{total_min//60}.{total_min%60:02d}",
+                "pt": pt_tax, "advance": advance, "food": food, "difference": difference
+            }
+        }
+        
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
             "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
             "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "PT": pt_tax, 
-            "Advance": advance, "Bonus": bonus, "Difference": difference
+            "OT Salary": round(ot_salary, 2), "Net Salary": round(net_sal, 2), 
+            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
         
         if os.path.exists(user_file):
@@ -307,11 +307,32 @@ if save_clicked:
         st.session_state['form_key'] += 1
         st.rerun()
 
+# ==========================================
+# SLIP DOWNLOAD BUTTON & SUCCESS MESSAGE
+# ==========================================
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
-    
     if res['name'] == emp_sidebar_name:
-        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | PL Balance: {res['pl']}")
+        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | OT Salary: ₹{res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
+        
+        sd = res['slip_data']
+        # EXACT EXCEL FORMAT JEM PHOTO MA CHHE (Labels & Values)
+        slip_df = pd.DataFrame({
+            "Label": [f"{sd['std_hrs']}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", "-", "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
+        })
+        
+        csv_data = slip_df.to_csv(index=False, header=False).encode('utf-8')
+        
+        _, btn_col, _ = st.columns([1, 1.5, 1])
+        with btn_col:
+            st.download_button(
+                label="📄 Download Excel Slip",
+                data=csv_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
     else:
         st.session_state['calc_result'] = None
 
