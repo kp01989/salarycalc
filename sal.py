@@ -74,7 +74,7 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0}
+    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
     is_new_employee = True
@@ -226,9 +226,11 @@ with col2:
         with c2_2:
             gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
             advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
+            # MEY AHI DIFFERENCE ADD KARYU CHHE (Additions)
+            difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
-# NEW TIME CALCULATION LOGIC (WITH 2 HRS BONUS/CAPPING)
+# TIME CALCULATION LOGIC (WITH 2 HRS BONUS/CAPPING)
 # ==========================================
 final_pl_balance = available_pl - used_pl
 
@@ -277,7 +279,9 @@ if save_clicked:
     else:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance 
+        
+        # AHI NET SALARY MA DIFFERENCE PLUS (+) THAY CHHE
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + difference
         
         st.session_state['calc_result'] = {
             "name": emp_name, "month": month, "net": net_sal, "pl": final_pl_balance
@@ -285,12 +289,14 @@ if save_clicked:
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
+        # AHI DICTIONARY MA "Difference" COLUMN ADD KARI CHHE EXCEL MATE
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
             "CTC": ctc_salary, "Std Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
             "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus
+            "Net Salary": round(net_sal, 2), "Food": food, "Gratuity": gratuity, "PT": pt_tax, 
+            "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
         
         if os.path.exists(user_file):
