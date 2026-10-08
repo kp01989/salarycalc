@@ -74,7 +74,7 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0}
+    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
     is_new_employee = True
@@ -100,7 +100,7 @@ with st.sidebar:
 
                 key_mapping = {
                     "CTC": "CTC", "Working Hrs": "Std_Hrs", 
-                    "Gratuity": "Gratuity", "PT": "PT"
+                    "Gratuity": "Gratuity", "PT": "PT", "TDS": "TDS", "ESIC": "ESIC"
                 }
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row_chronological: 
@@ -229,10 +229,12 @@ with col2:
         with c2_1:
             food = st.number_input("Food", value=float(last_data["Food"]), key=f"food_{kb}")
             pt_tax = st.number_input("PT Tax", value=float(last_data["PT"]), key=f"pt_{kb}")
+            tds = st.number_input("TDS", value=float(last_data["TDS"]), key=f"tds_{kb}")
             bonus = st.number_input("Bonus", value=float(last_data["Bonus"]), key=f"bn_{kb}")
         with c2_2:
             gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
             advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
+            esic = st.number_input("ESIC", value=float(last_data["ESIC"]), key=f"esic_{kb}")
             difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
@@ -277,7 +279,9 @@ if save_clicked:
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
         ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - advance + difference
+        
+        # NAVI DEDUCTIONS: TDS AND ESIC ADDED HERE
+        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance + difference
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
@@ -290,7 +294,7 @@ if save_clicked:
                 "late_hrs": f"{total_late_mins//60}.{total_late_mins%60:02d}",
                 "out_hrs": f"{total_early_mins//60}.{total_early_mins%60:02d}",
                 "pay_hrs": f"{total_min//60}.{total_min%60:02d}",
-                "pt": pt_tax, "advance": advance, "food": food, "difference": difference
+                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference
             }
         }
         
@@ -300,7 +304,8 @@ if save_clicked:
             "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "OT Salary": round(ot_salary, 2), "Net Salary": round(net_sal, 2), 
-            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "Advance": advance, "Bonus": bonus, "Difference": difference
+            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
+            "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
         
         if os.path.exists(user_file):
@@ -320,9 +325,10 @@ if st.session_state['calc_result']:
         st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | OT Salary: ₹{res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
         
         sd = res['slip_data']
+        # EXCEL SLIP MA ESIC ANE TDS NI VALUES BIND KARI DIDHI CHHE
         slip_df = pd.DataFrame({
             "Label": [f"{sd['work_hrs']}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", "-", "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
+            "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'], sd['tds'], sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
         })
         
         output = io.BytesIO()
@@ -404,7 +410,6 @@ if emp_sidebar_name:
         if 'Std Hrs' in h_df.columns:
             h_df.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
 
-        # FIXED ERROR: Removed pd.Categorical completely and used standard sorting string conversion.
         if 'Month' in h_df.columns:
             h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
             if 'Year' in h_df.columns:
@@ -459,9 +464,10 @@ if emp_sidebar_name:
                     except:
                         pay_str = "0.00"
                         
+                    # ESIC ANE TDS OLD HISTORY SLIP MA BIND KARIYA CHHE
                     slip_df_hist = pd.DataFrame({
                         "Label": [f"{row.get('Working Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-                        "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", "-", "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
+                        "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0), row.get("TDS", 0), row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
                     })
                     
                     output_hist = io.BytesIO()
