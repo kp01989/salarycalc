@@ -105,7 +105,6 @@ with st.sidebar:
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row_chronological: 
                         val = last_row_chronological[csv_k]
-                        # SAFE CHECK: Jo value blank na hoy toh j float ma convert karvu
                         if pd.notna(val) and str(val).strip() != "":
                             try:
                                 last_data[data_k] = float(val)
@@ -366,10 +365,10 @@ if st.session_state['calc_result']:
         st.session_state['calc_result'] = None
 
 # ==========================================
-# 8. Search Section & Download Old Slips
+# 8. Search Section
 # ==========================================
 st.divider()
-st.subheader("🔍 Search & Download Old Records")
+st.subheader("🔍 Search Records")
 with st.container(border=True):
     s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
     search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
@@ -405,12 +404,13 @@ if emp_sidebar_name:
         if 'Std Hrs' in h_df.columns:
             h_df.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
 
+        # FIXED ERROR: Removed pd.Categorical completely and used standard sorting string conversion.
         if 'Month' in h_df.columns:
-            h_df['Month'] = pd.Categorical(h_df['Month'], categories=month_order, ordered=True)
+            h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
             if 'Year' in h_df.columns:
-                h_df = h_df.sort_values(['Year', 'Month']).reset_index(drop=True)
+                h_df = h_df.sort_values(['Year', 'Sort_M']).drop(columns=['Sort_M']).reset_index(drop=True)
             else:
-                h_df = h_df.sort_values('Month').reset_index(drop=True)
+                h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
 
         edited_df = st.data_editor(
             h_df, 
@@ -431,7 +431,7 @@ if emp_sidebar_name:
             with h1:
                 options = []
                 for idx, r in h_df.iterrows():
-                    options.append(f"{r.get('Month', '').strip()} - {int(r.get('Year', current_year))}")
+                    options.append(f"{str(r.get('Month', '')).strip()} - {int(r.get('Year', current_year))}")
                 
                 unique_options = list(dict.fromkeys(options))
                 selected_opt = st.selectbox("Select Month & Year:", unique_options, key="hist_dl_sel")
@@ -441,7 +441,7 @@ if emp_sidebar_name:
                 st.write("")
                 if selected_opt:
                     sel_m, sel_y = selected_opt.split(" - ")
-                    row = h_df[(h_df['Month'].str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
+                    row = h_df[(h_df['Month'].astype(str).str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
                     
                     p_hrs_val = float(row.get("Present Hrs", 0))
                     p_hrs = int(p_hrs_val)
