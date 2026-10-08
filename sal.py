@@ -36,10 +36,6 @@ st.markdown("""
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-if 'search_result' not in st.session_state:
-    st.session_state['search_result'] = None
-if 'search_df' not in st.session_state:
-    st.session_state['search_df'] = None
 if 'calc_result' not in st.session_state:
     st.session_state['calc_result'] = None
 if 'form_key' not in st.session_state:
@@ -232,7 +228,7 @@ with col2:
             difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
-# TIME CALCULATION LOGIC (Original 2 Hrs Logic)
+# TIME CALCULATION LOGIC
 # ==========================================
 final_pl_balance = available_pl - used_pl
 pl_hours_to_add = used_pl * 10 
@@ -245,18 +241,12 @@ total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
 working_mins = int(work_hrs * 60)
 base_present_mins = int((present_hrs_input + pl_hours_to_add) * 60) + present_mins_input
 
-# Rule 1: Aakho month absent
 if base_present_mins == 0:
     total_min = total_ot_mins
 else:
-    # Rule 2: Deduct late/early, add 2 hours (120 mins) grace
     adjusted_mins = base_present_mins - total_late_early_mins + 120
-    
-    # Rule 3: Capping - shouldn't exceed standard working hours (before OT)
     if adjusted_mins > working_mins:
         adjusted_mins = working_mins
-        
-    # Rule 4: Add OT finally
     total_min = adjusted_mins + total_ot_mins
 
 if total_min < 0: total_min = 0
@@ -278,7 +268,6 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # EXACT PREVIOUS MATHEMATICAL LOGIC
         ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60))
         net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60)) - food - pt_tax - advance + difference
         
@@ -368,103 +357,10 @@ if st.session_state['calc_result']:
         st.session_state['calc_result'] = None
 
 # ==========================================
-# 8. Search Section & Download Old Slips
-# ==========================================
-st.divider()
-st.subheader("🔍 Search & Download Old Records")
-with st.container(border=True):
-    s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
-    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
-    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
-    search_y = s3.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
-    
-    if s4.button("🔍 Search", use_container_width=True):
-        s_file = get_user_file(search_n)
-        if os.path.exists(s_file):
-            df_s = pd.read_csv(s_file)
-            res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
-            if not res.empty:
-                res.index = range(1, len(res) + 1)
-                st.session_state['search_df'] = res
-                st.session_state['search_result'] = res.iloc[0].to_dict()
-            else: 
-                st.warning("No record found for this month/year.")
-                st.session_state['search_result'] = None
-                st.session_state['search_df'] = None
-        else: 
-            st.error("File not found.")
-            st.session_state['search_result'] = None
-            st.session_state['search_df'] = None
-
-    if st.session_state.get('search_result'):
-        st.dataframe(st.session_state['search_df'], use_container_width=True)
-        
-        row = st.session_state['search_result']
-        
-        # Safely extract data from old records to build slip
-        p_hrs_val = float(row.get("Present Hrs", 0))
-        p_hrs = int(p_hrs_val)
-        p_mins = int(round((p_hrs_val - p_hrs) * 100))
-        present_str = f"{p_hrs}.{p_mins:02d}"
-        
-        ot_m = int(row.get("OT Mins", 0))
-        late_m = int(row.get("Late Mins", 0))
-        early_m = int(row.get("Early Mins", 0))
-        
-        fh = str(row.get("Final Present Hrs", "0h 0m"))
-        try:
-            h, m = fh.replace('m','').split('h ')
-            pay_str = f"{int(h)}.{int(m):02d}"
-        except:
-            pay_str = "0.00"
-            
-        slip_df_search = pd.DataFrame({
-            "Label": [f"{row.get('Std Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", "-", "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
-        })
-        
-        output_search = io.BytesIO()
-        with pd.ExcelWriter(output_search, engine='xlsxwriter') as writer:
-            slip_df_search.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
-            workbook = writer.book
-            worksheet = writer.sheets['Salary_Slip']
-            
-            format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            
-            worksheet.set_column('A:A', 15)
-            worksheet.set_column('B:B', 25)
-            
-            for row_num, (lbl, val) in enumerate(zip(slip_df_search['Label'], slip_df_search['Value'])):
-                if row_num == 0:
-                    worksheet.write(row_num, 0, lbl, format_header)
-                    worksheet.write(row_num, 1, val, format_header)
-                elif lbl == "Pay Salary":
-                    worksheet.write(row_num, 0, lbl, format_pay_salary)
-                    worksheet.write(row_num, 1, val, format_pay_salary)
-                else:
-                    worksheet.write(row_num, 0, lbl, format_label)
-                    worksheet.write(row_num, 1, val, format_value)
-                    
-        excel_data_search = output_search.getvalue()
-        
-        _, s_btn_col, _ = st.columns([1, 1.5, 1])
-        with s_btn_col:
-            st.download_button(
-                label=f"📄 Download Slip ({row.get('Month', '')} {row.get('Year', '')})",
-                data=excel_data_search,
-                file_name=f"{row.get('Name', '')}_Salary_Slip_{row.get('Month', '')}_{row.get('Year', '')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="search_dl_btn"
-            )
-
-# ==========================================
-# 9. History 
+# 8. History & Download Old Slips
 # ==========================================
 if emp_sidebar_name:
+    st.divider()
     user_file = get_user_file(emp_sidebar_name)
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
@@ -488,6 +384,83 @@ if emp_sidebar_name:
             edited_df.to_csv(user_file, index=False)
             st.toast("✅ Record auto-updated successfully!") 
             st.rerun()
+
+        # DIRECTLY DOWNLOAD OLD SLIPS FROM HISTORY SECTION
+        st.write("")
+        with st.container(border=True):
+            st.markdown("#### 📥 Download Slip from History")
+            h1, h2 = st.columns([2, 1])
+            with h1:
+                options = []
+                for idx, r in h_df.iterrows():
+                    options.append(f"{r.get('Month', '').strip()} - {int(r.get('Year', current_year))}")
+                
+                unique_options = list(dict.fromkeys(options))
+                selected_opt = st.selectbox("Select Month & Year:", unique_options, key="hist_dl_sel")
+            
+            with h2:
+                st.write("") 
+                st.write("")
+                if selected_opt:
+                    sel_m, sel_y = selected_opt.split(" - ")
+                    row = h_df[(h_df['Month'].str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
+                    
+                    p_hrs_val = float(row.get("Present Hrs", 0))
+                    p_hrs = int(p_hrs_val)
+                    p_mins = int(round((p_hrs_val - p_hrs) * 100))
+                    present_str = f"{p_hrs}.{p_mins:02d}"
+                    
+                    ot_m = int(row.get("OT Mins", 0))
+                    late_m = int(row.get("Late Mins", 0))
+                    early_m = int(row.get("Early Mins", 0))
+                    
+                    fh = str(row.get("Final Present Hrs", "0h 0m"))
+                    try:
+                        h, m = fh.replace('m','').split('h ')
+                        pay_str = f"{int(h)}.{int(m):02d}"
+                    except:
+                        pay_str = "0.00"
+                        
+                    slip_df_hist = pd.DataFrame({
+                        "Label": [f"{row.get('Std Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+                        "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", "-", "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
+                    })
+                    
+                    output_hist = io.BytesIO()
+                    with pd.ExcelWriter(output_hist, engine='xlsxwriter') as writer:
+                        slip_df_hist.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
+                        workbook = writer.book
+                        worksheet = writer.sheets['Salary_Slip']
+                        
+                        format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                        format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                        format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                        format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                        
+                        worksheet.set_column('A:A', 15)
+                        worksheet.set_column('B:B', 25)
+                        
+                        for row_num, (lbl, val) in enumerate(zip(slip_df_hist['Label'], slip_df_hist['Value'])):
+                            if row_num == 0:
+                                worksheet.write(row_num, 0, lbl, format_header)
+                                worksheet.write(row_num, 1, val, format_header)
+                            elif lbl == "Pay Salary":
+                                worksheet.write(row_num, 0, lbl, format_pay_salary)
+                                worksheet.write(row_num, 1, val, format_pay_salary)
+                            else:
+                                worksheet.write(row_num, 0, lbl, format_label)
+                                worksheet.write(row_num, 1, val, format_value)
+                                
+                    excel_data_hist = output_hist.getvalue()
+                    
+                    st.download_button(
+                        label=f"📄 Download Slip ({sel_m} {sel_y})",
+                        data=excel_data_hist,
+                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="hist_dl_btn"
+                    )
             
     else:
         st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
