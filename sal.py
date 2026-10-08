@@ -64,6 +64,19 @@ def get_user_file(name):
     if not name: return None
     return f"{name.strip().replace(' ', '_')}_salary.csv"
 
+# FIX FOR STREAMLIT API EXCEPTION (DUPLICATE COLUMNS)
+def clean_legacy_columns(df):
+    if 'Std Hrs' in df.columns:
+        if 'Working Hrs' in df.columns:
+            df['Working Hrs'] = df['Working Hrs'].fillna(df['Std Hrs'])
+            df['Working Hrs'] = df.apply(lambda r: r['Std Hrs'] if pd.isna(r.get('Working Hrs')) or r.get('Working Hrs') == 0 else r['Working Hrs'], axis=1)
+            df = df.drop(columns=['Std Hrs'])
+        else:
+            df = df.rename(columns={'Std Hrs': 'Working Hrs'})
+    # Remove any completely duplicate columns to prevent Streamlit crashes
+    df = df.loc[:, ~df.columns.duplicated()]
+    return df
+
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
 # ==========================================
@@ -74,7 +87,7 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {"CTC": 0.0, "Std_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
+    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
     is_new_employee = True
@@ -85,8 +98,7 @@ with st.sidebar:
     if user_file and os.path.exists(user_file):
         try:
             df_hist = pd.read_csv(user_file)
-            if 'Std Hrs' in df_hist.columns:
-                df_hist.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
+            df_hist = clean_legacy_columns(df_hist)
                 
             if not df_hist.empty:
                 is_new_employee = False
@@ -99,7 +111,7 @@ with st.sidebar:
                 last_saved_month = str(last_row_chronological.get("Month", "")).strip()
 
                 key_mapping = {
-                    "CTC": "CTC", "Working Hrs": "Std_Hrs", 
+                    "CTC": "CTC", "Working Hrs": "Working_Hrs", 
                     "Gratuity": "Gratuity", "PT": "PT", "TDS": "TDS", "ESIC": "ESIC"
                 }
                 for csv_k, data_k in key_mapping.items():
@@ -193,7 +205,7 @@ with col1:
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
-            work_hrs = st.number_input("Working Hrs", value=float(last_data["Std_Hrs"]), key=f"shrs_{kb}")
+            work_hrs = st.number_input("Working Hrs", value=float(last_data["Working_Hrs"]), key=f"shrs_{kb}")
             
             # --- LATE ---
             saved_late_val = int(last_data["Late"])
@@ -279,8 +291,6 @@ if save_clicked:
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
         ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        
-        # NAVI DEDUCTIONS: TDS AND ESIC ADDED HERE
         net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance + difference
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
@@ -289,6 +299,7 @@ if save_clicked:
             "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": ot_salary, "pl": final_pl_balance,
             "slip_data": {
                 "work_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                "actual_salary": ctc_salary - gratuity - bonus,
                 "present_hrs": f"{present_hrs_input}.{int(present_mins_input):02d}",
                 "ot_hrs": f"{total_ot_mins//60}.{total_ot_mins%60:02d}",
                 "late_hrs": f"{total_late_mins//60}.{total_late_mins%60:02d}",
@@ -325,10 +336,10 @@ if st.session_state['calc_result']:
         st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | OT Salary: ₹{res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
         
         sd = res['slip_data']
-        # EXCEL SLIP MA ESIC ANE TDS NI VALUES BIND KARI DIDHI CHHE
+        
         slip_df = pd.DataFrame({
-            "Label": [f"{sd['work_hrs']}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'], sd['tds'], sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
+            "Label": [f"{sd['work_hrs']}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Value": [res['name'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
         })
         
         output = io.BytesIO()
@@ -385,8 +396,7 @@ with st.container(border=True):
         s_file = get_user_file(search_n)
         if os.path.exists(s_file):
             df_s = pd.read_csv(s_file)
-            if 'Std Hrs' in df_s.columns:
-                df_s.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
+            df_s = clean_legacy_columns(df_s)
                 
             res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
             if not res.empty:
@@ -406,9 +416,7 @@ if emp_sidebar_name:
     if os.path.exists(user_file):
         st.subheader(f"📂 History: {emp_sidebar_name}")
         h_df = pd.read_csv(user_file).fillna(0)
-        
-        if 'Std Hrs' in h_df.columns:
-            h_df.rename(columns={'Std Hrs': 'Working Hrs'}, inplace=True)
+        h_df = clean_legacy_columns(h_df)
 
         if 'Month' in h_df.columns:
             h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
@@ -464,10 +472,11 @@ if emp_sidebar_name:
                     except:
                         pay_str = "0.00"
                         
-                    # ESIC ANE TDS OLD HISTORY SLIP MA BIND KARIYA CHHE
+                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
+                    
                     slip_df_hist = pd.DataFrame({
-                        "Label": [f"{row.get('Working Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-                        "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0), row.get("TDS", 0), row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
+                        "Label": [f"{row.get('Working Hrs', 0)}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+                        "Value": [row.get("Name", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
                     })
                     
                     output_hist = io.BytesIO()
