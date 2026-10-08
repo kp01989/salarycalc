@@ -32,10 +32,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. Password Protection
+# 3. Password Protection & State
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if 'search_result' not in st.session_state:
+    st.session_state['search_result'] = None
+if 'search_df' not in st.session_state:
+    st.session_state['search_df'] = None
+if 'calc_result' not in st.session_state:
+    st.session_state['calc_result'] = None
+if 'form_key' not in st.session_state:
+    st.session_state['form_key'] = 0
 
 if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center;'>🔐 Salary System Login</h2>", unsafe_allow_html=True)
@@ -61,11 +69,6 @@ def get_user_file(name):
     return f"{name.strip().replace(' ', '_')}_salary.csv"
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
-
-if 'calc_result' not in st.session_state:
-    st.session_state['calc_result'] = None
-if 'form_key' not in st.session_state:
-    st.session_state['form_key'] = 0
 
 # ==========================================
 # 5. Sidebar Profile & Logic Setup
@@ -312,7 +315,7 @@ if save_clicked:
         st.rerun()
 
 # ==========================================
-# SLIP DOWNLOAD BUTTON (NOW COLORFUL EXCEL)
+# SLIP DOWNLOAD BUTTON (AFTER SAVE)
 # ==========================================
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
@@ -325,41 +328,28 @@ if st.session_state['calc_result']:
             "Value": [res['name'], 0, sd['ctc'], sd['bonus'], sd['gratuity'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", "-", "-", sd['advance'], sd['food'], round(res['net'], 2), "-", sd['difference']]
         })
         
-        # COLORFUL EXCEL GENERATION USING XLSXWRITER
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
-            
             workbook = writer.book
             worksheet = writer.sheets['Salary_Slip']
             
-            # --- FORMATTING STYLES ---
-            format_header = workbook.add_format({
-                'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'
-            })
-            format_label = workbook.add_format({
-                'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'
-            })
-            format_value = workbook.add_format({
-                'border': 1, 'align': 'center', 'valign': 'vcenter'
-            })
-            format_pay_salary = workbook.add_format({
-                'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'
-            })
+            format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
 
-            # Set Column Widths
             worksheet.set_column('A:A', 15)
             worksheet.set_column('B:B', 25)
             
-            # Write data row by row to apply correct style
             for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-                if row_num == 0:  # Top row (Std hrs & Name)
+                if row_num == 0:
                     worksheet.write(row_num, 0, lbl, format_header)
                     worksheet.write(row_num, 1, val, format_header)
-                elif lbl == "Pay Salary":  # Highlight Main Salary Row
+                elif lbl == "Pay Salary":
                     worksheet.write(row_num, 0, lbl, format_pay_salary)
                     worksheet.write(row_num, 1, val, format_pay_salary)
-                else:  # Normal rows
+                else:
                     worksheet.write(row_num, 0, lbl, format_label)
                     worksheet.write(row_num, 1, val, format_value)
                     
@@ -378,10 +368,10 @@ if st.session_state['calc_result']:
         st.session_state['calc_result'] = None
 
 # ==========================================
-# 8. Search Section
+# 8. Search Section & Download Old Slips
 # ==========================================
 st.divider()
-st.subheader("🔍 Search Records")
+st.subheader("🔍 Search & Download Old Records")
 with st.container(border=True):
     s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
     search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
@@ -395,11 +385,81 @@ with st.container(border=True):
             res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
             if not res.empty:
                 res.index = range(1, len(res) + 1)
-                st.dataframe(res, use_container_width=True)
+                st.session_state['search_df'] = res
+                st.session_state['search_result'] = res.iloc[0].to_dict()
             else: 
                 st.warning("No record found for this month/year.")
+                st.session_state['search_result'] = None
+                st.session_state['search_df'] = None
         else: 
             st.error("File not found.")
+            st.session_state['search_result'] = None
+            st.session_state['search_df'] = None
+
+    if st.session_state.get('search_result'):
+        st.dataframe(st.session_state['search_df'], use_container_width=True)
+        
+        row = st.session_state['search_result']
+        
+        # Safely extract data from old records to build slip
+        p_hrs_val = float(row.get("Present Hrs", 0))
+        p_hrs = int(p_hrs_val)
+        p_mins = int(round((p_hrs_val - p_hrs) * 100))
+        present_str = f"{p_hrs}.{p_mins:02d}"
+        
+        ot_m = int(row.get("OT Mins", 0))
+        late_m = int(row.get("Late Mins", 0))
+        early_m = int(row.get("Early Mins", 0))
+        
+        fh = str(row.get("Final Present Hrs", "0h 0m"))
+        try:
+            h, m = fh.replace('m','').split('h ')
+            pay_str = f"{int(h)}.{int(m):02d}"
+        except:
+            pay_str = "0.00"
+            
+        slip_df_search = pd.DataFrame({
+            "Label": [f"{row.get('Std Hrs', 0)}", "Real Salary", "CTC Salary", "Bonus", "Gratuity", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Value": [row.get("Name", ""), 0, row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", "-", "-", row.get("Advance", 0), row.get("Food", 0), row.get("Net Salary", 0), "-", row.get("Difference", 0)]
+        })
+        
+        output_search = io.BytesIO()
+        with pd.ExcelWriter(output_search, engine='xlsxwriter') as writer:
+            slip_df_search.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
+            workbook = writer.book
+            worksheet = writer.sheets['Salary_Slip']
+            
+            format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            
+            worksheet.set_column('A:A', 15)
+            worksheet.set_column('B:B', 25)
+            
+            for row_num, (lbl, val) in enumerate(zip(slip_df_search['Label'], slip_df_search['Value'])):
+                if row_num == 0:
+                    worksheet.write(row_num, 0, lbl, format_header)
+                    worksheet.write(row_num, 1, val, format_header)
+                elif lbl == "Pay Salary":
+                    worksheet.write(row_num, 0, lbl, format_pay_salary)
+                    worksheet.write(row_num, 1, val, format_pay_salary)
+                else:
+                    worksheet.write(row_num, 0, lbl, format_label)
+                    worksheet.write(row_num, 1, val, format_value)
+                    
+        excel_data_search = output_search.getvalue()
+        
+        _, s_btn_col, _ = st.columns([1, 1.5, 1])
+        with s_btn_col:
+            st.download_button(
+                label=f"📄 Download Slip ({row.get('Month', '')} {row.get('Year', '')})",
+                data=excel_data_search,
+                file_name=f"{row.get('Name', '')}_Salary_Slip_{row.get('Month', '')}_{row.get('Year', '')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="search_dl_btn"
+            )
 
 # ==========================================
 # 9. History 
