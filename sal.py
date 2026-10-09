@@ -326,9 +326,10 @@ if st.session_state['calc_result']:
         bank_salary_val = res['net']
         pay_salary_val = res['net'] - sd['difference']
         
+        # MONTH & YEAR MERGED: Sep'2026 format
         slip_df = pd.DataFrame({
-            "Label": [f"{sd['work_hrs']}", "Month", "Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [res['name'], res['month'], res['year'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], pay_salary_val, bank_salary_val, sd['difference']]
+            "Label": [f"{sd['work_hrs']}", "Month & Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Value": [res['name'], f"{res['month']}'{res['year']}", sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], pay_salary_val, bank_salary_val, sd['difference']]
         })
         
         output = io.BytesIO()
@@ -477,9 +478,10 @@ if emp_sidebar_name:
                     bank_sal_hist = round(net_sal_hist)
                     pay_sal_hist = round(net_sal_hist - diff_hist)
                     
+                    # MONTH & YEAR MERGED FOR HISTORY SLIP
                     slip_df_hist = pd.DataFrame({
-                        "Label": [f"{row.get('Working Hrs', 0)}", "Month", "Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-                        "Value": [row.get("Name", ""), row.get("Month", ""), row.get("Year", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}:{ot_m%60:02d}", f"{late_m//60}:{late_m%60:02d}", f"{early_m//60}:{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), pay_sal_hist, bank_sal_hist, diff_hist]
+                        "Label": [f"{row.get('Working Hrs', 0)}", "Month & Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+                        "Value": [row.get("Name", ""), f"{str(row.get('Month', '')).strip()}'{int(row.get('Year', current_year))}", row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}:{ot_m%60:02d}", f"{late_m//60}:{late_m%60:02d}", f"{early_m//60}:{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), pay_sal_hist, bank_sal_hist, diff_hist]
                     })
                     
                     output_hist = io.BytesIO()
