@@ -266,13 +266,12 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
-    # EXACT ROW SEQUENCE BASED ON USER IMAGE
+    # FIXED ERROR: Changed 'working_hrs_str' to 'work_hrs_str' to match saved data key
     slip_df = pd.DataFrame({
         "Label": ["CTC Salary", "Gratuity", "Bonus", "Actual Salary", "Working Hrs", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-        "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['working_hrs_str'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
+        "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['work_hrs_str'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
     })
     
-    # ADDING HEADER ROW DYNAMICALLY
     header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [emp_name]})
     slip_df = pd.concat([header_row, slip_df], ignore_index=True)
     
@@ -282,7 +281,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         workbook = writer.book
         worksheet = writer.sheets['Salary_Slip']
         
-        # BASE FORMAT CONFIGURATIONS
         base_header = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
         base_label = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter'}
         base_val_text = {'align': 'center', 'valign': 'vcenter'}
@@ -302,7 +300,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-            # 1. IDENTIFY COLUMN A (LABEL) FORMAT
             if row_num == 0:
                 dict_col0 = base_header.copy()
             elif lbl == "Pay Salary":
@@ -310,7 +307,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             else:
                 dict_col0 = base_label.copy()
 
-            # Add Outer Border to Col A
             dict_col0['border'] = 1
             if row_num == 0: dict_col0['top'] = 2
             if row_num == total_rows - 1: dict_col0['bottom'] = 2
@@ -318,7 +314,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
             worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
 
-            # 2. IDENTIFY COLUMN B (VALUE) FORMAT
             if row_num == 0:
                 dict_col1 = base_header.copy()
             elif lbl == "Working Hrs":
@@ -337,7 +332,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             else:
                 dict_col1 = base_val_text.copy()
 
-            # Add Outer Border to Col B
             dict_col1['border'] = 1
             if row_num == 0: dict_col1['top'] = 2
             if row_num == total_rows - 1: dict_col1['bottom'] = 2
