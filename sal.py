@@ -261,7 +261,94 @@ if total_min < 0: total_min = 0
 calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 
 # ==========================================
-# 7. Save Data
+# 7. Save Data & Excel Generation Helper
+# ==========================================
+def generate_excel_slip(slip_data, emp_name, month_str, year_val):
+    sd = slip_data
+    
+    # EXACT ROW SEQUENCE BASED ON USER IMAGE
+    slip_df = pd.DataFrame({
+        "Label": ["CTC Salary", "Gratuity", "Bonus", "Actual Salary", "Working Hrs", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+        "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['working_hrs_str'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
+    })
+    
+    # ADDING HEADER ROW DYNAMICALLY
+    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [emp_name]})
+    slip_df = pd.concat([header_row, slip_df], ignore_index=True)
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
+        workbook = writer.book
+        worksheet = writer.sheets['Salary_Slip']
+        
+        # BASE FORMAT CONFIGURATIONS
+        base_header = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
+        base_label = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter'}
+        base_val_text = {'align': 'center', 'valign': 'vcenter'}
+        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+        base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
+        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
+        base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
+        base_pay_val = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+        base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
+        base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
+        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
+
+        worksheet.set_column('A:A', 15)
+        worksheet.set_column('B:B', 25)
+        
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
+        total_rows = len(slip_df)
+        
+        for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
+            # 1. IDENTIFY COLUMN A (LABEL) FORMAT
+            if row_num == 0:
+                dict_col0 = base_header.copy()
+            elif lbl == "Pay Salary":
+                dict_col0 = base_pay_label.copy()
+            else:
+                dict_col0 = base_label.copy()
+
+            # Add Outer Border to Col A
+            dict_col0['border'] = 1
+            if row_num == 0: dict_col0['top'] = 2
+            if row_num == total_rows - 1: dict_col0['bottom'] = 2
+            dict_col0['left'] = 2
+
+            worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
+
+            # 2. IDENTIFY COLUMN B (VALUE) FORMAT
+            if row_num == 0:
+                dict_col1 = base_header.copy()
+            elif lbl == "Working Hrs":
+                dict_col1 = base_val_yellow.copy()
+            elif lbl == "Present Hrs":
+                dict_col1 = base_val_green.copy()
+            elif lbl == "Pay Salary":
+                dict_col1 = base_pay_val.copy()
+            elif lbl == "Diff":
+                diff_val = float(val) if val != "-" else 0
+                if diff_val > 0: dict_col1 = base_diff_pos.copy()
+                elif diff_val < 0: dict_col1 = base_diff_neg.copy()
+                else: dict_col1 = base_diff_zero.copy()
+            elif lbl in currency_labels and val != "-":
+                dict_col1 = base_val_curr.copy()
+            else:
+                dict_col1 = base_val_text.copy()
+
+            # Add Outer Border to Col B
+            dict_col1['border'] = 1
+            if row_num == 0: dict_col1['top'] = 2
+            if row_num == total_rows - 1: dict_col1['bottom'] = 2
+            dict_col1['right'] = 2
+
+            worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
+            
+    return output.getvalue()
+
+# ==========================================
+# 7. Button Execution Logic
 # ==========================================
 st.write("")
 _, btn_col, _ = st.columns([1, 1.5, 1])
@@ -285,14 +372,17 @@ if save_clicked:
         st.session_state['calc_result'] = {
             "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": round(ot_salary, 2), "pl": final_pl_balance,
             "slip_data": {
-                "work_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                "work_hrs_str": f"{int(work_hrs)}:00",
+                "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
                 "actual_salary": ctc_salary - gratuity - bonus,
                 "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
                 "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
                 "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
                 "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
                 "pay_hrs": f"{total_min//60}:{total_min%60:02d}",
-                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference
+                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
+                "pay_salary_val": net_sal - difference,
+                "bank_salary_val": net_sal
             }
         }
         
@@ -322,49 +412,7 @@ if st.session_state['calc_result']:
     if res['name'] == emp_sidebar_name:
         st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹ {res['net']:,.2f} | OT Salary: ₹ {res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
         
-        sd = res['slip_data']
-        bank_salary_val = res['net']
-        pay_salary_val = res['net'] - sd['difference']
-        
-        # MONTH & YEAR MERGED: Sep'2026 format
-        slip_df = pd.DataFrame({
-            "Label": [f"{sd['work_hrs']}", "Month & Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [res['name'], f"{res['month']}'{res['year']}", sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], pay_salary_val, bank_salary_val, sd['difference']]
-        })
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
-            workbook = writer.book
-            worksheet = writer.sheets['Salary_Slip']
-            
-            format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_value_text = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            
-            format_value_curr = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
-            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
-
-            worksheet.set_column('A:A', 15)
-            worksheet.set_column('B:B', 25)
-            
-            currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
-            
-            for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-                if row_num == 0:
-                    worksheet.write(row_num, 0, lbl, format_header)
-                    worksheet.write(row_num, 1, val, format_header)
-                elif lbl == "Pay Salary":
-                    worksheet.write(row_num, 0, lbl, format_pay_salary)
-                    worksheet.write(row_num, 1, val, format_pay_salary)
-                else:
-                    worksheet.write(row_num, 0, lbl, format_label)
-                    if lbl in currency_labels and val != "-":
-                        worksheet.write(row_num, 1, val, format_value_curr)
-                    else:
-                        worksheet.write(row_num, 1, val, format_value_text)
-                    
-        excel_data = output.getvalue()
+        excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
         
         _, btn_col, _ = st.columns([1, 1.5, 1])
         with btn_col:
@@ -457,7 +505,6 @@ if emp_sidebar_name:
                     p_hrs_val = float(row.get("Present Hrs", 0))
                     p_hrs = int(p_hrs_val)
                     p_mins = int(round((p_hrs_val - p_hrs) * 100))
-                    present_str = f"{p_hrs}:{p_mins:02d}"
                     
                     ot_m = int(row.get("OT Mins", 0))
                     late_m = int(row.get("Late Mins", 0))
@@ -470,53 +517,31 @@ if emp_sidebar_name:
                     except:
                         pay_str = "0:00"
                         
-                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
-                    
                     net_sal_hist = float(row.get("Net Salary", 0))
                     diff_hist = float(row.get("Difference", 0))
                     
-                    bank_sal_hist = round(net_sal_hist)
-                    pay_sal_hist = round(net_sal_hist - diff_hist)
+                    hist_slip_data = {
+                        "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
+                        "ctc": row.get("CTC", 0),
+                        "bonus": row.get("Bonus", 0),
+                        "gratuity": row.get("Gratuity", 0),
+                        "actual_salary": row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0),
+                        "present_hrs": f"{p_hrs}:{p_mins:02d}",
+                        "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
+                        "late_hrs": f"{late_m//60}:{late_m%60:02d}",
+                        "out_hrs": f"{early_m//60}:{early_m%60:02d}",
+                        "pay_hrs": pay_str,
+                        "pt": row.get("PT", 0),
+                        "tds": row.get("TDS", 0),
+                        "esic": row.get("ESIC", 0),
+                        "advance": row.get("Advance", 0),
+                        "food": row.get("Food", 0),
+                        "difference": diff_hist,
+                        "pay_salary_val": round(net_sal_hist - diff_hist),
+                        "bank_salary_val": round(net_sal_hist)
+                    }
                     
-                    # MONTH & YEAR MERGED FOR HISTORY SLIP
-                    slip_df_hist = pd.DataFrame({
-                        "Label": [f"{row.get('Working Hrs', 0)}", "Month & Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-                        "Value": [row.get("Name", ""), f"{str(row.get('Month', '')).strip()}'{int(row.get('Year', current_year))}", row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}:{ot_m%60:02d}", f"{late_m//60}:{late_m%60:02d}", f"{early_m//60}:{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), pay_sal_hist, bank_sal_hist, diff_hist]
-                    })
-                    
-                    output_hist = io.BytesIO()
-                    with pd.ExcelWriter(output_hist, engine='xlsxwriter') as writer:
-                        slip_df_hist.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
-                        workbook = writer.book
-                        worksheet = writer.sheets['Salary_Slip']
-                        
-                        format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                        format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                        format_value_text = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                        
-                        format_value_curr = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
-                        format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
-                        
-                        worksheet.set_column('A:A', 15)
-                        worksheet.set_column('B:B', 25)
-                        
-                        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
-                        
-                        for row_num, (lbl, val) in enumerate(zip(slip_df_hist['Label'], slip_df_hist['Value'])):
-                            if row_num == 0:
-                                worksheet.write(row_num, 0, lbl, format_header)
-                                worksheet.write(row_num, 1, val, format_header)
-                            elif lbl == "Pay Salary":
-                                worksheet.write(row_num, 0, lbl, format_pay_salary)
-                                worksheet.write(row_num, 1, val, format_pay_salary)
-                            else:
-                                worksheet.write(row_num, 0, lbl, format_label)
-                                if lbl in currency_labels and val != "-":
-                                    worksheet.write(row_num, 1, val, format_value_curr)
-                                else:
-                                    worksheet.write(row_num, 1, val, format_value_text)
-                                
-                    excel_data_hist = output_hist.getvalue()
+                    excel_data_hist = generate_excel_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
                     
                     st.download_button(
                         label=f"📄 Download Slip ({sel_m} {sel_y})",
