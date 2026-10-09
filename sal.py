@@ -79,7 +79,7 @@ def clean_legacy_columns(df):
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
+money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference", "PL Balance"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
 
 # ==========================================
@@ -266,10 +266,10 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
-    # FIXED ERROR: Changed 'working_hrs_str' to 'work_hrs_str' to match saved data key
+    # NEW ROW SEQUENCE AND ADDED PL USED & PL BALANCE
     slip_df = pd.DataFrame({
-        "Label": ["CTC Salary", "Gratuity", "Bonus", "Actual Salary", "Working Hrs", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-        "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['work_hrs_str'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
+        "Label": ["CTC Salary", "Gratuity", "Bonus", "Actual Salary", "Working Hrs", "Present Hrs", "PL Used", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "PL Balance", "Pay Salary", "Bank Salary", "Diff"],
+        "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pl_balance'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
     })
     
     header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [emp_name]})
@@ -289,17 +289,21 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
         base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
         base_pay_val = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
-        base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
-        base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
-        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
+        
+        # UPDATED DIFFERENCE COLOR LOGIC: Plus = Red, Minus = Green
+        base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'} # RED
+        base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'} # GREEN
+        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'} # BLACK
 
         worksheet.set_column('A:A', 15)
         worksheet.set_column('B:B', 25)
         
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
+        # Added "PL Balance" to currency format list
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "PL Balance", "Bank Salary", "Diff"]
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
+            # Column A Formats
             if row_num == 0:
                 dict_col0 = base_header.copy()
             elif lbl == "Pay Salary":
@@ -314,19 +318,20 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
             worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
 
+            # Column B Formats
             if row_num == 0:
                 dict_col1 = base_header.copy()
             elif lbl == "Working Hrs":
                 dict_col1 = base_val_yellow.copy()
-            elif lbl == "Present Hrs":
+            elif lbl in ["Present Hrs", "PL Used"]:
                 dict_col1 = base_val_green.copy()
             elif lbl == "Pay Salary":
                 dict_col1 = base_pay_val.copy()
             elif lbl == "Diff":
                 diff_val = float(val) if val != "-" else 0
-                if diff_val > 0: dict_col1 = base_diff_pos.copy()
-                elif diff_val < 0: dict_col1 = base_diff_neg.copy()
-                else: dict_col1 = base_diff_zero.copy()
+                if diff_val > 0: dict_col1 = base_diff_pos.copy()    # Plus value -> Red
+                elif diff_val < 0: dict_col1 = base_diff_neg.copy()  # Minus value -> Green
+                else: dict_col1 = base_diff_zero.copy()              # Zero -> Black
             elif lbl in currency_labels and val != "-":
                 dict_col1 = base_val_curr.copy()
             else:
@@ -370,6 +375,8 @@ if save_clicked:
                 "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
                 "actual_salary": ctc_salary - gratuity - bonus,
                 "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
+                "pl_used": used_pl,
+                "pl_balance": final_pl_balance,
                 "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
                 "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
                 "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
@@ -511,6 +518,8 @@ if emp_sidebar_name:
                     except:
                         pay_str = "0:00"
                         
+                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
+                    
                     net_sal_hist = float(row.get("Net Salary", 0))
                     diff_hist = float(row.get("Difference", 0))
                     
@@ -519,8 +528,10 @@ if emp_sidebar_name:
                         "ctc": row.get("CTC", 0),
                         "bonus": row.get("Bonus", 0),
                         "gratuity": row.get("Gratuity", 0),
-                        "actual_salary": row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0),
+                        "actual_salary": actual_salary_hist,
                         "present_hrs": f"{p_hrs}:{p_mins:02d}",
+                        "pl_used": row.get("PL Used", 0),
+                        "pl_balance": row.get("PL Balance", 0),
                         "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
                         "late_hrs": f"{late_m//60}:{late_m%60:02d}",
                         "out_hrs": f"{early_m//60}:{early_m%60:02d}",
