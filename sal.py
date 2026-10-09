@@ -79,7 +79,8 @@ def clean_legacy_columns(df):
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference", "PL Balance"]
+# FIXED: Removed 'PL Balance' from money_cols so it doesn't show ₹ in the app tables
+money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
 
 # ==========================================
@@ -266,7 +267,6 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
-    # NEW ROW SEQUENCE AND ADDED PL USED & PL BALANCE
     slip_df = pd.DataFrame({
         "Label": ["CTC Salary", "Gratuity", "Bonus", "Actual Salary", "Working Hrs", "Present Hrs", "PL Used", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "PL Balance", "Pay Salary", "Bank Salary", "Diff"],
         "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pl_balance'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
@@ -290,20 +290,18 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
         base_pay_val = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
         
-        # UPDATED DIFFERENCE COLOR LOGIC: Plus = Red, Minus = Green
-        base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'} # RED
-        base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'} # GREEN
-        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'} # BLACK
+        base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
+        base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
+        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
 
         worksheet.set_column('A:A', 15)
         worksheet.set_column('B:B', 25)
         
-        # Added "PL Balance" to currency format list
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "PL Balance", "Bank Salary", "Diff"]
+        # FIXED: Removed 'PL Balance' from currency_labels
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-            # Column A Formats
             if row_num == 0:
                 dict_col0 = base_header.copy()
             elif lbl == "Pay Salary":
@@ -318,7 +316,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
             worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
 
-            # Column B Formats
             if row_num == 0:
                 dict_col1 = base_header.copy()
             elif lbl == "Working Hrs":
@@ -329,9 +326,9 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
                 dict_col1 = base_pay_val.copy()
             elif lbl == "Diff":
                 diff_val = float(val) if val != "-" else 0
-                if diff_val > 0: dict_col1 = base_diff_pos.copy()    # Plus value -> Red
-                elif diff_val < 0: dict_col1 = base_diff_neg.copy()  # Minus value -> Green
-                else: dict_col1 = base_diff_zero.copy()              # Zero -> Black
+                if diff_val > 0: dict_col1 = base_diff_pos.copy()
+                elif diff_val < 0: dict_col1 = base_diff_neg.copy()
+                else: dict_col1 = base_diff_zero.copy()
             elif lbl in currency_labels and val != "-":
                 dict_col1 = base_val_curr.copy()
             else:
