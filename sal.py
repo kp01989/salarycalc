@@ -79,9 +79,8 @@ def clean_legacy_columns(df):
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-# Table Configuration for Comma Separators
 money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
-table_format_config = {col: st.column_config.NumberColumn(format="₹%,.2f") for col in money_cols}
+table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
 
 # ==========================================
 # 5. Sidebar Profile & Logic Setup
@@ -321,10 +320,9 @@ if save_clicked:
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
     if res['name'] == emp_sidebar_name:
-        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹{res['net']:,.2f} | OT Salary: ₹{res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
+        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹ {res['net']:,.2f} | OT Salary: ₹ {res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
         
         sd = res['slip_data']
-        
         bank_salary_val = res['net']
         pay_salary_val = res['net'] - sd['difference']
         
@@ -339,14 +337,18 @@ if st.session_state['calc_result']:
             workbook = writer.book
             worksheet = writer.sheets['Salary_Slip']
             
-            # EXCEL COMMA FORMAT (num_format: '#,##0.00')
             format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
             format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
-            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
+            format_value_text = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            
+            # RUPEE SYMBOL FORMATTING
+            format_value_curr = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
+            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
 
             worksheet.set_column('A:A', 15)
             worksheet.set_column('B:B', 25)
+            
+            currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
             
             for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
                 if row_num == 0:
@@ -357,7 +359,11 @@ if st.session_state['calc_result']:
                     worksheet.write(row_num, 1, val, format_pay_salary)
                 else:
                     worksheet.write(row_num, 0, lbl, format_label)
-                    worksheet.write(row_num, 1, val, format_value)
+                    # CONDITIONAL FORMAT: Text vs Currency
+                    if lbl in currency_labels and val != "-":
+                        worksheet.write(row_num, 1, val, format_value_curr)
+                    else:
+                        worksheet.write(row_num, 1, val, format_value_text)
                     
         excel_data = output.getvalue()
         
@@ -393,7 +399,6 @@ with st.container(border=True):
             res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
             if not res.empty:
                 res.index = range(1, len(res) + 1)
-                # FORMATTING SEARCH TABLE
                 st.dataframe(res, use_container_width=True, column_config=table_format_config)
             else: 
                 st.warning("No record found for this month/year.")
@@ -418,7 +423,6 @@ if emp_sidebar_name:
             else:
                 h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
 
-        # FORMATTING HISTORY TABLE
         edited_df = st.data_editor(
             h_df, 
             use_container_width=True, 
@@ -486,14 +490,18 @@ if emp_sidebar_name:
                         workbook = writer.book
                         worksheet = writer.sheets['Salary_Slip']
                         
-                        # EXCEL COMMA FORMAT FOR HISTORY (num_format: '#,##0.00')
                         format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                         format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                        format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
-                        format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
+                        format_value_text = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                        
+                        # RUPEE SYMBOL FORMATTING FOR HISTORY
+                        format_value_curr = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
+                        format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
                         
                         worksheet.set_column('A:A', 15)
                         worksheet.set_column('B:B', 25)
+                        
+                        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
                         
                         for row_num, (lbl, val) in enumerate(zip(slip_df_hist['Label'], slip_df_hist['Value'])):
                             if row_num == 0:
@@ -504,7 +512,10 @@ if emp_sidebar_name:
                                 worksheet.write(row_num, 1, val, format_pay_salary)
                             else:
                                 worksheet.write(row_num, 0, lbl, format_label)
-                                worksheet.write(row_num, 1, val, format_value)
+                                if lbl in currency_labels and val != "-":
+                                    worksheet.write(row_num, 1, val, format_value_curr)
+                                else:
+                                    worksheet.write(row_num, 1, val, format_value_text)
                                 
                     excel_data_hist = output_hist.getvalue()
                     
