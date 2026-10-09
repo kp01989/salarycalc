@@ -32,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. Password Protection & State (FORM FIXED)
+# 3. Password Protection & State
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -45,7 +45,6 @@ if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center;'>🔐 Salary System Login</h2>", unsafe_allow_html=True)
     col_l, col_m, col_r = st.columns([1,1,1])
     with col_m:
-        # AHI LOGIN NE FORM MA MUKI DIDHU CHHE, JETHI DIRECT ENTER DABAVATHI LOGIN THAY JAY
         with st.form("login_form"):
             pwd_input = st.text_input("Enter Password", type="password")
             submit_btn = st.form_submit_button("Login", use_container_width=True)
@@ -61,7 +60,7 @@ st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>
 st.divider()
 
 # ==========================================
-# 4. Helper Functions
+# 4. Helper Functions & Configs
 # ==========================================
 def get_user_file(name):
     if not name: return None
@@ -79,6 +78,10 @@ def clean_legacy_columns(df):
     return df
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
+
+# Table Configuration for Comma Separators
+money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
+table_format_config = {col: st.column_config.NumberColumn(format="₹%,.2f") for col in money_cols}
 
 # ==========================================
 # 5. Sidebar Profile & Logic Setup
@@ -336,10 +339,11 @@ if st.session_state['calc_result']:
             workbook = writer.book
             worksheet = writer.sheets['Salary_Slip']
             
+            # EXCEL COMMA FORMAT (num_format: '#,##0.00')
             format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
             format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
+            format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
 
             worksheet.set_column('A:A', 15)
             worksheet.set_column('B:B', 25)
@@ -389,7 +393,8 @@ with st.container(border=True):
             res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
             if not res.empty:
                 res.index = range(1, len(res) + 1)
-                st.dataframe(res, use_container_width=True)
+                # FORMATTING SEARCH TABLE
+                st.dataframe(res, use_container_width=True, column_config=table_format_config)
             else: 
                 st.warning("No record found for this month/year.")
         else: 
@@ -413,11 +418,13 @@ if emp_sidebar_name:
             else:
                 h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
 
+        # FORMATTING HISTORY TABLE
         edited_df = st.data_editor(
             h_df, 
             use_container_width=True, 
             num_rows="dynamic",
-            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}" 
+            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}",
+            column_config=table_format_config
         )
         
         if not h_df.equals(edited_df):
@@ -479,10 +486,11 @@ if emp_sidebar_name:
                         workbook = writer.book
                         worksheet = writer.sheets['Salary_Slip']
                         
+                        # EXCEL COMMA FORMAT FOR HISTORY (num_format: '#,##0.00')
                         format_header = workbook.add_format({'bold': True, 'bg_color': '#203764', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                         format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                        format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                        format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                        format_value = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
+                        format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0.00'})
                         
                         worksheet.set_column('A:A', 15)
                         worksheet.set_column('B:B', 25)
