@@ -145,7 +145,6 @@ with col1:
         default_month = current_month_name 
         def_year = current_year
         
-        # AUTO MONTH SETTING
         if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
             last_idx = m_list.index(last_saved_month)
             if last_idx < 11: 
@@ -157,7 +156,6 @@ with col1:
 
         def_m_idx = m_list.index(default_month) if default_month in m_list else 0
 
-        # DISABLED IF OLD EMPLOYEE (Locked)
         with m_col:
             month = st.selectbox("Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
         with y_col:
@@ -179,7 +177,6 @@ with col1:
             
             available_pl = 0.0
             
-            # AUTOMATIC PL LOGIC (+1)
             if emp_sidebar_name and is_new_employee:
                 available_pl = st.number_input("Opening PL Balance (Starting)", value=0.0, step=0.5, key=f"opl_{kb}")
             elif emp_sidebar_name and not is_new_employee:
@@ -275,11 +272,7 @@ if save_clicked:
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
         ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        
-        # Exact Calculation
         net_sal_exact = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance + difference
-        
-        # ROUND FIGURE CALCULATION (Chuti chiti loose change removed)
         net_sal = round(net_sal_exact)
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
@@ -289,11 +282,11 @@ if save_clicked:
             "slip_data": {
                 "work_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
                 "actual_salary": ctc_salary - gratuity - bonus,
-                "present_hrs": f"{present_hrs_input}.{int(present_mins_input):02d}",
-                "ot_hrs": f"{total_ot_mins//60}.{total_ot_mins%60:02d}",
-                "late_hrs": f"{total_late_mins//60}.{total_late_mins%60:02d}",
-                "out_hrs": f"{total_early_mins//60}.{total_early_mins%60:02d}",
-                "pay_hrs": f"{total_min//60}.{total_min%60:02d}",
+                "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", # : SEPARATOR ADDED
+                "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
+                "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
+                "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
+                "pay_hrs": f"{total_min//60}:{total_min%60:02d}",
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference
             }
         }
@@ -326,13 +319,13 @@ if st.session_state['calc_result']:
         
         sd = res['slip_data']
         
-        # CORRECTED PAY SALARY AND BANK SALARY LOGIC (With Round Figure)
-        bank_salary_val = res['net']  # Bank salary is final Net Salary (which includes difference)
-        pay_salary_val = res['net'] - sd['difference']  # Pay salary is without difference
+        bank_salary_val = res['net']
+        pay_salary_val = res['net'] - sd['difference']
         
+        # MONTH AND YEAR ROW ADDED IN SLIP
         slip_df = pd.DataFrame({
-            "Label": [f"{sd['work_hrs']}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-            "Value": [res['name'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], pay_salary_val, bank_salary_val, sd['difference']]
+            "Label": [f"{sd['work_hrs']}", "Month", "Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+            "Value": [res['name'], res['month'], res['year'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], pay_salary_val, bank_salary_val, sd['difference']]
         })
         
         output = io.BytesIO()
@@ -452,7 +445,7 @@ if emp_sidebar_name:
                     p_hrs_val = float(row.get("Present Hrs", 0))
                     p_hrs = int(p_hrs_val)
                     p_mins = int(round((p_hrs_val - p_hrs) * 100))
-                    present_str = f"{p_hrs}.{p_mins:02d}"
+                    present_str = f"{p_hrs}:{p_mins:02d}" # : SEPARATOR
                     
                     ot_m = int(row.get("OT Mins", 0))
                     late_m = int(row.get("Late Mins", 0))
@@ -461,22 +454,22 @@ if emp_sidebar_name:
                     fh = str(row.get("Final Present Hrs", "0h 0m"))
                     try:
                         h, m = fh.replace('m','').split('h ')
-                        pay_str = f"{int(h)}.{int(m):02d}"
+                        pay_str = f"{int(h)}:{int(m):02d}" # : SEPARATOR
                     except:
-                        pay_str = "0.00"
+                        pay_str = "0:00"
                         
                     actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
                     
                     net_sal_hist = float(row.get("Net Salary", 0))
                     diff_hist = float(row.get("Difference", 0))
                     
-                    # CORRECTED PAY SALARY AND BANK SALARY LOGIC FOR HISTORY (Round Figure)
                     bank_sal_hist = round(net_sal_hist)
                     pay_sal_hist = round(net_sal_hist - diff_hist)
                     
+                    # MONTH AND YEAR ADDED FOR HISTORY SLIP
                     slip_df_hist = pd.DataFrame({
-                        "Label": [f"{row.get('Working Hrs', 0)}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
-                        "Value": [row.get("Name", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}.{ot_m%60:02d}", f"{late_m//60}.{late_m%60:02d}", f"{early_m//60}.{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), pay_sal_hist, bank_sal_hist, diff_hist]
+                        "Label": [f"{row.get('Working Hrs', 0)}", "Month", "Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
+                        "Value": [row.get("Name", ""), row.get("Month", ""), row.get("Year", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}:{ot_m%60:02d}", f"{late_m//60}:{late_m%60:02d}", f"{early_m//60}:{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), pay_sal_hist, bank_sal_hist, diff_hist]
                     })
                     
                     output_hist = io.BytesIO()
