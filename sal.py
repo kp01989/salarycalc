@@ -32,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. Password Protection & State
+# 3. Password Protection & State (FORM FIXED)
 # ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -45,13 +45,16 @@ if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center;'>🔐 Salary System Login</h2>", unsafe_allow_html=True)
     col_l, col_m, col_r = st.columns([1,1,1])
     with col_m:
-        pwd_input = st.text_input("Enter Password", type="password")
-        if st.button("Login", use_container_width=True):
-            if pwd_input == "1989": 
-                st.session_state.logged_in = True
-                st.rerun()
-            else: 
-                st.error("❌ Incorrect Password!")
+        # AHI LOGIN NE FORM MA MUKI DIDHU CHHE, JETHI DIRECT ENTER DABAVATHI LOGIN THAY JAY
+        with st.form("login_form"):
+            pwd_input = st.text_input("Enter Password", type="password")
+            submit_btn = st.form_submit_button("Login", use_container_width=True)
+            if submit_btn:
+                if pwd_input == "1989": 
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else: 
+                    st.error("❌ Incorrect Password!")
     st.stop()
 
 st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
@@ -282,7 +285,7 @@ if save_clicked:
             "slip_data": {
                 "work_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
                 "actual_salary": ctc_salary - gratuity - bonus,
-                "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", # : SEPARATOR ADDED
+                "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
                 "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
                 "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
                 "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
@@ -322,7 +325,6 @@ if st.session_state['calc_result']:
         bank_salary_val = res['net']
         pay_salary_val = res['net'] - sd['difference']
         
-        # MONTH AND YEAR ROW ADDED IN SLIP
         slip_df = pd.DataFrame({
             "Label": [f"{sd['work_hrs']}", "Month", "Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
             "Value": [res['name'], res['month'], res['year'], sd['ctc'], sd['bonus'], sd['gratuity'], sd['actual_salary'], sd['present_hrs'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], pay_salary_val, bank_salary_val, sd['difference']]
@@ -445,7 +447,7 @@ if emp_sidebar_name:
                     p_hrs_val = float(row.get("Present Hrs", 0))
                     p_hrs = int(p_hrs_val)
                     p_mins = int(round((p_hrs_val - p_hrs) * 100))
-                    present_str = f"{p_hrs}:{p_mins:02d}" # : SEPARATOR
+                    present_str = f"{p_hrs}:{p_mins:02d}"
                     
                     ot_m = int(row.get("OT Mins", 0))
                     late_m = int(row.get("Late Mins", 0))
@@ -454,7 +456,7 @@ if emp_sidebar_name:
                     fh = str(row.get("Final Present Hrs", "0h 0m"))
                     try:
                         h, m = fh.replace('m','').split('h ')
-                        pay_str = f"{int(h)}:{int(m):02d}" # : SEPARATOR
+                        pay_str = f"{int(h)}:{int(m):02d}"
                     except:
                         pay_str = "0:00"
                         
@@ -466,7 +468,6 @@ if emp_sidebar_name:
                     bank_sal_hist = round(net_sal_hist)
                     pay_sal_hist = round(net_sal_hist - diff_hist)
                     
-                    # MONTH AND YEAR ADDED FOR HISTORY SLIP
                     slip_df_hist = pd.DataFrame({
                         "Label": [f"{row.get('Working Hrs', 0)}", "Month", "Year", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
                         "Value": [row.get("Name", ""), row.get("Month", ""), row.get("Year", ""), row.get("CTC", 0), row.get("Bonus", 0), row.get("Gratuity", 0), actual_salary_hist, present_str, f"{ot_m//60}:{ot_m%60:02d}", f"{late_m//60}:{late_m%60:02d}", f"{early_m//60}:{early_m%60:02d}", pay_str, row.get("PT", 0), "-", row.get("ESIC", 0) if row.get("ESIC", 0) else "-", row.get("TDS", 0) if row.get("TDS", 0) else "-", row.get("Advance", 0), row.get("Food", 0), pay_sal_hist, bank_sal_hist, diff_hist]
