@@ -168,7 +168,7 @@ with col1:
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
-            ctc_salary = st.number_input("CTC Salary", value=float(last_data["CTC"]), key=f"ctc_{kb}")
+            ctc_salary = st.number_input("CTC Salary (₹)", value=float(last_data["CTC"]), key=f"ctc_{kb}")
             
             saved_p_hrs_val = float(last_data["Present_Hrs"])
             def_p_hrs = int(saved_p_hrs_val)
@@ -225,15 +225,15 @@ with col2:
         st.subheader("📉 Deductions & Additions")
         c2_1, c2_2 = st.columns(2)
         with c2_1:
-            food = st.number_input("Food", value=float(last_data["Food"]), key=f"food_{kb}")
-            pt_tax = st.number_input("PT Tax", value=float(last_data["PT"]), key=f"pt_{kb}")
-            tds = st.number_input("TDS", value=float(last_data["TDS"]), key=f"tds_{kb}")
-            bonus = st.number_input("Bonus", value=float(last_data["Bonus"]), key=f"bn_{kb}")
+            food = st.number_input("Food (₹)", value=float(last_data["Food"]), key=f"food_{kb}")
+            pt_tax = st.number_input("PT Tax (₹)", value=float(last_data["PT"]), key=f"pt_{kb}")
+            tds = st.number_input("TDS (₹)", value=float(last_data["TDS"]), key=f"tds_{kb}")
+            bonus = st.number_input("Bonus (₹)", value=float(last_data["Bonus"]), key=f"bn_{kb}")
         with c2_2:
-            gratuity = st.number_input("Gratuity", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
-            advance = st.number_input("Advance", value=float(last_data["Advance"]), key=f"ad_{kb}")
-            esic = st.number_input("ESIC", value=float(last_data["ESIC"]), key=f"esic_{kb}")
-            difference = st.number_input("Difference", value=0.0, key=f"diff_{kb}")
+            gratuity = st.number_input("Gratuity (₹)", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
+            advance = st.number_input("Advance (₹)", value=float(last_data["Advance"]), key=f"ad_{kb}")
+            esic = st.number_input("ESIC (₹)", value=float(last_data["ESIC"]), key=f"esic_{kb}")
+            difference = st.number_input("Difference (₹)", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -341,7 +341,6 @@ if st.session_state['calc_result']:
             format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
             format_value_text = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
             
-            # RUPEE SYMBOL FORMATTING
             format_value_curr = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
             format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
 
@@ -359,7 +358,6 @@ if st.session_state['calc_result']:
                     worksheet.write(row_num, 1, val, format_pay_salary)
                 else:
                     worksheet.write(row_num, 0, lbl, format_label)
-                    # CONDITIONAL FORMAT: Text vs Currency
                     if lbl in currency_labels and val != "-":
                         worksheet.write(row_num, 1, val, format_value_curr)
                     else:
@@ -494,7 +492,6 @@ if emp_sidebar_name:
                         format_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                         format_value_text = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
                         
-                        # RUPEE SYMBOL FORMATTING FOR HISTORY
                         format_value_curr = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
                         format_pay_salary = workbook.add_format({'bold': True, 'bg_color': '#C6E0B4', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'})
                         
