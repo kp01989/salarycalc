@@ -143,24 +143,25 @@ with col1:
         
         m_list = list(month_dict.keys())
         default_month = current_month_name 
+        def_year = current_year
         
+        # AUTO MONTH SETTING
         if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
             last_idx = m_list.index(last_saved_month)
             if last_idx < 11: 
                 default_month = m_list[last_idx + 1]
+                def_year = int(last_row_chronological.get("Year", current_year))
             else:
                 default_month = 'Jan' 
+                def_year = int(last_row_chronological.get("Year", current_year)) + 1
 
         def_m_idx = m_list.index(default_month) if default_month in m_list else 0
 
+        # DISABLED IF OLD EMPLOYEE (Locked)
         with m_col:
-            month = st.selectbox("Month", m_list, index=def_m_idx, key=f"month_{kb}")
+            month = st.selectbox("Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
         with y_col:
-            def_year = current_year
-            if not is_new_employee and last_saved_month == 'Dec':
-                def_year = int(last_row_chronological.get("Year", current_year)) + 1
-                
-            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, key=f"year_{kb}")
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
@@ -178,27 +179,12 @@ with col1:
             
             available_pl = 0.0
             
-            if month == "Jan":
-                available_pl = 1.0
-                st.text_input("Available PL (Jan Reset = 1)", value="1.0", disabled=True)
-                
-            elif emp_sidebar_name and is_new_employee:
-                available_pl = st.number_input("Opening PL Balance", value=0.0, step=0.5, key=f"opl_{kb}")
-                
+            # AUTOMATIC PL LOGIC (+1)
+            if emp_sidebar_name and is_new_employee:
+                available_pl = st.number_input("Opening PL Balance (Starting)", value=0.0, step=0.5, key=f"opl_{kb}")
             elif emp_sidebar_name and not is_new_employee:
-                prev_month_str = month_order[month_order.index(month) - 1]
-                
-                if not df_hist_sorted.empty:
-                    prev_rec = df_hist_sorted[(df_hist_sorted['Year'] == year) & (df_hist_sorted['Month'].str.strip() == prev_month_str)]
-                    if not prev_rec.empty:
-                        prev_pl_bal = float(prev_rec.iloc[-1].get("PL Balance", 0.0))
-                        available_pl = prev_pl_bal + 1.0
-                    else:
-                        available_pl = last_pl_balance + 1.0
-                else:
-                    available_pl = last_pl_balance + 1.0
-                    
-                st.text_input(f"Available PL (From {prev_month_str} + 1)", value=str(available_pl), disabled=True)
+                available_pl = last_pl_balance + 1.0
+                st.text_input(f"Available PL (From {last_saved_month} + 1)", value=str(available_pl), disabled=True)
 
             used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
@@ -289,12 +275,17 @@ if save_clicked:
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
         ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        net_sal = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance + difference
+        
+        # Exact Calculation
+        net_sal_exact = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance + difference
+        
+        # ROUND FIGURE CALCULATION (Chuti chiti loose change removed)
+        net_sal = round(net_sal_exact)
         
         present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
         
         st.session_state['calc_result'] = {
-            "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": ot_salary, "pl": final_pl_balance,
+            "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": round(ot_salary, 2), "pl": final_pl_balance,
             "slip_data": {
                 "work_hrs": work_hrs, "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
                 "actual_salary": ctc_salary - gratuity - bonus,
@@ -312,7 +303,7 @@ if save_clicked:
             "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
             "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "OT Salary": round(ot_salary, 2), "Net Salary": round(net_sal, 2), 
+            "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, 
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
             "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
@@ -335,9 +326,9 @@ if st.session_state['calc_result']:
         
         sd = res['slip_data']
         
-        # CORRECTED PAY SALARY AND BANK SALARY LOGIC
-        bank_salary_val = round(res['net'], 2)  # Bank salary is final Net Salary (which includes difference)
-        pay_salary_val = round(res['net'] - sd['difference'], 2)  # Pay salary is without difference
+        # CORRECTED PAY SALARY AND BANK SALARY LOGIC (With Round Figure)
+        bank_salary_val = res['net']  # Bank salary is final Net Salary (which includes difference)
+        pay_salary_val = res['net'] - sd['difference']  # Pay salary is without difference
         
         slip_df = pd.DataFrame({
             "Label": [f"{sd['work_hrs']}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
@@ -479,9 +470,9 @@ if emp_sidebar_name:
                     net_sal_hist = float(row.get("Net Salary", 0))
                     diff_hist = float(row.get("Difference", 0))
                     
-                    # CORRECTED PAY SALARY AND BANK SALARY LOGIC FOR HISTORY
-                    bank_sal_hist = round(net_sal_hist, 2)
-                    pay_sal_hist = round(net_sal_hist - diff_hist, 2)
+                    # CORRECTED PAY SALARY AND BANK SALARY LOGIC FOR HISTORY (Round Figure)
+                    bank_sal_hist = round(net_sal_hist)
+                    pay_sal_hist = round(net_sal_hist - diff_hist)
                     
                     slip_df_hist = pd.DataFrame({
                         "Label": [f"{row.get('Working Hrs', 0)}", "CTC Salary", "Bonus", "Gratuity", "Actual Salary", "Present Hrs", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Pay Salary", "Bank Salary", "Diff"],
