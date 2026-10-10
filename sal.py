@@ -293,20 +293,21 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         workbook = writer.book
         worksheet = writer.sheets['Salary_Slip']
         
-        base_header = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
-        base_label = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter'}
+        # ADDED 'font_name': 'Segoe UI Emoji' TO FORCE COLORFUL EMOJIS IN EXCEL
+        base_header = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
+        base_label = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
         base_val_text = {'align': 'center', 'valign': 'vcenter'}
         base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
         base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
         base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
-        base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
+        base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
         base_pay_val = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
         
         base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
         base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
         base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
 
-        worksheet.set_column('A:A', 20)
+        worksheet.set_column('A:A', 22)
         worksheet.set_column('B:B', 25)
         
         currency_labels = [
