@@ -87,7 +87,7 @@ table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") fo
 # ==========================================
 with st.sidebar:
     st.header("👤 Profile")
-    emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
+    emp_sidebar_name = st.text_input("👤 Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
     last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
@@ -142,7 +142,7 @@ current_year = now.year
 with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Details")
-        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
+        emp_name = st.text_input("👤 Full Name", value=emp_sidebar_name, disabled=True)
         
         m_col, y_col = st.columns(2)
         
@@ -162,13 +162,13 @@ with col1:
         def_m_idx = m_list.index(default_month) if default_month in m_list else 0
 
         with m_col:
-            month = st.selectbox("Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
+            month = st.selectbox("📅 Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
         with y_col:
-            year = st.number_input("Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
+            year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
-            ctc_salary = st.number_input("CTC Salary (₹)", value=float(last_data["CTC"]), key=f"ctc_{kb}")
+            ctc_salary = st.number_input("💰 CTC Salary (₹)", value=float(last_data["CTC"]), key=f"ctc_{kb}")
             
             saved_p_hrs_val = float(last_data["Present_Hrs"])
             def_p_hrs = int(saved_p_hrs_val)
@@ -176,22 +176,22 @@ with col1:
             
             p_h_col, p_m_col = st.columns(2)
             with p_h_col:
-                present_hrs_input = st.number_input("Present Hrs", value=def_p_hrs, step=1, key=f"phrs_{kb}")
+                present_hrs_input = st.number_input("✅ Present Hrs", value=def_p_hrs, step=1, key=f"phrs_{kb}")
             with p_m_col:
-                present_mins_input = st.number_input("Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
+                present_mins_input = st.number_input("⏱️ Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
             
             available_pl = 0.0
             
             if emp_sidebar_name and is_new_employee:
-                available_pl = st.number_input("Opening PL Balance (Starting)", value=0.0, step=0.5, key=f"opl_{kb}")
+                available_pl = st.number_input("⚖️ Opening PL Balance", value=0.0, step=0.5, key=f"opl_{kb}")
             elif emp_sidebar_name and not is_new_employee:
                 available_pl = last_pl_balance + 1.0
-                st.text_input(f"Available PL (From {last_saved_month} + 1)", value=str(available_pl), disabled=True)
+                st.text_input(f"⚖️ Available PL (From {last_saved_month} + 1)", value=str(available_pl), disabled=True)
 
-            used_pl = st.number_input("PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
+            used_pl = st.number_input("🏖️ PL Used", value=0.0, step=0.5, key=f"plu_{kb}")
 
         with c1_2:
-            work_hrs = st.number_input("Working Hrs", value=float(last_data["Working_Hrs"]), key=f"shrs_{kb}")
+            work_hrs = st.number_input("🏢 Working Hrs", value=float(last_data["Working_Hrs"]), key=f"shrs_{kb}")
             
             # --- LATE ---
             saved_late_val = int(last_data["Late"])
@@ -199,8 +199,8 @@ with col1:
             def_late_mins = saved_late_val % 60
             
             l_h_col, l_m_col = st.columns(2)
-            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
-            with l_m_col: late_mins_input = st.number_input("Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
+            with l_h_col: late_hrs_input = st.number_input("⏰ Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
+            with l_m_col: late_mins_input = st.number_input("⏱️ Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
 
             # --- EARLY GOING ---
             saved_early_val = int(last_data["Early"])
@@ -208,8 +208,8 @@ with col1:
             def_early_mins = saved_early_val % 60
             
             e_h_col, e_m_col = st.columns(2)
-            with e_h_col: early_hrs_input = st.number_input("Early Hrs", value=def_early_hrs, step=1, key=f"ehrs_{kb}")
-            with e_m_col: early_mins_input = st.number_input("Early Mins", value=def_early_mins, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
+            with e_h_col: early_hrs_input = st.number_input("🚶 Out Hrs", value=def_early_hrs, step=1, key=f"ehrs_{kb}")
+            with e_m_col: early_mins_input = st.number_input("⏱️ Out Mins", value=def_early_mins, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
 
             # --- OT (Overtime) ---
             saved_ot_val = int(last_data["OT"])
@@ -217,23 +217,23 @@ with col1:
             def_ot_mins = saved_ot_val % 60
             
             o_h_col, o_m_col = st.columns(2)
-            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=def_ot_hrs, step=1, key=f"othrs_{kb}")
-            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=def_ot_mins, min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
+            with o_h_col: ot_hrs_input = st.number_input("⏳ OT Hrs", value=def_ot_hrs, step=1, key=f"othrs_{kb}")
+            with o_m_col: ot_mins_input = st.number_input("⏱️ OT Mins", value=def_ot_mins, min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
 
 with col2:
     with st.container(border=True):
         st.subheader("📉 Deductions & Additions")
         c2_1, c2_2 = st.columns(2)
         with c2_1:
-            food = st.number_input("Food (₹)", value=float(last_data["Food"]), key=f"food_{kb}")
-            pt_tax = st.number_input("PT Tax (₹)", value=float(last_data["PT"]), key=f"pt_{kb}")
-            tds = st.number_input("TDS (₹)", value=float(last_data["TDS"]), key=f"tds_{kb}")
-            bonus = st.number_input("Bonus (₹)", value=float(last_data["Bonus"]), key=f"bn_{kb}")
+            food = st.number_input("🍽️ Food (₹)", value=float(last_data["Food"]), key=f"food_{kb}")
+            pt_tax = st.number_input("🏛️ PT Tax (₹)", value=float(last_data["PT"]), key=f"pt_{kb}")
+            tds = st.number_input("✂️ TDS (₹)", value=float(last_data["TDS"]), key=f"tds_{kb}")
+            bonus = st.number_input("🎉 Bonus (₹)", value=float(last_data["Bonus"]), key=f"bn_{kb}")
         with c2_2:
-            gratuity = st.number_input("Gratuity (₹)", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
-            advance = st.number_input("Advance (₹)", value=float(last_data["Advance"]), key=f"ad_{kb}")
-            esic = st.number_input("ESIC (₹)", value=float(last_data["ESIC"]), key=f"esic_{kb}")
-            difference = st.number_input("Difference (₹)", value=0.0, key=f"diff_{kb}")
+            gratuity = st.number_input("🎁 Gratuity (₹)", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
+            advance = st.number_input("🏦 Loan/Advance (₹)", value=float(last_data["Advance"]), key=f"ad_{kb}")
+            esic = st.number_input("🏥 ESIC (₹)", value=float(last_data["ESIC"]), key=f"esic_{kb}")
+            difference = st.number_input("🧮 Difference (₹)", value=0.0, key=f"diff_{kb}")
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -447,9 +447,9 @@ st.divider()
 st.subheader("🔍 Search Records")
 with st.container(border=True):
     s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
-    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
-    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
-    search_y = s3.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
+    search_n = s1.text_input("🔍 Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
+    search_m = s2.selectbox("📅 Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
+    search_y = s3.number_input("🗓️ Year", value=current_year, key="sy", label_visibility="collapsed")
     
     if s4.button("🔍 Search", use_container_width=True):
         s_file = get_user_file(search_n)
