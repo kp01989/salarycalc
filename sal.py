@@ -79,7 +79,6 @@ def clean_legacy_columns(df):
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-# FIXED: Removed 'PL Balance' from money_cols so it doesn't show ₹ in the app tables
 money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
 
@@ -267,12 +266,27 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
+    # EMOJIS ADDED TO LABELS
     slip_df = pd.DataFrame({
-        "Label": ["CTC Salary", "Gratuity", "Bonus", "Actual Salary", "Working Hrs", "Present Hrs", "PL Used", "OT Hrs", "Late Hrs", "Out Hrs", "Pay Hrs", "PT", "PF", "ESI", "TDS", "Loan", "Food", "PL Balance", "Pay Salary", "Bank Salary", "Diff"],
-        "Value": [sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", sd['advance'], sd['food'], sd['pl_balance'], sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']]
+        "Label": [
+            "💰 CTC Salary", "🎁 Gratuity", "🎉 Bonus", "💵 Actual Salary", 
+            "🏢 Working Hrs", "✅ Present Hrs", "🏖️ PL Used", 
+            "⏳ OT Hrs", "⏰ Late Hrs", "🚶 Out Hrs", "⏱️ Pay Hrs", 
+            "🏛️ PT", "🛡️ PF", "🏥 ESI", "✂️ TDS", "🏦 Loan", "🍽️ Food", 
+            "⚖️ PL Balance", "💸 Pay Salary", "💳 Bank Salary", "🧮 Diff"
+        ],
+        "Value": [
+            sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], 
+            sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], 
+            sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], 
+            sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", 
+            sd['advance'], sd['food'], sd['pl_balance'], 
+            sd['pay_salary_val'], sd['bank_salary_val'], sd['difference']
+        ]
     })
     
-    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [emp_name]})
+    # EMOJIS ADDED TO HEADER
+    header_row = pd.DataFrame({"Label": [f"📅 {month_str}'{year_val}"], "Value": [f"👤 {emp_name}"]})
     slip_df = pd.concat([header_row, slip_df], ignore_index=True)
     
     output = io.BytesIO()
@@ -286,273 +300,4 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         base_val_text = {'align': 'center', 'valign': 'vcenter'}
         base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
         base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
-        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
-        base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
-        base_pay_val = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
-        
-        base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
-        base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
-        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
-
-        worksheet.set_column('A:A', 15)
-        worksheet.set_column('B:B', 25)
-        
-        # FIXED: Removed 'PL Balance' from currency_labels
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
-        total_rows = len(slip_df)
-        
-        for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-            if row_num == 0:
-                dict_col0 = base_header.copy()
-            elif lbl == "Pay Salary":
-                dict_col0 = base_pay_label.copy()
-            else:
-                dict_col0 = base_label.copy()
-
-            dict_col0['border'] = 1
-            if row_num == 0: dict_col0['top'] = 2
-            if row_num == total_rows - 1: dict_col0['bottom'] = 2
-            dict_col0['left'] = 2
-
-            worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
-
-            if row_num == 0:
-                dict_col1 = base_header.copy()
-            elif lbl == "Working Hrs":
-                dict_col1 = base_val_yellow.copy()
-            elif lbl in ["Present Hrs", "PL Used"]:
-                dict_col1 = base_val_green.copy()
-            elif lbl == "Pay Salary":
-                dict_col1 = base_pay_val.copy()
-            elif lbl == "Diff":
-                diff_val = float(val) if val != "-" else 0
-                if diff_val > 0: dict_col1 = base_diff_pos.copy()
-                elif diff_val < 0: dict_col1 = base_diff_neg.copy()
-                else: dict_col1 = base_diff_zero.copy()
-            elif lbl in currency_labels and val != "-":
-                dict_col1 = base_val_curr.copy()
-            else:
-                dict_col1 = base_val_text.copy()
-
-            dict_col1['border'] = 1
-            if row_num == 0: dict_col1['top'] = 2
-            if row_num == total_rows - 1: dict_col1['bottom'] = 2
-            dict_col1['right'] = 2
-
-            worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
-            
-    return output.getvalue()
-
-# ==========================================
-# 7. Button Execution Logic
-# ==========================================
-st.write("")
-_, btn_col, _ = st.columns([1, 1.5, 1])
-
-with btn_col:
-    save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
-
-if save_clicked:
-    if not emp_sidebar_name: 
-        st.error("Please enter Employee Name in the sidebar!")
-    else:
-        base_sal = ctc_salary - gratuity - bonus
-        hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
-        
-        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        net_sal_exact = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance + difference
-        net_sal = round(net_sal_exact)
-        
-        present_hrs_combined = present_hrs_input + (present_mins_input / 100.0)
-        
-        st.session_state['calc_result'] = {
-            "name": emp_name, "month": month, "year": year, "net": net_sal, "ot_sal": round(ot_salary, 2), "pl": final_pl_balance,
-            "slip_data": {
-                "work_hrs_str": f"{int(work_hrs)}:00",
-                "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
-                "actual_salary": ctc_salary - gratuity - bonus,
-                "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
-                "pl_used": used_pl,
-                "pl_balance": final_pl_balance,
-                "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
-                "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
-                "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
-                "pay_hrs": f"{total_min//60}:{total_min%60:02d}",
-                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
-                "pay_salary_val": net_sal - difference,
-                "bank_salary_val": net_sal
-            }
-        }
-        
-        new_rec = pd.DataFrame([{
-            "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
-            "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
-            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, 
-            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
-            "Advance": advance, "Bonus": bonus, "Difference": difference
-        }])
-        
-        if os.path.exists(user_file):
-            pd.concat([pd.read_csv(user_file), new_rec], ignore_index=True).to_csv(user_file, index=False)
-        else: 
-            new_rec.to_csv(user_file, index=False)
-            
-        st.session_state['form_key'] += 1
-        st.rerun()
-
-# ==========================================
-# SLIP DOWNLOAD BUTTON (AFTER SAVE)
-# ==========================================
-if st.session_state['calc_result']:
-    res = st.session_state['calc_result']
-    if res['name'] == emp_sidebar_name:
-        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹ {res['net']:,.2f} | OT Salary: ₹ {res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
-        
-        excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
-        
-        _, btn_col, _ = st.columns([1, 1.5, 1])
-        with btn_col:
-            st.download_button(
-                label="📄 Download Colorful Excel Slip",
-                data=excel_data,
-                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-    else:
-        st.session_state['calc_result'] = None
-
-# ==========================================
-# 8. Search Section
-# ==========================================
-st.divider()
-st.subheader("🔍 Search Records")
-with st.container(border=True):
-    s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
-    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn")
-    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
-    search_y = s3.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
-    
-    if s4.button("🔍 Search", use_container_width=True):
-        s_file = get_user_file(search_n)
-        if os.path.exists(s_file):
-            df_s = pd.read_csv(s_file)
-            df_s = clean_legacy_columns(df_s)
-                
-            res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
-            if not res.empty:
-                res.index = range(1, len(res) + 1)
-                st.dataframe(res, use_container_width=True, column_config=table_format_config)
-            else: 
-                st.warning("No record found for this month/year.")
-        else: 
-            st.error("File not found.")
-
-# ==========================================
-# 9. History & Download Old Slips
-# ==========================================
-if emp_sidebar_name:
-    st.divider()
-    user_file = get_user_file(emp_sidebar_name)
-    if os.path.exists(user_file):
-        st.subheader(f"📂 History: {emp_sidebar_name}")
-        h_df = pd.read_csv(user_file).fillna(0)
-        h_df = clean_legacy_columns(h_df)
-
-        if 'Month' in h_df.columns:
-            h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
-            if 'Year' in h_df.columns:
-                h_df = h_df.sort_values(['Year', 'Sort_M']).drop(columns=['Sort_M']).reset_index(drop=True)
-            else:
-                h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
-
-        edited_df = st.data_editor(
-            h_df, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}",
-            column_config=table_format_config
-        )
-        
-        if not h_df.equals(edited_df):
-            edited_df.to_csv(user_file, index=False)
-            st.toast("✅ Record auto-updated successfully!") 
-            st.rerun()
-
-        st.write("")
-        with st.container(border=True):
-            st.markdown("#### 📥 Download Slip from History")
-            h1, h2 = st.columns([2, 1])
-            with h1:
-                options = []
-                for idx, r in h_df.iterrows():
-                    options.append(f"{str(r.get('Month', '')).strip()} - {int(r.get('Year', current_year))}")
-                
-                unique_options = list(dict.fromkeys(options))
-                selected_opt = st.selectbox("Select Month & Year:", unique_options, key="hist_dl_sel")
-            
-            with h2:
-                st.write("") 
-                st.write("")
-                if selected_opt:
-                    sel_m, sel_y = selected_opt.split(" - ")
-                    row = h_df[(h_df['Month'].astype(str).str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
-                    
-                    p_hrs_val = float(row.get("Present Hrs", 0))
-                    p_hrs = int(p_hrs_val)
-                    p_mins = int(round((p_hrs_val - p_hrs) * 100))
-                    
-                    ot_m = int(row.get("OT Mins", 0))
-                    late_m = int(row.get("Late Mins", 0))
-                    early_m = int(row.get("Early Mins", 0))
-                    
-                    fh = str(row.get("Final Present Hrs", "0h 0m"))
-                    try:
-                        h, m = fh.replace('m','').split('h ')
-                        pay_str = f"{int(h)}:{int(m):02d}"
-                    except:
-                        pay_str = "0:00"
-                        
-                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
-                    
-                    net_sal_hist = float(row.get("Net Salary", 0))
-                    diff_hist = float(row.get("Difference", 0))
-                    
-                    hist_slip_data = {
-                        "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
-                        "ctc": row.get("CTC", 0),
-                        "bonus": row.get("Bonus", 0),
-                        "gratuity": row.get("Gratuity", 0),
-                        "actual_salary": actual_salary_hist,
-                        "present_hrs": f"{p_hrs}:{p_mins:02d}",
-                        "pl_used": row.get("PL Used", 0),
-                        "pl_balance": row.get("PL Balance", 0),
-                        "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
-                        "late_hrs": f"{late_m//60}:{late_m%60:02d}",
-                        "out_hrs": f"{early_m//60}:{early_m%60:02d}",
-                        "pay_hrs": pay_str,
-                        "pt": row.get("PT", 0),
-                        "tds": row.get("TDS", 0),
-                        "esic": row.get("ESIC", 0),
-                        "advance": row.get("Advance", 0),
-                        "food": row.get("Food", 0),
-                        "difference": diff_hist,
-                        "pay_salary_val": round(net_sal_hist - diff_hist),
-                        "bank_salary_val": round(net_sal_hist)
-                    }
-                    
-                    excel_data_hist = generate_excel_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
-                    
-                    st.download_button(
-                        label=f"📄 Download Slip ({sel_m} {sel_y})",
-                        data=excel_data_hist,
-                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        key="hist_dl_btn"
-                    )
-            
-    else:
-        st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
+        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'v
