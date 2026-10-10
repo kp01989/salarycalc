@@ -6,34 +6,61 @@ import os
 # File name for saving data
 FILE_NAME = "attendance.csv"
 
+# Default Office Timings for Calculation
+STANDARD_IN = "08:00"
+STANDARD_OUT = "18:00"
+
 # 1. Function to load existing data
 def load_data():
+    columns = ["Date", "Day", "In Time", "Out Time", "Late Hours", "Late Minutes", "Out Hours", "Out Minutes", "Total Hours"]
     if os.path.exists(FILE_NAME):
         return pd.read_csv(FILE_NAME)
     else:
-        return pd.DataFrame(columns=["Date", "Day", "In Time", "Out Time", "Total Hours"])
+        return pd.DataFrame(columns=columns)
 
 # 2. Function to save new data
 def save_data(df):
     df.to_csv(FILE_NAME, index=False)
 
-# 3. Calculate Total Hours from In Time and Out Time
-def calculate_hours(in_time, out_time):
+# 3. Calculate Total Hours, Late Timing, and Early Out Timing
+def calculate_times(in_time, out_time):
     fmt = "%H:%M"
     t1 = datetime.strptime(in_time.strftime(fmt), fmt)
     t2 = datetime.strptime(out_time.strftime(fmt), fmt)
+    std_in = datetime.strptime(STANDARD_IN, fmt)
+    std_out = datetime.strptime(STANDARD_OUT, fmt)
     
-    # If Out Time is greater than or equal to In Time
+    # Calculate Total Hours
     if t2 >= t1:
         delta = t2 - t1
         hours, remainder = divmod(delta.seconds, 3600)
         minutes, _ = divmod(remainder, 60)
-        return f"{hours:02d}:{minutes:02d}"
+        total_hrs = f"{hours:02d}:{minutes:02d}"
     else:
-        return "00:00"
+        total_hrs = "00:00"
+        
+    # Calculate Late Hours & Minutes
+    late_h, late_m = "", ""
+    if t1 > std_in:
+        late_delta = t1 - std_in
+        h, r = divmod(late_delta.seconds, 3600)
+        m, _ = divmod(r, 60)
+        late_h = str(h) if h > 0 else ""
+        late_m = str(m) if m > 0 or h > 0 else ""
+
+    # Calculate Out (Early Departure) Hours & Minutes
+    out_h, out_m = "", ""
+    if t2 < std_out:
+        out_delta = std_out - t2
+        h, r = divmod(out_delta.seconds, 3600)
+        m, _ = divmod(r, 60)
+        out_h = str(h) if h > 0 else ""
+        out_m = str(m) if m > 0 or h > 0 else ""
+        
+    return total_hrs, late_h, late_m, out_h, out_m
 
 # 4. Streamlit UI
-st.set_page_config(page_title="Attendance Tracker", layout="centered")
+st.set_page_config(page_title="Attendance Tracker", layout="wide")
 st.title("📅 Daily Attendance Tracker")
 
 # Load data
@@ -55,9 +82,10 @@ with st.form("entry_form"):
 
 # On form submission
 if submit:
-    day_str = entry_date.strftime("%a") # e.g., 'Mon', 'Tue'
+    day_str = entry_date.strftime("%a")
     date_str = entry_date.strftime("%d/%m/%Y")
-    total_hrs = calculate_hours(in_time, out_time)
+    
+    total_hrs, late_h, late_m, out_h, out_m = calculate_times(in_time, out_time)
     
     # Add new data to dataframe
     new_entry = pd.DataFrame({
@@ -65,6 +93,10 @@ if submit:
         "Day": [day_str],
         "In Time": [in_time.strftime("%H:%M")],
         "Out Time": [out_time.strftime("%H:%M")],
+        "Late Hours": [late_h],
+        "Late Minutes": [late_m],
+        "Out Hours": [out_h],
+        "Out Minutes": [out_m],
         "Total Hours": [total_hrs]
     })
     
@@ -87,7 +119,7 @@ if not df.empty:
     styled_df = df.style.apply(highlight_sunday, axis=1)
     
     # Display Table
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
     
     # Calculate Grand Total
     total_mins = 0
