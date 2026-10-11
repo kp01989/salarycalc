@@ -165,10 +165,9 @@ if not df_display.empty:
     if selected_emp != "All":
         df_display = df_display[df_display["Employee Name"] == selected_emp]
 
-    # Original Index સાચવી રાખવા જેથી ફિલ્ટર કર્યા પછી પણ સાચી એન્ટ્રી જ ડીલીટ થાય 
-    df_display["Original_Index"] = df_display.index
     df_display = df_display.fillna("")
 
+    # Sunday mate Color Styling
     def highlight_sunday(row):
         if row['Day'] == 'Sun':
             return ['background-color: #ff7f7f; color: white'] * len(row)
@@ -176,32 +175,8 @@ if not df_display.empty:
 
     styled_df = df_display.style.apply(highlight_sunday, axis=1)
     
-    # યુઝરને માહિતી આપવા માટે મેસેજ
-    st.markdown("💡 **માહિતી:** જે Entry ડીલીટ કરવી હોય તેને ડાબી બાજુના ચેકબોક્સ(Checkbox) થી સિલેક્ટ કરો. સિલેક્ટ કરતા જ ઉપર ડાઉનલોડ બટનની બાજુમાં 🗑️ (Delete) નું આઇકોન દેખાશે.")
-
-    # st.dataframe ની જગ્યાએ st.data_editor વાપર્યું છે
-    edited_df = st.data_editor(
-        styled_df, 
-        use_container_width=True, 
-        hide_index=True,
-        num_rows="dynamic", # આનાથી ચેકબોક્સ અને ડિલીટ ટૂલ એક્ટિવેટ થશે
-        column_config={
-            "Original_Index": None # ઓરિજિનલ ઇન્ડેક્સ યુઝરથી છુપાવવા માટે
-        },
-        key=f"editor_{selected_sheet}_{selected_emp}"
-    )
-    
-    # ડિલીટ લોજીક (જો ડેટાબેઝ કરતા edited_df માં લાઇનો ઓછી હોય, તો એનો અર્થ યુઝરે ડિલીટ કર્યું છે)
-    if len(edited_df) < len(df_display):
-        remaining_indices = edited_df["Original_Index"].dropna().tolist()
-        deleted_indices = set(df_display["Original_Index"]) - set(remaining_indices)
-        
-        if deleted_indices:
-            df_original = load_data(selected_sheet)
-            df_original = df_original.drop(list(deleted_indices)) # એક્સેલ માંથી કાયમ માટે કાઢી નાખવા
-            save_data(df_original, selected_sheet)
-            st.success("✅ Entry Delete થઈ ગઈ છે!")
-            st.rerun()
+    # Color mate st.dataframe j rakhvu jaruri che
+    st.dataframe(styled_df, use_container_width=True, hide_index=False)
     
     # Total Ganatri
     total_reg_mins = 0
@@ -225,6 +200,34 @@ if not df_display.empty:
         st.info(f"### 🕒 Regular Hours: **{reg_hours:02d}:{reg_mins:02d}**")
     with col_b:
         st.success(f"### 🔥 Total OT Hours: **{ot_hours:02d}:{ot_mins:02d}**")
+
+    # --- MULTI-ROW DELETE FACILITY ---
+    st.markdown("---")
+    st.subheader("🗑️ Delete Entries")
+    
+    delete_options = []
+    for idx, row in df_display.iterrows():
+        # Index sathe naam ane date dekhashe jethi khabar pade su delete thay che
+        delete_options.append(f"Index {idx}: {row['Employee Name']} | Date: {row['Date']} | In: {row['In Time']}")
+        
+    if delete_options:
+        # st.multiselect no use karyo che jethi 1 ke tethi vadhare rows ek sathe select kari shakai
+        selected_to_delete = st.multiselect("Je entry delete karvi hoy te select karo (Ek sathe ghani select kari shako cho):", delete_options)
+        
+        if st.button("Delete Selected Rows", type="primary"):
+            if selected_to_delete:
+                indices_to_drop = [int(sel.split(":")[0].replace("Index ", "")) for sel in selected_to_delete]
+                
+                df_original = load_data(selected_sheet)
+                df_original = df_original.drop(indices_to_drop)
+                save_data(df_original, selected_sheet)
+                
+                st.success(f"{len(indices_to_drop)} Entry/Entries Delete thai gai che!")
+                st.rerun() 
+            else:
+                st.warning("Delete karva mate pelha upar thi entry select karo.")
+    else:
+        st.write("Delete karva mate koi entry nathi.")
             
 else:
     st.info(f"No data available in sheet {selected_sheet}. Please add an entry above.")
