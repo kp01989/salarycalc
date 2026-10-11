@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, time
 import os
-import io  # Excel file memory ma banavva mate
+import io
 
 # Excel File Name
 FILE_NAME = "Attendance_Tracker.xlsx"
@@ -23,7 +23,7 @@ def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     if os.path.exists(FILE_NAME):
         try:
-            df = pd.read_excel(FILE_NAME, sheet_name=sheet_name)
+            df = pd.read_excel(FILE_NAME, sheet_name=sheet_name, dtype=str) # Force string type to avoid errors
             if "Employee Name" not in df.columns:
                 df.insert(0, "Employee Name", "-")
             if "OT Hours" not in df.columns:
@@ -89,6 +89,10 @@ def calculate_times(in_time, out_time, day_str):
             
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
+# --- Session State for Last Edited ---
+if 'last_edited_idx' not in st.session_state:
+    st.session_state.last_edited_idx = None
+
 # --- Streamlit UI ---
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 st.title("📅 Daily Attendance Tracker")
@@ -119,7 +123,6 @@ with st.expander("➕ Add New Entry", expanded=True):
             day_str = entry_date.strftime("%a")
             date_str = entry_date.strftime("%d/%m/%Y")
             
-            # --- DUPLICATE CHECK ---
             is_duplicate = not df_month[(df_month["Employee Name"] == formatted_name) & (df_month["Date"] == date_str)].empty
             
             if is_duplicate:
@@ -139,13 +142,16 @@ with st.expander("➕ Add New Entry", expanded=True):
                 })
                 df_month = pd.concat([df_month, new_entry], ignore_index=True)
                 save_data(df_month, target_sheet) 
+                
+                # Reset last edited on new entry
+                st.session_state.last_edited_idx = None
+                
                 st.success(f"Entry for {formatted_name} saved successfully!")
                 st.rerun() 
 
 st.divider()
 st.subheader("📋 Attendance Sheet")
 
-# Filter Section
 col_s1, col_s2, col_s3 = st.columns([2, 2, 1])
 with col_s1:
     available_sheets = get_all_sheet_names()
@@ -167,12 +173,10 @@ if not df_display.empty:
     if selected_emp != "All":
         df_display = df_display[df_display["Employee Name"] == selected_emp]
 
-    # Excel Download Button Section
     with col_s3:
-        st.write("") # Spacer
-        st.write("") # Spacer
+        st.write("") 
+        st.write("") 
         
-        # Buffer banavi ne DataFrame ne Excel ma convert karvu
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_export = df_display.drop(columns=["Original_Index"], errors='ignore')
@@ -187,16 +191,24 @@ if not df_display.empty:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    def highlight_sunday(row):
+    def highlight_rows(row):
+        colors = [''] * len(row)
+        
+        # Highlight Sunday
         if row['Day'] == 'Sun':
-            return ['background-color: #ff7f7f; color: white'] * len(row)
-        return [''] * len(row)
+            colors = ['background-color: #ff7f7f; color: white'] * len(row)
+            
+        # Highlight Last Edited Row (Yellow) - Overrides Sunday color if edited
+        if st.session_state.last_edited_idx is not None:
+            if row['Original_Index'] == st.session_state.last_edited_idx:
+                colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
+                
+        return colors
     
     st.markdown("💡 **Tip:** Table ni dabi baaju checkbox select kari ne Edit ke Delete karo.")
 
-    # Table Display
     event = st.dataframe(
-        df_display.style.apply(highlight_sunday, axis=1), 
+        df_display.style.apply(highlight_rows, axis=1), 
         use_container_width=True, 
         hide_index=True,
         on_select="rerun",           
@@ -206,23 +218,23 @@ if not df_display.empty:
         }
     )
     
-    # --- EDIT & DELETE (Appears ONLY when selected) ---
     selected_rows = event.selection.rows
     if len(selected_rows) > 0:
         st.markdown("---")
         
         if len(selected_rows) > 1:
-            # Multiple rows selected -> Only show Delete
             st.warning(f"⚠️ Tame {len(selected_rows)} entries select kari che. Eksathe multiple entries khali delete thai shake.")
             if st.button("🗑️ Delete Selected Entries", type="primary"):
                 indices_to_drop = df_display.iloc[selected_rows]["Original_Index"].tolist()
                 df_original = load_data(selected_sheet)
                 df_original = df_original.drop(indices_to_drop) 
                 save_data(df_original, selected_sheet)
+                
+                # Deselect all by clearing selection and rerunning
+                st.session_state.last_edited_idx = None
                 st.success("✅ Entries deleted successfully!")
                 st.rerun()
         else:
-            # Exactly 1 row selected -> Show Edit & Delete side-by-side
             selected_idx = df_display.iloc[selected_rows[0]]["Original_Index"]
             row_data = df_display.iloc[selected_rows[0]]
             
@@ -247,7 +259,6 @@ if not df_display.empty:
                         formatted_e_name = e_name.strip().title()
                         date_str_e = e_date.strftime("%d/%m/%Y")
                         
-                        # Duplicate check on edit (excluding current row)
                         df_original = load_data(selected_sheet)
                         temp_check = df_original.drop(selected_idx)
                         if not temp_check[(temp_check["Employee Name"] == formatted_e_name) & (temp_check["Date"] == date_str_e)].empty:
@@ -256,17 +267,26 @@ if not df_display.empty:
                             day_str_e = e_date.strftime("%a")
                             t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
                             
-                            df_original.at[selected_idx, "Employee Name"] = formatted_e_name
-                            df_original.at[selected_idx, "Date"] = date_str_e
-                            df_original.at[selected_idx, "Day"] = day_str_e
-                            df_original.at[selected_idx, "In Time"] = e_in.strftime("%H:%M")
-                            df_original.at[selected_idx, "Out Time"] = e_out.strftime("%H:%M")
-                            df_original.at[selected_idx, "Late Hours"] = l_hrs
-                            df_original.at[selected_idx, "Out Hours"] = o_hrs
-                            df_original.at[selected_idx, "Total Hours"] = t_hrs
-                            df_original.at[selected_idx, "OT Hours"] = ot_hrs
+                            # Create a new DataFrame with the updated row to avoid dtype issues
+                            updated_row = pd.DataFrame({
+                                "Employee Name": [formatted_e_name],
+                                "Date": [date_str_e],
+                                "Day": [day_str_e],
+                                "In Time": [e_in.strftime("%H:%M")],
+                                "Out Time": [e_out.strftime("%H:%M")],
+                                "Late Hours": [l_hrs],
+                                "Out Hours": [o_hrs],
+                                "Total Hours": [t_hrs],
+                                "OT Hours": [ot_hrs]
+                            }, index=[selected_idx])
+                            
+                            df_original.update(updated_row)
                             
                             save_data(df_original, selected_sheet)
+                            
+                            # Set session state to highlight this row
+                            st.session_state.last_edited_idx = selected_idx
+                            
                             st.success("✅ Entry updated successfully!")
                             st.rerun()
 
@@ -277,12 +297,13 @@ if not df_display.empty:
                     df_original = load_data(selected_sheet)
                     df_original = df_original.drop(selected_idx) 
                     save_data(df_original, selected_sheet)
+                    
+                    st.session_state.last_edited_idx = None
                     st.success("✅ Entry deleted successfully!")
                     st.rerun()
 
     st.markdown("---")
     
-    # --- SUMMARY DASHBOARD ---
     total_reg_mins = 0
     for val in df_display["Total Hours"]:
         if pd.notna(val) and ":" in str(val):
