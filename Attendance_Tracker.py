@@ -165,9 +165,13 @@ if not df_display.empty:
     if selected_emp != "All":
         df_display = df_display[df_display["Employee Name"] == selected_emp]
 
+    # None / NaN values ne blank (ખાલી) કરવા માટે
+    df_display = df_display.fillna("")
+
     def highlight_sunday(row):
         if row['Day'] == 'Sun':
-            return ['background-color: red; color: white'] * len(row)
+            # આછો લાલ કલર (Light Red / Coral) અને સફેદ ફોન્ટ
+            return ['background-color: #ff7f7f; color: white'] * len(row)
         return [''] * len(row)
 
     styled_df = df_display.style.apply(highlight_sunday, axis=1)
