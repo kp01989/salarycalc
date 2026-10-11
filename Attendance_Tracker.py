@@ -165,11 +165,11 @@ if not df_display.empty:
     if selected_emp != "All":
         df_display = df_display[df_display["Employee Name"] == selected_emp]
 
-    # Original Index સાચવી રાખવા માટે
+    # Original Index sachvi rakhva mate
     df_display["Original_Index"] = df_display.index
     df_display = df_display.fillna("")
 
-    # Sunday mate Color Styling (આછો લાલ)
+    # Sunday mate Color Styling (Aacho Lal)
     def highlight_sunday(row):
         if row['Day'] == 'Sun':
             return ['background-color: #ff7f7f; color: white'] * len(row)
@@ -177,33 +177,33 @@ if not df_display.empty:
 
     styled_df = df_display.style.apply(highlight_sunday, axis=1)
     
-    st.markdown("💡 **માહિતી:** ડિલીટ કરવા માટે ટેબલની ડાબી બાજુ આપેલા ચેકબોક્સ(Checkbox) પર ક્લિક કરો.")
+    st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to delete an entry.")
 
-    # st.dataframe માં જ સિલેક્શન ટૂલ વાપર્યું છે
+    # st.dataframe ma j selection tool che
     event = st.dataframe(
         styled_df, 
         use_container_width=True, 
         hide_index=True,
-        on_select="rerun",           # સિલેક્ટ કરતા જ પેજ રીફ્રેશ થશે અને નીચે બટન દેખાશે
-        selection_mode="multi-row",  # મલ્ટીપલ સિલેક્શન માટે
+        on_select="rerun",           # Select karta j page refresh thase
+        selection_mode="multi-row",  # Multiple selection mate
         column_config={
-            "Original_Index": None   # ઓરિજિનલ ઇન્ડેક્સ યુઝરથી છુપાવવા માટે
+            "Original_Index": None   # Original index hide karva mate
         }
     )
     
-    # ડિલીટ લોજીક (જો યુઝરે ચેકબોક્સ સિલેક્ટ કર્યા હોય)
+    # Delete logic
     selected_rows = event.selection.rows
     if selected_rows:
-        st.warning(f"તમે {len(selected_rows)} એન્ટ્રી સિલેક્ટ કરી છે.")
+        st.warning(f"You have selected {len(selected_rows)} entry/entries.")
         if st.button("🗑️ Delete Selected Entries", type="primary"):
-            # સિલેક્ટ કરેલી રો ના ઓરિજિનલ ઇન્ડેક્સ મેળવવા
+            # Select kareli row na original index melavva
             indices_to_drop = df_display.iloc[selected_rows]["Original_Index"].tolist()
             
             df_original = load_data(selected_sheet)
-            df_original = df_original.drop(indices_to_drop) # એક્સેલ માંથી કાયમ માટે કાઢી નાખવા
+            df_original = df_original.drop(indices_to_drop) # Excel mathi remove karva
             save_data(df_original, selected_sheet)
             
-            st.success("✅ Entry Delete થઈ ગઈ છે!")
+            st.success("✅ Entry deleted successfully!")
             st.rerun()
 
     st.markdown("---")
