@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, time
 import os
+import io  # Excel file memory ma banavva mate
 
 # Excel File Name
 FILE_NAME = "Attendance_Tracker.xlsx"
@@ -144,7 +145,8 @@ with st.expander("➕ Add New Entry", expanded=True):
 st.divider()
 st.subheader("📋 Attendance Sheet")
 
-col_s1, col_s2 = st.columns(2)
+# Filter Section
+col_s1, col_s2, col_s3 = st.columns([2, 2, 1])
 with col_s1:
     available_sheets = get_all_sheet_names()
     selected_sheet = st.selectbox("Select Month to View", available_sheets)
@@ -165,17 +167,36 @@ if not df_display.empty:
     if selected_emp != "All":
         df_display = df_display[df_display["Employee Name"] == selected_emp]
 
+    # Excel Download Button Section
+    with col_s3:
+        st.write("") # Spacer
+        st.write("") # Spacer
+        
+        # Buffer banavi ne DataFrame ne Excel ma convert karvu
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_export = df_display.drop(columns=["Original_Index"], errors='ignore')
+            df_export.to_excel(writer, index=False, sheet_name=selected_sheet)
+        excel_data = buffer.getvalue()
+        
+        file_name_export = f"Attendance_{selected_sheet}_{selected_emp}.xlsx"
+        st.download_button(
+            label="⬇️ Download Data (Excel)",
+            data=excel_data,
+            file_name=file_name_export,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     def highlight_sunday(row):
         if row['Day'] == 'Sun':
             return ['background-color: #ff7f7f; color: white'] * len(row)
         return [''] * len(row)
-
-    styled_df = df_display.style.apply(highlight_sunday, axis=1)
     
     st.markdown("💡 **Tip:** Table ni dabi baaju checkbox select kari ne Edit ke Delete karo.")
 
+    # Table Display
     event = st.dataframe(
-        styled_df, 
+        df_display.style.apply(highlight_sunday, axis=1), 
         use_container_width=True, 
         hide_index=True,
         on_select="rerun",           
@@ -185,10 +206,14 @@ if not df_display.empty:
         }
     )
     
+    # --- EDIT & DELETE (Appears ONLY when selected) ---
     selected_rows = event.selection.rows
-    if selected_rows:
+    if len(selected_rows) > 0:
+        st.markdown("---")
+        
         if len(selected_rows) > 1:
-            st.warning("Eksathe multiple rows khali Delete kari shakay. Edit karva mate koi 1 j row select karo.")
+            # Multiple rows selected -> Only show Delete
+            st.warning(f"⚠️ Tame {len(selected_rows)} entries select kari che. Eksathe multiple entries khali delete thai shake.")
             if st.button("🗑️ Delete Selected Entries", type="primary"):
                 indices_to_drop = df_display.iloc[selected_rows]["Original_Index"].tolist()
                 df_original = load_data(selected_sheet)
@@ -197,11 +222,10 @@ if not df_display.empty:
                 st.success("✅ Entries deleted successfully!")
                 st.rerun()
         else:
-            # Side-by-side Edit & Delete UI
+            # Exactly 1 row selected -> Show Edit & Delete side-by-side
             selected_idx = df_display.iloc[selected_rows[0]]["Original_Index"]
             row_data = df_display.iloc[selected_rows[0]]
             
-            st.markdown("---")
             col_edit, col_delete = st.columns([3, 1])
             
             with col_edit:
@@ -248,6 +272,7 @@ if not df_display.empty:
 
             with col_delete:
                 st.subheader("🗑️ Delete")
+                st.write("Aa entry ne hamesha mate kadhva mate niche click karo:")
                 if st.button("Delete This Entry", type="primary"):
                     df_original = load_data(selected_sheet)
                     df_original = df_original.drop(selected_idx) 
@@ -257,6 +282,7 @@ if not df_display.empty:
 
     st.markdown("---")
     
+    # --- SUMMARY DASHBOARD ---
     total_reg_mins = 0
     for val in df_display["Total Hours"]:
         if pd.notna(val) and ":" in str(val):
