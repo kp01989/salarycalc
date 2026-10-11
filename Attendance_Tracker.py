@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, time
 import os
 
 # Excel File Name
@@ -111,9 +111,11 @@ with st.form("entry_form"):
     with col1:
         entry_date = st.date_input("Date", date.today())
     with col2:
-        in_time = st.time_input("In Time")
+        # Default In Time set to 08:00
+        in_time = st.time_input("In Time", value=time(8, 0))
     with col3:
-        out_time = st.time_input("Out Time")
+        # Default Out Time set to 18:00
+        out_time = st.time_input("Out Time", value=time(18, 0))
         
     submit = st.form_submit_button("Add Entry")
 
