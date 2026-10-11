@@ -23,19 +23,16 @@ def get_all_sheet_names():
 
 # Data load karva mate
 def load_data(sheet_name):
-    # Navi columns nu list (Minutes wali columns kadhi nakhi che)
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     if os.path.exists(FILE_NAME):
         try:
             df = pd.read_excel(FILE_NAME, sheet_name=sheet_name)
             
-            # Jo juni file ma nava columns na hoy to add kari do (Error na aave ena mate)
             if "Employee Name" not in df.columns:
                 df.insert(0, "Employee Name", "-")
             if "OT Hours" not in df.columns:
                 df["OT Hours"] = "00:00"
                 
-            # Juna (Minutes) columns kadhi nakhva mate
             cols_to_drop = ["Late Minutes", "Out Minutes"]
             df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
             
@@ -54,7 +51,7 @@ def save_data(df, sheet_name):
         with pd.ExcelWriter(FILE_NAME, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
             df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-# Time ganatri karva mate (Merge hours/minutes in HH:MM format)
+# Time ganatri karva mate 
 def calculate_times(in_time, out_time, day_str):
     fmt = "%H:%M"
     t1 = datetime.strptime(in_time.strftime(fmt), fmt)
@@ -62,7 +59,6 @@ def calculate_times(in_time, out_time, day_str):
     std_in = datetime.strptime(STANDARD_IN, fmt)
     std_out = datetime.strptime(STANDARD_OUT, fmt)
     
-    # Kul kalak ganva
     worked_mins_total = 0
     if t2 >= t1:
         delta = t2 - t1
@@ -76,12 +72,10 @@ def calculate_times(in_time, out_time, day_str):
     ot_hrs = "00:00"
     total_hrs = "00:00"
     
-    # Jo Sunday hoy to badha hours OT ma jashe
     if day_str == "Sun":
         ot_hrs = worked_hrs
         total_hrs = "00:00"
     else:
-        # Regular Day Overtime Logic (> 10 hours)
         if worked_mins_total > 600:
             total_hrs = "10:00" 
             extra_mins = worked_mins_total - 600
@@ -91,14 +85,12 @@ def calculate_times(in_time, out_time, day_str):
             total_hrs = worked_hrs
             ot_hrs = "00:00"
         
-        # Late aavya ni ganatri (HH:MM format ma)
         if t1 > std_in:
             late_delta = t1 - std_in
             h, r = divmod(late_delta.seconds, 3600)
             m, _ = divmod(r, 60)
             late_hrs = f"{h:02d}:{m:02d}"
 
-        # Vhela gaya ni ganatri (Early Out in HH:MM format)
         if t2 < std_out:
             out_delta = std_out - t2
             h, r = divmod(out_delta.seconds, 3600)
@@ -152,6 +144,7 @@ if submit:
         df_month = pd.concat([df_month, new_entry], ignore_index=True)
         save_data(df_month, target_sheet) 
         st.success(f"Entry for {emp_name} saved in sheet: {target_sheet}")
+        st.rerun() # Entry add thya pachi page refresh karva mate
 
 st.divider()
 
@@ -180,7 +173,7 @@ if not df_display.empty:
     styled_df = df_display.style.apply(highlight_sunday, axis=1)
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
     
-    # Regular Hours Total
+    # Total Ganatri
     total_reg_mins = 0
     for val in df_display["Total Hours"]:
         if pd.notna(val) and ":" in str(val):
@@ -189,7 +182,6 @@ if not df_display.empty:
             
     reg_hours, reg_mins = divmod(total_reg_mins, 60)
     
-    # OT Hours Total
     total_ot_mins = 0
     for val in df_display["OT Hours"]:
         if pd.notna(val) and ":" in str(val):
@@ -203,6 +195,28 @@ if not df_display.empty:
         st.info(f"### 🕒 Regular Hours: **{reg_hours:02d}:{reg_mins:02d}**")
     with col_b:
         st.success(f"### 🔥 Total OT Hours: **{ot_hours:02d}:{ot_mins:02d}**")
-        
+
+    # --- DELETE ROW FACILITY ---
+    st.markdown("---")
+    with st.expander("🗑️ Delete Entry (Khoti entry kadhva mate)"):
+        # Dropdown mate option banavva
+        delete_options = []
+        for idx, row in df_display.iterrows():
+            delete_options.append(f"Index {idx}: {row['Employee Name']} | Date: {row['Date']} | In: {row['In Time']}")
+            
+        if delete_options:
+            selected_to_delete = st.selectbox("Je entry delete karvi hoy te select karo:", delete_options)
+            
+            if st.button("Delete Selected Row", type="primary"):
+                # Index shodho ane Excel mathi remove karo
+                idx_to_drop = int(selected_to_delete.split(":")[0].replace("Index ", ""))
+                df_original = load_data(selected_sheet)
+                df_original = df_original.drop(idx_to_drop)
+                save_data(df_original, selected_sheet)
+                st.success("Entry Delete thai gai che!")
+                st.rerun() # Delete thya pachi page refresh
+        else:
+            st.write("Delete karva mate koi entry nathi.")
+            
 else:
     st.info(f"No data available in sheet {selected_sheet}. Please add an entry above.")
