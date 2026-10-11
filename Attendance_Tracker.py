@@ -6,43 +6,35 @@ import os
 # Excel File Name
 FILE_NAME = "Attendance_Tracker.xlsx"
 
-# Default Office Timings
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
 
-# Sheet nu naam banavva mate (e.g., Oct'2026)
 def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
-# Excel mathi badhi sheet na naam lavva mate
 def get_all_sheet_names():
     if os.path.exists(FILE_NAME):
         xl = pd.ExcelFile(FILE_NAME)
         return xl.sheet_names
     return [get_sheet_name(date.today())]
 
-# Data load karva mate
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     if os.path.exists(FILE_NAME):
         try:
             df = pd.read_excel(FILE_NAME, sheet_name=sheet_name)
-            
             if "Employee Name" not in df.columns:
                 df.insert(0, "Employee Name", "-")
             if "OT Hours" not in df.columns:
                 df["OT Hours"] = "00:00"
-                
             cols_to_drop = ["Late Minutes", "Out Minutes"]
             df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
-            
             return df
         except ValueError:
             return pd.DataFrame(columns=columns)
     else:
         return pd.DataFrame(columns=columns)
 
-# Data save karva mate
 def save_data(df, sheet_name):
     if not os.path.exists(FILE_NAME):
         with pd.ExcelWriter(FILE_NAME, engine='openpyxl') as writer:
@@ -51,7 +43,6 @@ def save_data(df, sheet_name):
         with pd.ExcelWriter(FILE_NAME, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
             df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-# Time ganatri karva mate 
 def calculate_times(in_time, out_time, day_str):
     fmt = "%H:%M"
     t1 = datetime.strptime(in_time.strftime(fmt), fmt)
@@ -68,15 +59,13 @@ def calculate_times(in_time, out_time, day_str):
     else:
         worked_hrs = "00:00"
         
-    late_hrs, out_hrs = "", ""
-    ot_hrs = "00:00"
-    total_hrs = "00:00"
+    late_hrs, out_hrs, ot_hrs, total_hrs = "", "", "00:00", "00:00"
     
     if day_str == "Sun":
         ot_hrs = worked_hrs
         total_hrs = "00:00"
     else:
-        if worked_mins_total > 600: # 10 hours = 600 mins
+        if worked_mins_total > 600:
             total_hrs = "10:00" 
             extra_mins = worked_mins_total - 600
             e_h, e_m = divmod(extra_mins, 60)
@@ -91,7 +80,7 @@ def calculate_times(in_time, out_time, day_str):
             m, _ = divmod(r, 60)
             late_hrs = f"{h:02d}:{m:02d}"
 
-        if t2 < std_out and t2 >= t1: # Only calculate early out if they worked
+        if t2 < std_out and t2 >= t1:
             out_delta = std_out - t2
             h, r = divmod(out_delta.seconds, 3600)
             m, _ = divmod(r, 60)
@@ -106,7 +95,6 @@ st.title("📅 Daily Attendance Tracker")
 with st.expander("➕ Add New Entry", expanded=True):
     with st.form("entry_form"):
         emp_name = st.text_input("Employee Name", placeholder="e.g. Ramesh Patel")
-        
         col1, col2, col3 = st.columns(3)
         with col1:
             entry_date = st.date_input("Date", date.today())
@@ -123,36 +111,37 @@ with st.expander("➕ Add New Entry", expanded=True):
         elif out_time < in_time:
             st.error("Out Time cannot be before In Time!")
         else:
-            # Format name properly (Title Case)
             formatted_name = emp_name.strip().title()
-            
             target_sheet = get_sheet_name(entry_date)
             df_month = load_data(target_sheet)
             
             day_str = entry_date.strftime("%a")
             date_str = entry_date.strftime("%d/%m/%Y")
             
-            total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
+            # --- DUPLICATE CHECK ---
+            is_duplicate = not df_month[(df_month["Employee Name"] == formatted_name) & (df_month["Date"] == date_str)].empty
             
-            new_entry = pd.DataFrame({
-                "Employee Name": [formatted_name],
-                "Date": [date_str],
-                "Day": [day_str],
-                "In Time": [in_time.strftime("%H:%M")],
-                "Out Time": [out_time.strftime("%H:%M")],
-                "Late Hours": [late_hrs],
-                "Out Hours": [out_hrs],
-                "Total Hours": [total_hrs],
-                "OT Hours": [ot_hrs]
-            })
-            
-            df_month = pd.concat([df_month, new_entry], ignore_index=True)
-            save_data(df_month, target_sheet) 
-            st.success(f"Entry for {formatted_name} saved successfully!")
-            st.rerun() 
+            if is_duplicate:
+                st.error(f"⚠️ {formatted_name} ni tarikh {date_str} ni entry aagad thi j add kareli che!")
+            else:
+                total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
+                new_entry = pd.DataFrame({
+                    "Employee Name": [formatted_name],
+                    "Date": [date_str],
+                    "Day": [day_str],
+                    "In Time": [in_time.strftime("%H:%M")],
+                    "Out Time": [out_time.strftime("%H:%M")],
+                    "Late Hours": [late_hrs],
+                    "Out Hours": [out_hrs],
+                    "Total Hours": [total_hrs],
+                    "OT Hours": [ot_hrs]
+                })
+                df_month = pd.concat([df_month, new_entry], ignore_index=True)
+                save_data(df_month, target_sheet) 
+                st.success(f"Entry for {formatted_name} saved successfully!")
+                st.rerun() 
 
 st.divider()
-
 st.subheader("📋 Attendance Sheet")
 
 col_s1, col_s2 = st.columns(2)
@@ -163,11 +152,8 @@ with col_s1:
 df_display = load_data(selected_sheet)
 
 if not df_display.empty:
-    # Sort data by Employee Name and Date for professional look
     df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
     df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
-    
-    # Refresh index after sorting
     df_display = df_display.reset_index(drop=True)
     df_display["Original_Index"] = df_display.index
     df_display = df_display.fillna("")
@@ -186,7 +172,7 @@ if not df_display.empty:
 
     styled_df = df_display.style.apply(highlight_sunday, axis=1)
     
-    st.markdown("💡 **Tip:** Select checkbox on the left to Edit or Delete entries.")
+    st.markdown("💡 **Tip:** Table ni dabi baaju checkbox select kari ne Edit ke Delete karo.")
 
     event = st.dataframe(
         styled_df, 
@@ -199,67 +185,78 @@ if not df_display.empty:
         }
     )
     
-    # --- EDIT & DELETE LOGIC ---
     selected_rows = event.selection.rows
     if selected_rows:
-        col_btn1, col_btn2 = st.columns([1, 4])
-        
-        with col_btn2:
-            if st.button("🗑️ Delete Selected", type="primary"):
+        if len(selected_rows) > 1:
+            st.warning("Eksathe multiple rows khali Delete kari shakay. Edit karva mate koi 1 j row select karo.")
+            if st.button("🗑️ Delete Selected Entries", type="primary"):
                 indices_to_drop = df_display.iloc[selected_rows]["Original_Index"].tolist()
                 df_original = load_data(selected_sheet)
                 df_original = df_original.drop(indices_to_drop) 
                 save_data(df_original, selected_sheet)
-                st.success("✅ Entry deleted successfully!")
+                st.success("✅ Entries deleted successfully!")
                 st.rerun()
-                
-        # Show Edit Option ONLY if exactly 1 row is selected
-        if len(selected_rows) == 1:
-            st.markdown("---")
-            st.subheader("✏️ Edit Selected Entry")
+        else:
+            # Side-by-side Edit & Delete UI
             selected_idx = df_display.iloc[selected_rows[0]]["Original_Index"]
             row_data = df_display.iloc[selected_rows[0]]
             
-            with st.form("edit_form"):
-                e_name = st.text_input("Employee Name", value=row_data["Employee Name"])
-                
-                col_e1, col_e2, col_e3 = st.columns(3)
-                with col_e1:
-                    d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
-                    e_date = st.date_input("Date", value=d_obj, key="e_date")
-                with col_e2:
-                    in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
-                    e_in = st.time_input("In Time", value=in_obj, key="e_in")
-                with col_e3:
-                    out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
-                    e_out = st.time_input("Out Time", value=out_obj, key="e_out")
-                    
-                if st.form_submit_button("Update Entry", type="secondary"):
-                    formatted_e_name = e_name.strip().title()
-                    day_str_e = e_date.strftime("%a")
-                    date_str_e = e_date.strftime("%d/%m/%Y")
-                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
-                    
+            st.markdown("---")
+            col_edit, col_delete = st.columns([3, 1])
+            
+            with col_edit:
+                st.subheader("✏️ Edit Selected Entry")
+                with st.form("edit_form"):
+                    e_name = st.text_input("Employee Name", value=row_data["Employee Name"])
+                    ce1, ce2, ce3 = st.columns(3)
+                    with ce1:
+                        d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
+                        e_date = st.date_input("Date", value=d_obj, key="e_date")
+                    with ce2:
+                        in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
+                        e_in = st.time_input("In Time", value=in_obj, key="e_in")
+                    with ce3:
+                        out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
+                        e_out = st.time_input("Out Time", value=out_obj, key="e_out")
+                        
+                    if st.form_submit_button("Update Entry", type="secondary"):
+                        formatted_e_name = e_name.strip().title()
+                        date_str_e = e_date.strftime("%d/%m/%Y")
+                        
+                        # Duplicate check on edit (excluding current row)
+                        df_original = load_data(selected_sheet)
+                        temp_check = df_original.drop(selected_idx)
+                        if not temp_check[(temp_check["Employee Name"] == formatted_e_name) & (temp_check["Date"] == date_str_e)].empty:
+                            st.error("⚠️ Aa tarikh par aa employee ni entry pehla thi j che!")
+                        else:
+                            day_str_e = e_date.strftime("%a")
+                            t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
+                            
+                            df_original.at[selected_idx, "Employee Name"] = formatted_e_name
+                            df_original.at[selected_idx, "Date"] = date_str_e
+                            df_original.at[selected_idx, "Day"] = day_str_e
+                            df_original.at[selected_idx, "In Time"] = e_in.strftime("%H:%M")
+                            df_original.at[selected_idx, "Out Time"] = e_out.strftime("%H:%M")
+                            df_original.at[selected_idx, "Late Hours"] = l_hrs
+                            df_original.at[selected_idx, "Out Hours"] = o_hrs
+                            df_original.at[selected_idx, "Total Hours"] = t_hrs
+                            df_original.at[selected_idx, "OT Hours"] = ot_hrs
+                            
+                            save_data(df_original, selected_sheet)
+                            st.success("✅ Entry updated successfully!")
+                            st.rerun()
+
+            with col_delete:
+                st.subheader("🗑️ Delete")
+                if st.button("Delete This Entry", type="primary"):
                     df_original = load_data(selected_sheet)
-                    df_original.at[selected_idx, "Employee Name"] = formatted_e_name
-                    df_original.at[selected_idx, "Date"] = date_str_e
-                    df_original.at[selected_idx, "Day"] = day_str_e
-                    df_original.at[selected_idx, "In Time"] = e_in.strftime("%H:%M")
-                    df_original.at[selected_idx, "Out Time"] = e_out.strftime("%H:%M")
-                    df_original.at[selected_idx, "Late Hours"] = l_hrs
-                    df_original.at[selected_idx, "Out Hours"] = o_hrs
-                    df_original.at[selected_idx, "Total Hours"] = t_hrs
-                    df_original.at[selected_idx, "OT Hours"] = ot_hrs
-                    
+                    df_original = df_original.drop(selected_idx) 
                     save_data(df_original, selected_sheet)
-                    st.success("✅ Entry updated successfully!")
+                    st.success("✅ Entry deleted successfully!")
                     st.rerun()
-        else:
-            st.info("📌 Note: Edit option is only available when exactly ONE row is selected.")
 
     st.markdown("---")
     
-    # --- SUMMARY DASHBOARD ---
     total_reg_mins = 0
     for val in df_display["Total Hours"]:
         if pd.notna(val) and ":" in str(val):
