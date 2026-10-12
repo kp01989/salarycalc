@@ -214,7 +214,7 @@ def save_attendance_data(df, sheet_name):
             df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 # ==========================================
-# 5. Sidebar Profile & Logic Setup
+# 5. Sidebar Profile & Connected Name Logic
 # ==========================================
 with st.sidebar:
     st.header("👤 Profile")
@@ -259,6 +259,9 @@ with st.sidebar:
         except Exception:
             pass
 
+# Sidebar mathi name aapse etle aupohap badhe sync thai jase
+formatted_name = emp_sidebar_name.strip().title()
+
 # ==========================================
 # 6. Daily Attendance Tracker Section
 # ==========================================
@@ -269,32 +272,16 @@ if 'last_edited' not in st.session_state:
 
 if 'filter_month' not in st.session_state:
     st.session_state.filter_month = current_month_str
-
-if 'top_emp_input' not in st.session_state:
-    st.session_state.top_emp_input = ""
     
 if 'form_reset_counter' not in st.session_state:
     st.session_state.form_reset_counter = 0
 
-def on_top_name_change():
-    val = st.session_state.top_emp_input.strip()
-    if val:
-        st.session_state.filter_month = current_month_str
-
 with st.expander("➕ Add New Attendance Entry / Search", expanded=True):
-    col_input1, col_input2 = st.columns([1.5, 2.5])
-    
-    with col_input1:
-        st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
-    
-    formatted_name = st.session_state.top_emp_input.strip().title()
-
     if formatted_name == "Admin":
         all_emps = get_all_employees()
         if all_emps:
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
-    # Time inputs outside st.form so they correctly capture selected time values
     c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
     with c1:
         entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
@@ -314,7 +301,7 @@ with st.expander("➕ Add New Attendance Entry / Search", expanded=True):
 
     if submit:
         if not formatted_name:
-            st.error("Please enter an Employee Name above!")
+            st.error("Please enter an Employee Name in the sidebar first!")
         elif formatted_name == "Admin":
             st.error("You cannot add an entry for 'Admin'. Please type a valid name!")
         elif out_time < in_time:
@@ -367,24 +354,21 @@ auto_ot_mins = int(last_data["OT"])
 auto_late_mins = int(last_data["Late"])
 auto_early_mins = int(last_data["Early"])
 
-if emp_sidebar_name:
-    pass
-
-kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
+kb = f"{st.session_state['form_key']}_{formatted_name}"
 
 col1, col2 = st.columns(2)
 
 with col1:
     with st.container(border=True):
         st.subheader("💰 Basic Salary & Hours Details")
-        emp_name = st.text_input("👤 Full Name", value=emp_sidebar_name, disabled=True)
+        emp_name = st.text_input("👤 Full Name", value=formatted_name, disabled=True)
         
         m_col, y_col = st.columns(2)
         m_list = list(month_dict.keys())
         default_month = current_month_name 
         def_year = current_year
         
-        if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
+        if formatted_name and not is_new_employee and last_saved_month in m_list:
             last_idx = m_list.index(last_saved_month)
             if last_idx < 11: 
                 default_month = m_list[last_idx + 1]
@@ -414,9 +398,9 @@ with col1:
                 present_mins_input = st.number_input("⏱️ Mins", value=def_p_mins, min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
             
             available_pl = 0.0
-            if emp_sidebar_name and is_new_employee:
+            if formatted_name and is_new_employee:
                 available_pl = st.number_input("⚖️ Opening PL Balance", value=0.0, step=0.5, key=f"opl_{kb}")
-            elif emp_sidebar_name and not is_new_employee:
+            elif formatted_name and not is_new_employee:
                 available_pl = last_pl_balance + 1.0
                 st.text_input(f"⚖️ Available PL (From {last_saved_month} + 1)", value=str(available_pl), disabled=True)
 
@@ -425,21 +409,18 @@ with col1:
         with c1_2:
             work_hrs = st.number_input("🏢 Working Hrs", value=float(last_data["Working_Hrs"]), key=f"shrs_{kb}")
             
-            # --- LATE ---
             def_late_hrs = auto_late_mins // 60
             def_late_mins = auto_late_mins % 60
             l_h_col, l_m_col = st.columns(2)
             with l_h_col: late_hrs_input = st.number_input("⏰ Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
             with l_m_col: late_mins_input = st.number_input("⏱️ Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
 
-            # --- EARLY GOING ---
             def_early_hrs = auto_early_mins // 60
             def_early_mins = auto_early_mins % 60
             e_h_col, e_m_col = st.columns(2)
             with e_h_col: early_hrs_input = st.number_input("🚶 Out Hrs", value=def_early_hrs, step=1, key=f"ehrs_{kb}")
             with e_m_col: early_mins_input = st.number_input("⏱️ Out Mins", value=def_early_mins, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
 
-            # --- OT (Overtime) ---
             def_ot_hrs = auto_ot_mins // 60
             def_ot_mins = auto_ot_mins % 60
             o_h_col, o_m_col = st.columns(2)
@@ -595,7 +576,7 @@ with btn_col:
     save_clicked = st.button("Calculate & Save Salary Data", type="primary", use_container_width=True)
 
 if save_clicked:
-    if not emp_sidebar_name: 
+    if not formatted_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
         base_sal = ctc_salary - gratuity - bonus
@@ -636,7 +617,7 @@ if save_clicked:
             "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
         
-        user_csv_file = get_user_file(emp_sidebar_name)
+        user_csv_file = get_user_file(formatted_name)
         if os.path.exists(user_csv_file):
             pd.concat([pd.read_csv(user_csv_file), new_rec], ignore_index=True).to_csv(user_csv_file, index=False)
         else: 
@@ -650,7 +631,7 @@ if save_clicked:
 # ==========================================
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
-    if res['name'] == emp_sidebar_name:
+    if res['name'] == formatted_name:
         st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹ {res['net']:,.2f} | OT Salary: ₹ {res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
         
         excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
@@ -673,7 +654,7 @@ if st.session_state['calc_result']:
 st.divider()
 
 if not formatted_name:
-    st.info("👆 Please enter a name in the sidebar or above to view or add attendance data.")
+    st.info("👆 Please enter an Employee Name in the sidebar above to view or add attendance data.")
 else:
     all_sheets_raw = get_all_sheet_names()
     if current_month_str not in all_sheets_raw:
@@ -939,11 +920,11 @@ with st.container(border=True):
         else: 
             st.error("File not found.")
 
-if emp_sidebar_name:
+if formatted_name:
     st.divider()
-    user_csv_file = get_user_file(emp_sidebar_name)
+    user_csv_file = get_user_file(formatted_name)
     if user_csv_file and os.path.exists(user_csv_file):
-        st.subheader(f"📂 Salary History: {emp_sidebar_name}")
+        st.subheader(f"📂 Salary History: {formatted_name}")
         h_df = pd.read_csv(user_csv_file).fillna(0)
         h_df = clean_legacy_columns(h_df)
 
@@ -958,7 +939,7 @@ if emp_sidebar_name:
             h_df, 
             use_container_width=True, 
             num_rows="dynamic",
-            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}",
+            key=f"editor_{formatted_name.lower().replace(' ', '_')}",
             column_config=table_format_config
         )
         
