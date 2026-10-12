@@ -311,8 +311,8 @@ else:
         st.divider()
         st.subheader("📋 Attendance Sheet")
 
-        # --- MONTH FILTER & DOWNLOAD SECTION (NOW BELOW SUMMARY) ---
-        col_s1, col_s2 = st.columns([1, 1])
+        # --- COMPACT MONTH FILTER & DOWNLOAD SECTION (SIDE BY SIDE EQUAL) ---
+        col_s1, col_s2 = st.columns(2)
         with col_s1:
             st.selectbox("Select Month to View", available_sheets, key="filter_month")
             selected_sheet = st.session_state.filter_month
@@ -459,5 +459,5 @@ else:
                         save_data(df_orig, selected_sheet_orig)
                         
                         st.session_state.last_edited = None
-                        st.success("✅ Entry permanently deleted!")
+                        st.success("✅ Entries permanently deleted!")
                         st.rerun()
