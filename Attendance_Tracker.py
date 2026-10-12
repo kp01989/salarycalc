@@ -128,7 +128,6 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
     formatted_name = st.session_state.top_emp_input.strip().title()
 
-    # Privacy feature: Only show existing employees if Admin is typing
     if formatted_name == "Admin":
         all_emps = get_all_employees()
         if all_emps:
@@ -137,7 +136,8 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     with st.form("entry_form"):
         col1, col2, col3 = st.columns(3)
         with col1:
-            entry_date = st.date_input("Date", date.today())
+            # DD/MM/YYYY format added here
+            entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
         with col2:
             in_time = st.time_input("In Time", value=time(8, 0))
         with col3:
@@ -227,7 +227,6 @@ else:
         df_display = df_display.reset_index(drop=True)
         df_display = df_display.fillna("")
 
-        # Admin hase to badhu j dekhase, baki khali e j naam nu filter lagse
         if formatted_name != "Admin":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
 
@@ -312,7 +311,8 @@ else:
                             ce1, ce2, ce3 = st.columns(3)
                             with ce1:
                                 d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
-                                e_date = st.date_input("Date", value=d_obj, key="e_date")
+                                # DD/MM/YYYY format added here
+                                e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
                             with ce2:
                                 in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
                                 e_in = st.time_input("In Time", value=in_obj, key="e_in")
