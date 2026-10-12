@@ -307,7 +307,7 @@ else:
         with m3:
             st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
         with m4:
-            st.metric(label="🚪 Total Early Out Hours", value=f"{out_hours:02d}:{out_mins:02d}")
+            st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
 
         st.divider()
         st.subheader("📋 Attendance Sheet")
