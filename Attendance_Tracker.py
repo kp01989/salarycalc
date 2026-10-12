@@ -116,7 +116,6 @@ if 'filter_month' not in st.session_state:
 if 'top_emp_input' not in st.session_state:
     st.session_state.top_emp_input = ""
 
-# Jevu upar naam type thay, niche nu filter Current Month par set thai jay
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
     if val:
@@ -125,15 +124,15 @@ def on_top_name_change():
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 st.title("📅 Daily Attendance Tracker")
 
-# Ene khabar pade ke kava kava naam file ma che etle list bataie
-all_emps = get_all_employees()
-if all_emps:
-    st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
-
 with st.expander("➕ Add New Entry / Search", expanded=True):
-    # Aa ek j box add ane search banne nu kaam karse
-    st.text_input("Employee Name", placeholder="Type name (e.g. Kp) or type 'All' to view everyone", key="top_emp_input", on_change=on_top_name_change)
+    st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
     formatted_name = st.session_state.top_emp_input.strip().title()
+
+    # Privacy feature: Only show existing employees if Admin is typing
+    if formatted_name == "Admin":
+        all_emps = get_all_employees()
+        if all_emps:
+            st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
     with st.form("entry_form"):
         col1, col2, col3 = st.columns(3)
@@ -149,8 +148,8 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     if submit:
         if not formatted_name:
             st.error("Please enter an Employee Name above!")
-        elif formatted_name == "All":
-            st.error("You cannot add an entry for 'All'. Please type a valid name!")
+        elif formatted_name == "Admin":
+            st.error("You cannot add an entry for 'Admin'. Please type a valid name!")
         elif out_time < in_time:
             st.error("Out Time cannot be before In Time!")
         else:
@@ -189,9 +188,8 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
 st.divider()
 st.subheader("📋 Attendance Sheet")
 
-# Jo upar nu box khali hoy to niche nu table hide rehse
 if not formatted_name:
-    st.info("👆 Please type a name in the box above to view or add data.")
+    st.info("👆 Please enter a name in the box above to view or add data.")
 else:
     # --- MONTH FILTER & DOWNLOAD SECTION ---
     col_s1, col_spacer, col_s3 = st.columns([2, 2, 1])
@@ -229,8 +227,8 @@ else:
         df_display = df_display.reset_index(drop=True)
         df_display = df_display.fillna("")
 
-        # Upar na box mathi direct filter
-        if formatted_name != "All":
+        # Admin hase to badhu j dekhase, baki khali e j naam nu filter lagse
+        if formatted_name != "Admin":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
 
         if df_display.empty:
@@ -365,8 +363,6 @@ else:
                                         save_data(df_new, new_sheet)
                                     
                                     st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
-                                    # Update master search input if name changed during edit
-                                    st.session_state.top_emp_input = formatted_e_name
                                     st.success("✅ Entry updated successfully!")
                                     st.rerun()
 
