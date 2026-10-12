@@ -68,7 +68,6 @@ def calculate_times(in_time, out_time, day_str):
         if ot_mins < 30:
             ot_mins = 0
             
-    # Late Hours ane Out Hours calculation (Sunday ma ke OT hoy to pan late/out calculation chalu rakhvu)
     if day_str == "Sun":
         late_mins = 0
         out_early_mins = 0
@@ -312,8 +311,8 @@ else:
         st.divider()
         st.subheader("📋 Attendance Sheet")
 
-        # --- COMPACT MONTH FILTER & DOWNLOAD SECTION ---
-        col_s1, col_s2 = st.columns(2)
+        # --- COMPACT WIDTH MONTH FILTER & DOWNLOAD SECTION ---
+        col_s1, col_s2, col_s3 = st.columns([1, 1, 2]) # Ratio set to keep dropdown compact
         with col_s1:
             st.selectbox("Select Month to View", available_sheets, key="filter_month")
             selected_sheet = st.session_state.filter_month
