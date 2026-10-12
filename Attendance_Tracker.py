@@ -34,6 +34,31 @@ def get_all_employees():
     except Exception:
         return []
 
+def load_data(sheet_name):
+    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
+    if os.path.exists(FILE_NAME):
+        try:
+            df = pd.read_excel(FILE_NAME, sheet_name=sheet_name, dtype=str)
+            if "Employee Name" not in df.columns:
+                df.insert(0, "Employee Name", "-")
+            if "OT Hours" not in df.columns:
+                df["OT Hours"] = "00:00"
+            cols_to_drop = ["Late Minutes", "Out Minutes"]
+            df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
+            return df
+        except ValueError:
+            return pd.DataFrame(columns=columns)
+    else:
+        return pd.DataFrame(columns=columns)
+
+def save_data(df, sheet_name):
+    if not os.path.exists(FILE_NAME):
+        with pd.ExcelWriter(FILE_NAME, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    else:
+        with pd.ExcelWriter(FILE_NAME, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+
 def calculate_times(in_time, out_time, day_str):
     fmt = "%H:%M"
     if not isinstance(in_time, str):
@@ -65,7 +90,7 @@ def calculate_times(in_time, out_time, day_str):
             
         ot_mins = total_worked_mins - reg_mins
         
-        # New Rule: 30 min thi ochu OT -> 0, baki exact jetlu hoy etlu j
+        # સાચું લોજીક: જો 30 મિનિટથી ઓછું રોકાય તો 0, નહિતર જેટલી મિનિટ રોકાયો હોય એટલી પૂરી મિનિટ મળશે
         if ot_mins < 30:
             ot_mins = 0
             
@@ -82,50 +107,6 @@ def calculate_times(in_time, out_time, day_str):
     out_hrs = mins_to_str(out_early_mins) if out_early_mins > 0 else ""
     
     return total_hrs, late_hrs, out_hrs, ot_hrs
-
-def load_data(sheet_name):
-    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
-    if os.path.exists(FILE_NAME):
-        try:
-            df = pd.read_excel(FILE_NAME, sheet_name=sheet_name, dtype=str)
-            if "Employee Name" not in df.columns:
-                df.insert(0, "Employee Name", "-")
-            if "OT Hours" not in df.columns:
-                df["OT Hours"] = "00:00"
-            cols_to_drop = ["Late Minutes", "Out Minutes"]
-            df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
-            
-            # Auto-Recalculate Old Data (juna data ne nava rule pramane set karva)
-            for idx, row in df.iterrows():
-                in_t = str(row.get("In Time", "08:00"))
-                out_t = str(row.get("Out Time", "18:00"))
-                day_s = str(row.get("Day", "Mon"))
-                
-                if pd.isna(row.get("In Time")) or in_t.lower() == 'nan':
-                    continue
-                    
-                try:
-                    tot, late, out_e, ot = calculate_times(in_t, out_t, day_s)
-                    df.at[idx, "Total Hours"] = tot
-                    df.at[idx, "Late Hours"] = late
-                    df.at[idx, "Out Hours"] = out_e
-                    df.at[idx, "OT Hours"] = ot
-                except Exception:
-                    pass
-            
-            return df
-        except ValueError:
-            return pd.DataFrame(columns=columns)
-    else:
-        return pd.DataFrame(columns=columns)
-
-def save_data(df, sheet_name):
-    if not os.path.exists(FILE_NAME):
-        with pd.ExcelWriter(FILE_NAME, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-    else:
-        with pd.ExcelWriter(FILE_NAME, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 # --- Session States ---
 current_month_str = get_sheet_name(date.today())
@@ -221,7 +202,8 @@ st.subheader("📋 Attendance Sheet")
 if not formatted_name:
     st.info("👆 Please enter a name in the box above to view or add data.")
 else:
-    col_s1, col_spacer, col_s3 = st.columns([2, 2, 1])
+    # --- UI Design Update: 2 Columns instead of 3 for better button alignment ---
+    col_s1, col_s2 = st.columns([3, 1])
 
     with col_s1:
         all_sheets_raw = get_all_sheet_names()
@@ -262,7 +244,8 @@ else:
         if df_display.empty:
             st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
         else:
-            with col_s3:
+            with col_s2:
+                # Vertical alignment set karva mate 
                 st.write("") 
                 st.write("") 
                 
@@ -274,11 +257,14 @@ else:
                     
                 excel_data = buffer.getvalue()
                 file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
+                
+                # Button ne motu (full width) karva use_container_width=True aapyu che
                 st.download_button(
                     label="⬇️ Download Data (Excel)",
                     data=excel_data,
                     file_name=file_name_export,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True 
                 )
 
             def highlight_rows(row):
