@@ -152,22 +152,6 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
-# Custom CSS for Summary Box (Rounded Border + Background Color) and Alignment
-st.markdown("""
-    <style>
-        .summary-container {
-            background-color: #1e2530;
-            border: 2px solid #303d4f;
-            border-radius: 12px;
-            padding: 20px 20px 10px 20px;
-            margin-bottom: 25px;
-        }
-        .stDownloadButton button {
-            margin-top: 27px;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
@@ -246,9 +230,8 @@ else:
     
     available_sheets = ["All Months"] + all_sheets_raw
 
-    col_s1, col_s2 = st.columns([1, 1])
-    with col_s1:
-        st.selectbox("Select Month to View", available_sheets, key="filter_month")
+    if selected_sheet := st.session_state.get('filter_month', current_month_str):
+        pass
     selected_sheet = st.session_state.filter_month
 
     if selected_sheet == "All Months":
@@ -310,25 +293,33 @@ else:
                 total_out_mins += h * 60 + m
         out_hours, out_mins = divmod(total_out_mins, 60)
 
-        # --- DISPLAY SUMMARY INSIDE ROUNDED BORDER CONTAINER ---
-        st.markdown('<div class="summary-container">', unsafe_allow_html=True)
+        # --- DISPLAY SUMMARY INSIDE PROPER CONTAINER ---
         st.subheader("📊 Summary")
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
-        with m2:
-            st.metric(label="🔥 Total Overtime Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
-        with m3:
-            st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
-        with m4:
-            st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
-        st.markdown('</div>', unsafe_allow_html=True)
+        
+        container = st.container(border=True)
+        with container:
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
+            with m2:
+                st.metric(label="🔥 Total Overtime Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
+            with m3:
+                st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
+            with m4:
+                st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
 
         st.divider()
         st.subheader("📋 Attendance Sheet")
 
-        # Download button next to filters
+        # --- MONTH FILTER & DOWNLOAD SECTION (NOW BELOW SUMMARY) ---
+        col_s1, col_s2 = st.columns([1, 1])
+        with col_s1:
+            st.selectbox("Select Month to View", available_sheets, key="filter_month")
+            selected_sheet = st.session_state.filter_month
+
         with col_s2:
+            st.write("")
+            st.write("")
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
@@ -440,7 +431,7 @@ else:
                                     "In Time": [e_in.strftime("%H:%M")],
                                     "Out Time": [e_out.strftime("%H:%M")],
                                     "Late Hours": [l_hrs],
-                                    "Out Hours": [out_hrs],
+                                    "Out Hours": [o_hrs],
                                     "Total Hours": [t_hrs],
                                     "OT Hours": [ot_hrs]
                                 })
