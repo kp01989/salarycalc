@@ -172,207 +172,212 @@ with col_s1:
 
 with col_s2:
     all_emps = get_all_employees()
-    selected_emp = st.selectbox("Filter by Employee", ["All"] + all_emps)
+    # Default option "Select Employee" add karyu jethi pelathi data load na thay
+    selected_emp = st.selectbox("Filter by Employee", ["Select Employee", "All"] + all_emps)
 
-# ડેટા લોડ કરવાનું લોજીક
-if selected_sheet == "Baddha Mahina (All Months)":
-    df_list = []
-    for sht in get_all_sheet_names():
-        df_temp = load_data(sht)
-        if not df_temp.empty:
-            df_temp["_Original_Sheet"] = sht
-            df_temp["_Original_Index"] = df_temp.index
-            df_list.append(df_temp)
-    if df_list:
-        df_display = pd.concat(df_list, ignore_index=True)
-    else:
-        df_display = pd.DataFrame()
+# Jo "Select Employee" rakhyu hoy to table hide rehse
+if selected_emp == "Select Employee":
+    st.info("👆 Upar 'Filter by Employee' mathi naam select karo athva type karo data jova mate.")
 else:
-    df_display = load_data(selected_sheet)
-    if not df_display.empty:
-        df_display["_Original_Sheet"] = selected_sheet
-        df_display["_Original_Index"] = df_display.index
-
-if not df_display.empty:
-    df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
-    df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
-    df_display = df_display.reset_index(drop=True)
-    df_display = df_display.fillna("")
-
-    # એમ્પ્લોયી નામ પરથી ફિલ્ટર 
-    if selected_emp != "All":
-        df_display = df_display[df_display["Employee Name"] == selected_emp]
-
-    if df_display.empty:
-        st.warning(f"No records found for '{selected_emp}' in {selected_sheet}.")
+    # ડેટા લોડ કરવાનું લોજીક
+    if selected_sheet == "Baddha Mahina (All Months)":
+        df_list = []
+        for sht in get_all_sheet_names():
+            df_temp = load_data(sht)
+            if not df_temp.empty:
+                df_temp["_Original_Sheet"] = sht
+                df_temp["_Original_Index"] = df_temp.index
+                df_list.append(df_temp)
+        if df_list:
+            df_display = pd.concat(df_list, ignore_index=True)
+        else:
+            df_display = pd.DataFrame()
     else:
-        with col_s3:
-            st.write("") 
-            st.write("") 
-            
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
-                export_sheet_name = selected_sheet if selected_sheet != "Baddha Mahina (All Months)" else "All_Months"
-                df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
+        df_display = load_data(selected_sheet)
+        if not df_display.empty:
+            df_display["_Original_Sheet"] = selected_sheet
+            df_display["_Original_Index"] = df_display.index
+
+    if not df_display.empty:
+        df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
+        df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
+        df_display = df_display.reset_index(drop=True)
+        df_display = df_display.fillna("")
+
+        # એમ્પ્લોયી નામ પરથી ફિલ્ટર 
+        if selected_emp != "All":
+            df_display = df_display[df_display["Employee Name"] == selected_emp]
+
+        if df_display.empty:
+            st.warning(f"No records found for '{selected_emp}' in {selected_sheet}.")
+        else:
+            with col_s3:
+                st.write("") 
+                st.write("") 
                 
-            excel_data = buffer.getvalue()
-            file_name_export = f"Attendance_{export_sheet_name}_{selected_emp}.xlsx".replace(" ", "_")
-            st.download_button(
-                label="⬇️ Download Data (Excel)",
-                data=excel_data,
-                file_name=file_name_export,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-        def highlight_rows(row):
-            colors = [''] * len(row)
-            if row['Day'] == 'Sun':
-                colors = ['background-color: #ff7f7f; color: white'] * len(row)
-            if st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
-                colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
-            return colors
-        
-        st.markdown("💡 **Tip:** Table ni dabi baaju checkbox select kari ne Edit ke Delete karo.")
-
-        event = st.dataframe(
-            df_display.style.apply(highlight_rows, axis=1), 
-            use_container_width=True, 
-            hide_index=True,
-            on_select="rerun",           
-            selection_mode="multi-row",  
-            column_config={
-                "_Original_Sheet": None,
-                "_Original_Index": None   
-            }
-        )
-        
-        selected_rows = event.selection.rows
-        if len(selected_rows) > 0:
-            st.markdown("---")
-            
-            if len(selected_rows) > 1:
-                st.warning(f"⚠️ Tame {len(selected_rows)} entries select kari che. Eksathe multiple entries khali delete thai shake.")
-                if st.button("🗑️ Delete Selected Entries", type="primary"):
-                    to_delete = {}
-                    for row_idx in selected_rows:
-                        sht = df_display.iloc[row_idx]["_Original_Sheet"]
-                        idx = df_display.iloc[row_idx]["_Original_Index"]
-                        if sht not in to_delete:
-                            to_delete[sht] = []
-                        to_delete[sht].append(idx)
-
-                    for sht, indices in to_delete.items():
-                        df_orig = load_data(sht)
-                        df_orig = df_orig.drop(indices) 
-                        save_data(df_orig, sht)
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
+                    export_sheet_name = selected_sheet if selected_sheet != "Baddha Mahina (All Months)" else "All_Months"
+                    df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
                     
-                    st.session_state.last_edited = None
-                    st.success("✅ Entries permanently deleted!")
-                    st.rerun()
-            else:
-                selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
-                selected_sheet_orig = df_display.iloc[selected_rows[0]]["_Original_Sheet"]
-                row_data = df_display.iloc[selected_rows[0]]
-                
-                col_edit, col_delete = st.columns([3, 1])
-                
-                with col_edit:
-                    st.subheader("✏️ Edit Selected Entry")
-                    with st.form("edit_form"):
-                        e_name = st.text_input("Employee Name", value=row_data["Employee Name"])
-                        ce1, ce2, ce3 = st.columns(3)
-                        with ce1:
-                            d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
-                            e_date = st.date_input("Date", value=d_obj, key="e_date")
-                        with ce2:
-                            in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
-                            e_in = st.time_input("In Time", value=in_obj, key="e_in")
-                        with ce3:
-                            out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
-                            e_out = st.time_input("Out Time", value=out_obj, key="e_out")
-                            
-                        if st.form_submit_button("Update Entry", type="secondary"):
-                            formatted_e_name = e_name.strip().title()
-                            date_str_e = e_date.strftime("%d/%m/%Y")
-                            new_sheet = get_sheet_name(e_date)
-                            
-                            df_orig = load_data(selected_sheet_orig)
-                            
-                            if new_sheet == selected_sheet_orig:
-                                temp_check = df_orig.drop(selected_idx)
-                                is_dup = not temp_check[(temp_check["Employee Name"] == formatted_e_name) & (temp_check["Date"] == date_str_e)].empty
-                            else:
-                                df_new = load_data(new_sheet)
-                                is_dup = not df_new[(df_new["Employee Name"] == formatted_e_name) & (df_new["Date"] == date_str_e)].empty
+                excel_data = buffer.getvalue()
+                file_name_export = f"Attendance_{export_sheet_name}_{selected_emp}.xlsx".replace(" ", "_")
+                st.download_button(
+                    label="⬇️ Download Data (Excel)",
+                    data=excel_data,
+                    file_name=file_name_export,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
 
-                            if is_dup:
-                                st.error("⚠️ Aa tarikh par aa employee ni entry pehla thi j che!")
-                            else:
-                                day_str_e = e_date.strftime("%a")
-                                t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
-                                
-                                updated_row = pd.DataFrame({
-                                    "Employee Name": [formatted_e_name],
-                                    "Date": [date_str_e],
-                                    "Day": [day_str_e],
-                                    "In Time": [e_in.strftime("%H:%M")],
-                                    "Out Time": [e_out.strftime("%H:%M")],
-                                    "Late Hours": [l_hrs],
-                                    "Out Hours": [o_hrs],
-                                    "Total Hours": [t_hrs],
-                                    "OT Hours": [ot_hrs]
-                                })
-                                
-                                if new_sheet == selected_sheet_orig:
-                                    updated_row.index = [selected_idx]
-                                    df_orig.update(updated_row)
-                                    save_data(df_orig, selected_sheet_orig)
-                                else:
-                                    df_orig = df_orig.drop(selected_idx)
-                                    save_data(df_orig, selected_sheet_orig)
-                                    df_new = pd.concat([df_new, updated_row], ignore_index=True)
-                                    save_data(df_new, new_sheet)
-                                
-                                st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
-                                st.success("✅ Entry updated successfully!")
-                                st.rerun()
+            def highlight_rows(row):
+                colors = [''] * len(row)
+                if row['Day'] == 'Sun':
+                    colors = ['background-color: #ff7f7f; color: white'] * len(row)
+                if st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
+                    colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
+                return colors
+            
+            st.markdown("💡 **Tip:** Table ni dabi baaju checkbox select kari ne Edit ke Delete karo.")
 
-                with col_delete:
-                    st.subheader("🗑️ Delete")
-                    st.write("Aa entry ne hamesha mate kadhva mate niche click karo:")
-                    if st.button("Delete This Entry", type="primary"):
-                        df_orig = load_data(selected_sheet_orig)
-                        df_orig = df_orig.drop(selected_idx) 
-                        save_data(df_orig, selected_sheet_orig)
+            event = st.dataframe(
+                df_display.style.apply(highlight_rows, axis=1), 
+                use_container_width=True, 
+                hide_index=True,
+                on_select="rerun",           
+                selection_mode="multi-row",  
+                column_config={
+                    "_Original_Sheet": None,
+                    "_Original_Index": None   
+                }
+            )
+            
+            selected_rows = event.selection.rows
+            if len(selected_rows) > 0:
+                st.markdown("---")
+                
+                if len(selected_rows) > 1:
+                    st.warning(f"⚠️ Tame {len(selected_rows)} entries select kari che. Eksathe multiple entries khali delete thai shake.")
+                    if st.button("🗑️ Delete Selected Entries", type="primary"):
+                        to_delete = {}
+                        for row_idx in selected_rows:
+                            sht = df_display.iloc[row_idx]["_Original_Sheet"]
+                            idx = df_display.iloc[row_idx]["_Original_Index"]
+                            if sht not in to_delete:
+                                to_delete[sht] = []
+                            to_delete[sht].append(idx)
+
+                        for sht, indices in to_delete.items():
+                            df_orig = load_data(sht)
+                            df_orig = df_orig.drop(indices) 
+                            save_data(df_orig, sht)
                         
                         st.session_state.last_edited = None
-                        st.success("✅ Entry permanently deleted!")
+                        st.success("✅ Entries permanently deleted!")
                         st.rerun()
+                else:
+                    selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
+                    selected_sheet_orig = df_display.iloc[selected_rows[0]]["_Original_Sheet"]
+                    row_data = df_display.iloc[selected_rows[0]]
+                    
+                    col_edit, col_delete = st.columns([3, 1])
+                    
+                    with col_edit:
+                        st.subheader("✏️ Edit Selected Entry")
+                        with st.form("edit_form"):
+                            e_name = st.text_input("Employee Name", value=row_data["Employee Name"])
+                            ce1, ce2, ce3 = st.columns(3)
+                            with ce1:
+                                d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
+                                e_date = st.date_input("Date", value=d_obj, key="e_date")
+                            with ce2:
+                                in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
+                                e_in = st.time_input("In Time", value=in_obj, key="e_in")
+                            with ce3:
+                                out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
+                                e_out = st.time_input("Out Time", value=out_obj, key="e_out")
+                                
+                            if st.form_submit_button("Update Entry", type="secondary"):
+                                formatted_e_name = e_name.strip().title()
+                                date_str_e = e_date.strftime("%d/%m/%Y")
+                                new_sheet = get_sheet_name(e_date)
+                                
+                                df_orig = load_data(selected_sheet_orig)
+                                
+                                if new_sheet == selected_sheet_orig:
+                                    temp_check = df_orig.drop(selected_idx)
+                                    is_dup = not temp_check[(temp_check["Employee Name"] == formatted_e_name) & (temp_check["Date"] == date_str_e)].empty
+                                else:
+                                    df_new = load_data(new_sheet)
+                                    is_dup = not df_new[(df_new["Employee Name"] == formatted_e_name) & (df_new["Date"] == date_str_e)].empty
 
-        st.markdown("---")
-        
-        total_reg_mins = 0
-        for val in df_display["Total Hours"]:
-            if pd.notna(val) and ":" in str(val):
-                h, m = map(int, str(val).split(":"))
-                total_reg_mins += h * 60 + m
-                
-        reg_hours, reg_mins = divmod(total_reg_mins, 60)
-        
-        total_ot_mins = 0
-        for val in df_display["OT Hours"]:
-            if pd.notna(val) and ":" in str(val):
-                h, m = map(int, str(val).split(":"))
-                total_ot_mins += h * 60 + m
-                
-        ot_hours, ot_mins = divmod(total_ot_mins, 60)
-        
-        st.subheader("📊 Summary")
-        met1, met2 = st.columns(2)
-        with met1:
-            st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
-        with met2:
-            st.metric(label="🔥 Total Overtime (OT) Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
-else:
-    st.info(f"No data available. Please add an entry above.")
+                                if is_dup:
+                                    st.error("⚠️ Aa tarikh par aa employee ni entry pehla thi j che!")
+                                else:
+                                    day_str_e = e_date.strftime("%a")
+                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
+                                    
+                                    updated_row = pd.DataFrame({
+                                        "Employee Name": [formatted_e_name],
+                                        "Date": [date_str_e],
+                                        "Day": [day_str_e],
+                                        "In Time": [e_in.strftime("%H:%M")],
+                                        "Out Time": [e_out.strftime("%H:%M")],
+                                        "Late Hours": [l_hrs],
+                                        "Out Hours": [o_hrs],
+                                        "Total Hours": [t_hrs],
+                                        "OT Hours": [ot_hrs]
+                                    })
+                                    
+                                    if new_sheet == selected_sheet_orig:
+                                        updated_row.index = [selected_idx]
+                                        df_orig.update(updated_row)
+                                        save_data(df_orig, selected_sheet_orig)
+                                    else:
+                                        df_orig = df_orig.drop(selected_idx)
+                                        save_data(df_orig, selected_sheet_orig)
+                                        df_new = pd.concat([df_new, updated_row], ignore_index=True)
+                                        save_data(df_new, new_sheet)
+                                    
+                                    st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
+                                    st.success("✅ Entry updated successfully!")
+                                    st.rerun()
+
+                    with col_delete:
+                        st.subheader("🗑️ Delete")
+                        st.write("Aa entry ne hamesha mate kadhva mate niche click karo:")
+                        if st.button("Delete This Entry", type="primary"):
+                            df_orig = load_data(selected_sheet_orig)
+                            df_orig = df_orig.drop(selected_idx) 
+                            save_data(df_orig, selected_sheet_orig)
+                            
+                            st.session_state.last_edited = None
+                            st.success("✅ Entry permanently deleted!")
+                            st.rerun()
+
+            st.markdown("---")
+            
+            total_reg_mins = 0
+            for val in df_display["Total Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_reg_mins += h * 60 + m
+                    
+            reg_hours, reg_mins = divmod(total_reg_mins, 60)
+            
+            total_ot_mins = 0
+            for val in df_display["OT Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_ot_mins += h * 60 + m
+                    
+            ot_hours, ot_mins = divmod(total_ot_mins, 60)
+            
+            st.subheader("📊 Summary")
+            met1, met2 = st.columns(2)
+            with met1:
+                st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
+            with met2:
+                st.metric(label="🔥 Total Overtime (OT) Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
+    else:
+        st.info(f"No data available in {selected_sheet}. Please add an entry above.")
