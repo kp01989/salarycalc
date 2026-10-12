@@ -34,6 +34,59 @@ def get_all_employees():
     except Exception:
         return []
 
+def calculate_times(in_time, out_time, day_str):
+    fmt = "%H:%M"
+    if not isinstance(in_time, str):
+        in_time = in_time.strftime(fmt)
+    if not isinstance(out_time, str):
+        out_time = out_time.strftime(fmt)
+        
+    t1 = datetime.strptime(in_time, fmt)
+    t2 = datetime.strptime(out_time, fmt)
+    std_in = datetime.strptime(STANDARD_IN, fmt)
+    std_out = datetime.strptime(STANDARD_OUT, fmt)
+    
+    if t2 < t1:
+        return "00:00", "", "", "00:00"
+        
+    total_worked_mins = (t2 - t1).seconds // 60
+    
+    if day_str == "Sun":
+        reg_mins = 0
+        ot_mins = total_worked_mins 
+    else:
+        actual_start = max(t1, std_in)
+        actual_end = min(t2, std_out)
+        
+        if actual_end > actual_start:
+            reg_mins = (actual_end - actual_start).seconds // 60
+        else:
+            reg_mins = 0
+            
+        ot_mins = total_worked_mins - reg_mins
+        
+        if ot_mins < 30:
+            ot_mins = 0
+            
+    # Late Hours ane Out Hours calculation (Sunday ma ke OT hoy to pan late/out calculation chalu rakhvu)
+    if day_str == "Sun":
+        late_mins = 0
+        out_early_mins = 0
+    else:
+        late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
+        out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
+    
+    def mins_to_str(m):
+        h, m = divmod(int(m), 60)
+        return f"{h:02d}:{m:02d}"
+        
+    total_hrs = mins_to_str(reg_mins)
+    ot_hrs = mins_to_str(ot_mins)
+    late_hrs = mins_to_str(late_mins) if late_mins > 0 else ""
+    out_hrs = mins_to_str(out_early_mins) if out_early_mins > 0 else ""
+    
+    return total_hrs, late_hrs, out_hrs, ot_hrs
+
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     if os.path.exists(FILE_NAME):
@@ -77,58 +130,6 @@ def save_data(df, sheet_name):
     else:
         with pd.ExcelWriter(FILE_NAME, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
             df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-def calculate_times(in_time, out_time, day_str):
-    fmt = "%H:%M"
-    if not isinstance(in_time, str):
-        in_time = in_time.strftime(fmt)
-    if not isinstance(out_time, str):
-        out_time = out_time.strftime(fmt)
-        
-    t1 = datetime.strptime(in_time, fmt)
-    t2 = datetime.strptime(out_time, fmt)
-    std_in = datetime.strptime(STANDARD_IN, fmt)
-    std_out = datetime.strptime(STANDARD_OUT, fmt)
-    
-    if t2 < t1:
-        return "00:00", "", "", "00:00"
-        
-    total_worked_mins = (t2 - t1).seconds // 60
-    
-    if day_str == "Sun":
-        reg_mins = 0
-        ot_mins = total_worked_mins 
-    else:
-        actual_start = max(t1, std_in)
-        actual_end = min(t2, std_out)
-        
-        if actual_end > actual_start:
-            reg_mins = (actual_end - actual_start).seconds // 60
-        else:
-            reg_mins = 0
-            
-        ot_mins = total_worked_mins - reg_mins
-        
-        if ot_mins < 30:
-            ot_mins = 0
-            
-    if day_str == "Sun" or ot_mins > 0:
-        late_mins = 0
-        out_early_mins = 0
-    else:
-        late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
-        out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
-    
-    def mins_to_str(m):
-        h, m = divmod(int(m), 60)
-        return f"{h:02d}:{m:02d}"
-        
-    total_hrs = mins_to_str(reg_mins)
-    ot_hrs = mins_to_str(ot_mins)
-    late_hrs = mins_to_str(late_mins) if late_mins > 0 else ""
-    out_hrs = mins_to_str(out_early_mins) if out_early_mins > 0 else ""
-    
-    return total_hrs, late_hrs, out_hrs, ot_hrs
 
 # --- Session States ---
 current_month_str = get_sheet_name(date.today())
@@ -311,7 +312,7 @@ else:
         st.divider()
         st.subheader("📋 Attendance Sheet")
 
-        # --- COMPACT MONTH FILTER & DOWNLOAD SECTION (SIDE BY SIDE EQUAL) ---
+        # --- COMPACT MONTH FILTER & DOWNLOAD SECTION ---
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             st.selectbox("Select Month to View", available_sheets, key="filter_month")
@@ -459,5 +460,5 @@ else:
                         save_data(df_orig, selected_sheet_orig)
                         
                         st.session_state.last_edited = None
-                        st.success("✅ Entries permanently deleted!")
+                        st.success("✅ Entry permanently deleted!")
                         st.rerun()
