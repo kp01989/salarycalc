@@ -112,7 +112,6 @@ def calculate_times(in_time, out_time, day_str):
         if ot_mins < 30:
             ot_mins = 0
             
-    # જો Sunday હોય કે OT હોય, તો લૅટ કે અર્લી આઉટ ગણવામાં ન આવે
     if day_str == "Sun" or ot_mins > 0:
         late_mins = 0
         out_early_mins = 0
@@ -152,6 +151,23 @@ def on_top_name_change():
         st.session_state.filter_month = current_month_str
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
+
+# Custom CSS for Summary Box (Rounded Border + Background Color) and Alignment
+st.markdown("""
+    <style>
+        .summary-container {
+            background-color: #1e2530;
+            border: 2px solid #303d4f;
+            border-radius: 12px;
+            padding: 20px 20px 10px 20px;
+            margin-bottom: 25px;
+        }
+        .stDownloadButton button {
+            margin-top: 27px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
@@ -224,15 +240,12 @@ st.divider()
 if not formatted_name:
     st.info("👆 Please enter a name in the box above to view or add data.")
 else:
-    # --- Data Filtering & Loading first so Summary can use it ---
     all_sheets_raw = get_all_sheet_names()
     if current_month_str not in all_sheets_raw:
         all_sheets_raw.insert(0, current_month_str)
     
     available_sheets = ["All Months"] + all_sheets_raw
 
-    # Temporary dataframe to compute totals for Summary
-    # We need selected_sheet value first, let's render the filters above summary
     col_s1, col_s2 = st.columns([1, 1])
     with col_s1:
         st.selectbox("Select Month to View", available_sheets, key="filter_month")
@@ -297,7 +310,8 @@ else:
                 total_out_mins += h * 60 + m
         out_hours, out_mins = divmod(total_out_mins, 60)
 
-        # --- DISPLAY SUMMARY BEFORE ATTENDANCE SHEET ---
+        # --- DISPLAY SUMMARY INSIDE ROUNDED BORDER CONTAINER ---
+        st.markdown('<div class="summary-container">', unsafe_allow_html=True)
         st.subheader("📊 Summary")
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -308,6 +322,7 @@ else:
             st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
         with m4:
             st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
         st.subheader("📋 Attendance Sheet")
@@ -425,7 +440,7 @@ else:
                                     "In Time": [e_in.strftime("%H:%M")],
                                     "Out Time": [e_out.strftime("%H:%M")],
                                     "Late Hours": [l_hrs],
-                                    "Out Hours": [o_hrs],
+                                    "Out Hours": [out_hrs],
                                     "Total Hours": [t_hrs],
                                     "OT Hours": [ot_hrs]
                                 })
