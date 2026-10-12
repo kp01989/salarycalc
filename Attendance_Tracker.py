@@ -105,18 +105,33 @@ def calculate_times(in_time, out_time, day_str):
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 # --- Session States ---
+current_month_str = get_sheet_name(date.today())
+
 if 'last_edited' not in st.session_state:
     st.session_state.last_edited = None
 
-if 'current_view_emp' not in st.session_state:
-    st.session_state.current_view_emp = "Select Employee"
+if 'filter_emp' not in st.session_state:
+    st.session_state.filter_emp = "Select Employee"
+
+if 'filter_month' not in st.session_state:
+    st.session_state.filter_month = current_month_str
+
+# Jevu upar naam type thay, niche nu filter Current Month + E naam par set thai jay
+def on_top_name_change():
+    val = st.session_state.top_emp_input.strip().title()
+    if val:
+        st.session_state.filter_emp = val
+        st.session_state.filter_month = current_month_str
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry", expanded=True):
+    # Form ni bahar text_input rakhelu che jethi Enter marta tarat action thay
+    st.text_input("Employee Name", placeholder="Type name and press Enter/Tab", key="top_emp_input", on_change=on_top_name_change)
+    formatted_name = st.session_state.top_emp_input.strip().title()
+
     with st.form("entry_form"):
-        emp_name = st.text_input("Employee Name", placeholder="e.g. Ramesh Patel")
         col1, col2, col3 = st.columns(3)
         with col1:
             entry_date = st.date_input("Date", date.today())
@@ -128,12 +143,13 @@ with st.expander("➕ Add New Entry", expanded=True):
         submit = st.form_submit_button("Save Entry", type="primary")
 
     if submit:
-        if not emp_name.strip():
-            st.error("Please enter an Employee Name!")
+        if not formatted_name:
+            st.error("Please enter an Employee Name above!")
+        elif formatted_name == "Select Employee" or formatted_name == "All":
+            st.error("Please enter a valid Employee Name!")
         elif out_time < in_time:
             st.error("Out Time cannot be before In Time!")
         else:
-            formatted_name = emp_name.strip().title()
             target_sheet = get_sheet_name(entry_date)
             df_month = load_data(target_sheet)
             
@@ -160,8 +176,9 @@ with st.expander("➕ Add New Entry", expanded=True):
                 df_month = pd.concat([df_month, new_entry], ignore_index=True)
                 save_data(df_month, target_sheet) 
                 
-                # Auto-sync bottom table with the newly added employee
-                st.session_state.current_view_emp = formatted_name
+                # Save thaya pachi pan filter update karvu
+                st.session_state.filter_emp = formatted_name
+                st.session_state.filter_month = target_sheet
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
                 
                 st.success(f"Entry for {formatted_name} saved successfully!")
@@ -170,25 +187,32 @@ with st.expander("➕ Add New Entry", expanded=True):
 st.divider()
 st.subheader("📋 Search & Attendance Sheet")
 
-# --- FILTER SECTION ---
+# --- INDEPENDENT FILTER SECTION ---
 col_s1, col_s2, col_s3 = st.columns([2, 2, 1])
 
 with col_s1:
-    available_sheets = ["All Months"] + get_all_sheet_names()
-    selected_sheet = st.selectbox("Select Month to View", available_sheets)
+    all_sheets_raw = get_all_sheet_names()
+    if current_month_str not in all_sheets_raw:
+        all_sheets_raw.insert(0, current_month_str)
+    
+    available_sheets = ["All Months"] + all_sheets_raw
+    
+    # Session state thi default set karvu
+    st.selectbox("Select Month to View", available_sheets, key="filter_month")
+    selected_sheet = st.session_state.filter_month
 
 with col_s2:
     all_emps = get_all_employees()
-    emp_options = ["Select Employee", "All"] + all_emps
+    opts = ["Select Employee", "All"] + all_emps
     
-    # Safe check in case the employee was completely deleted
-    if st.session_state.current_view_emp not in emp_options:
-        st.session_state.current_view_emp = "Select Employee"
+    if st.session_state.filter_emp not in opts and st.session_state.filter_emp != "":
+        opts.append(st.session_state.filter_emp)
         
-    selected_emp = st.selectbox("Filter by Employee", emp_options, key="current_view_emp")
+    st.selectbox("Filter by Employee", opts, key="filter_emp")
+    selected_emp = st.session_state.filter_emp
 
 if selected_emp == "Select Employee":
-    st.info("👆 Please select or type an employee name from 'Filter by Employee' above to view data.")
+    st.info("👆 Please type a name above or select from 'Filter by Employee' to view data.")
 else:
     if selected_sheet == "All Months":
         df_list = []
@@ -348,7 +372,7 @@ else:
                                         df_new = pd.concat([df_new, updated_row], ignore_index=True)
                                         save_data(df_new, new_sheet)
                                     
-                                    st.session_state.current_view_emp = formatted_e_name
+                                    st.session_state.filter_emp = formatted_e_name
                                     st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
                                     st.success("✅ Entry updated successfully!")
                                     st.rerun()
