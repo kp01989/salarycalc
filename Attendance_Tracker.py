@@ -104,8 +104,12 @@ def calculate_times(in_time, out_time, day_str):
             
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
+# --- Session States ---
 if 'last_edited' not in st.session_state:
     st.session_state.last_edited = None
+
+if 'current_view_emp' not in st.session_state:
+    st.session_state.current_view_emp = "Select Employee"
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 st.title("📅 Daily Attendance Tracker")
@@ -156,7 +160,10 @@ with st.expander("➕ Add New Entry", expanded=True):
                 df_month = pd.concat([df_month, new_entry], ignore_index=True)
                 save_data(df_month, target_sheet) 
                 
+                # Auto-sync bottom table with the newly added employee
+                st.session_state.current_view_emp = formatted_name
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
+                
                 st.success(f"Entry for {formatted_name} saved successfully!")
                 st.rerun() 
 
@@ -172,7 +179,13 @@ with col_s1:
 
 with col_s2:
     all_emps = get_all_employees()
-    selected_emp = st.selectbox("Filter by Employee", ["Select Employee", "All"] + all_emps)
+    emp_options = ["Select Employee", "All"] + all_emps
+    
+    # Safe check in case the employee was completely deleted
+    if st.session_state.current_view_emp not in emp_options:
+        st.session_state.current_view_emp = "Select Employee"
+        
+    selected_emp = st.selectbox("Filter by Employee", emp_options, key="current_view_emp")
 
 if selected_emp == "Select Employee":
     st.info("👆 Please select or type an employee name from 'Filter by Employee' above to view data.")
@@ -335,6 +348,7 @@ else:
                                         df_new = pd.concat([df_new, updated_row], ignore_index=True)
                                         save_data(df_new, new_sheet)
                                     
+                                    st.session_state.current_view_emp = formatted_e_name
                                     st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
                                     st.success("✅ Entry updated successfully!")
                                     st.rerun()
