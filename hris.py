@@ -259,7 +259,6 @@ with st.sidebar:
         except Exception:
             pass
 
-# Sidebar mathi name aapse etle aupohap badhe sync thai jase
 formatted_name = emp_sidebar_name.strip().title()
 
 # ==========================================
@@ -343,12 +342,13 @@ with st.expander("➕ Add New Attendance Entry / Search", expanded=True):
 st.divider()
 
 # ==========================================
-# 7. Salary & Leave Management Form Logic
+# 7. Salary & Leave Management Form Logic (Auto-Fetch from Attendance)
 # ==========================================
 now = datetime.now()
 current_month_name = now.strftime("%b") 
 current_year = now.year
 
+# Default values
 auto_present_hrs = float(last_data["Present_Hrs"])
 auto_ot_mins = int(last_data["OT"])
 auto_late_mins = int(last_data["Late"])
@@ -383,7 +383,46 @@ with col1:
             month = st.selectbox("📅 Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
         with y_col:
             year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
-            
+
+        # --- AUTO FETCH ATTENDANCE DATA FOR SELECTED MONTH/YEAR ---
+        selected_sheet_name = f"{month}'{year}"
+        df_selected_att = load_attendance_data(selected_sheet_name)
+        
+        if not df_selected_att.empty and formatted_name and formatted_name != "Admin":
+            df_emp_att = df_selected_att[df_selected_att["Employee Name"] == formatted_name]
+            if not df_emp_att.empty:
+                # Calculate Regular/Present Hours
+                sum_reg_mins = 0
+                for val in df_emp_att["Total Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        sum_reg_mins += h * 60 + m
+                auto_present_hrs = round(sum_reg_mins / 60.0, 2)
+
+                # Calculate OT Minutes
+                sum_ot_mins = 0
+                for val in df_emp_att["OT Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        sum_ot_mins += h * 60 + m
+                auto_ot_mins = sum_ot_mins
+
+                # Calculate Late Minutes
+                sum_late_mins = 0
+                for val in df_emp_att["Late Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        sum_late_mins += h * 60 + m
+                auto_late_mins = sum_late_mins
+
+                # Calculate Early/Out Minutes
+                sum_out_mins = 0
+                for val in df_emp_att["Out Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        sum_out_mins += h * 60 + m
+                auto_early_mins = sum_out_mins
+
         c1_1, c1_2 = st.columns(2)
         with c1_1:
             ctc_salary = st.number_input("💰 CTC Salary (₹)", value=float(last_data["CTC"]), key=f"ctc_{kb}")
@@ -891,7 +930,7 @@ else:
                         save_attendance_data(df_orig, selected_sheet_orig)
                         
                         st.session_state.last_edited = None
-                        st.success("✅ Entry permanently deleted!")
+                        st.success("✅ Entries permanently deleted!")
                         st.rerun()
 
 # ==========================================
@@ -993,7 +1032,7 @@ if formatted_name:
                         "bonus": row.get("Bonus", 0),
                         "gratuity": row.get("Gratuity", 0),
                         "actual_salary": actual_salary_hist,
-                        "present_hrs": f"{p_hrs}:{p_mins:02d}",
+                        "present_formatted": f"{p_hrs}:{p_mins:02d}",
                         "pl_used": row.get("PL Used", 0),
                         "pl_balance": row.get("PL Balance", 0),
                         "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
