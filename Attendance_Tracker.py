@@ -221,8 +221,19 @@ st.subheader("📋 Attendance Sheet")
 if not formatted_name:
     st.info("👆 Please enter a name in the box above to view or add data.")
 else:
-    # --- Layout Fix for Month Dropdown and Download Button ---
-    col_s1, col_s2, col_s3 = st.columns([1, 1, 2]) # col_s1 (Month), col_s2 (Download), col_s3 (Empty Space)
+    # --- Alignment Fix start ---
+    # CSS trick to align the download button with the dropdown properly
+    st.markdown("""
+        <style>
+            div[data-testid="column"]:nth-of-type(2) {
+                display: flex;
+                align-items: flex-end;
+                padding-bottom: 2px;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
 
     with col_s1:
         all_sheets_raw = get_all_sheet_names()
@@ -264,8 +275,6 @@ else:
             st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
         else:
             with col_s2:
-                st.write("")
-                st.write("")
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
