@@ -116,18 +116,31 @@ if 'filter_emp' not in st.session_state:
 if 'filter_month' not in st.session_state:
     st.session_state.filter_month = current_month_str
 
+if 'top_emp_input' not in st.session_state:
+    st.session_state.top_emp_input = ""
+
 # Jevu upar naam type thay, niche nu filter Current Month + E naam par set thai jay
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip().title()
     if val:
         st.session_state.filter_emp = val
         st.session_state.filter_month = current_month_str
+    else:
+        # Box khali kare to niche reset thai jay
+        st.session_state.filter_emp = "Select Employee"
+
+# Jevu niche dropdown mathi naam select thay, upar nu box pan set thai jay
+def on_bottom_name_change():
+    val = st.session_state.filter_emp
+    if val not in ["Select Employee", "All"]:
+        st.session_state.top_emp_input = val
+    else:
+        st.session_state.top_emp_input = ""
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry", expanded=True):
-    # Form ni bahar text_input rakhelu che jethi Enter marta tarat action thay
     st.text_input("Employee Name", placeholder="Type name and press Enter/Tab", key="top_emp_input", on_change=on_top_name_change)
     formatted_name = st.session_state.top_emp_input.strip().title()
 
@@ -176,7 +189,6 @@ with st.expander("➕ Add New Entry", expanded=True):
                 df_month = pd.concat([df_month, new_entry], ignore_index=True)
                 save_data(df_month, target_sheet) 
                 
-                # Save thaya pachi pan filter update karvu
                 st.session_state.filter_emp = formatted_name
                 st.session_state.filter_month = target_sheet
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
@@ -196,8 +208,6 @@ with col_s1:
         all_sheets_raw.insert(0, current_month_str)
     
     available_sheets = ["All Months"] + all_sheets_raw
-    
-    # Session state thi default set karvu
     st.selectbox("Select Month to View", available_sheets, key="filter_month")
     selected_sheet = st.session_state.filter_month
 
@@ -208,7 +218,7 @@ with col_s2:
     if st.session_state.filter_emp not in opts and st.session_state.filter_emp != "":
         opts.append(st.session_state.filter_emp)
         
-    st.selectbox("Filter by Employee", opts, key="filter_emp")
+    st.selectbox("Filter by Employee", opts, key="filter_emp", on_change=on_bottom_name_change)
     selected_emp = st.session_state.filter_emp
 
 if selected_emp == "Select Employee":
