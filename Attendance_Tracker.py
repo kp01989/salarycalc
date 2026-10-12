@@ -139,7 +139,7 @@ with st.expander("➕ Add New Entry", expanded=True):
             is_duplicate = not df_month[(df_month["Employee Name"] == formatted_name) & (df_month["Date"] == date_str)].empty
             
             if is_duplicate:
-                st.error(f"⚠️ {formatted_name} ni tarikh {date_str} ni entry aagad thi j add kareli che!")
+                st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
             else:
                 total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
                 new_entry = pd.DataFrame({
@@ -167,20 +167,17 @@ st.subheader("📋 Search & Attendance Sheet")
 col_s1, col_s2, col_s3 = st.columns([2, 2, 1])
 
 with col_s1:
-    available_sheets = ["Baddha Mahina (All Months)"] + get_all_sheet_names()
+    available_sheets = ["All Months"] + get_all_sheet_names()
     selected_sheet = st.selectbox("Select Month to View", available_sheets)
 
 with col_s2:
     all_emps = get_all_employees()
-    # Default option "Select Employee" add karyu jethi pelathi data load na thay
     selected_emp = st.selectbox("Filter by Employee", ["Select Employee", "All"] + all_emps)
 
-# Jo "Select Employee" rakhyu hoy to table hide rehse
 if selected_emp == "Select Employee":
-    st.info("👆 Upar 'Filter by Employee' mathi naam select karo athva type karo data jova mate.")
+    st.info("👆 Please select or type an employee name from 'Filter by Employee' above to view data.")
 else:
-    # ડેટા લોડ કરવાનું લોજીક
-    if selected_sheet == "Baddha Mahina (All Months)":
+    if selected_sheet == "All Months":
         df_list = []
         for sht in get_all_sheet_names():
             df_temp = load_data(sht)
@@ -204,7 +201,6 @@ else:
         df_display = df_display.reset_index(drop=True)
         df_display = df_display.fillna("")
 
-        # એમ્પ્લોયી નામ પરથી ફિલ્ટર 
         if selected_emp != "All":
             df_display = df_display[df_display["Employee Name"] == selected_emp]
 
@@ -218,7 +214,7 @@ else:
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
-                    export_sheet_name = selected_sheet if selected_sheet != "Baddha Mahina (All Months)" else "All_Months"
+                    export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                     df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
                     
                 excel_data = buffer.getvalue()
@@ -238,7 +234,7 @@ else:
                     colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
                 return colors
             
-            st.markdown("💡 **Tip:** Table ni dabi baaju checkbox select kari ne Edit ke Delete karo.")
+            st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
             event = st.dataframe(
                 df_display.style.apply(highlight_rows, axis=1), 
@@ -257,7 +253,7 @@ else:
                 st.markdown("---")
                 
                 if len(selected_rows) > 1:
-                    st.warning(f"⚠️ Tame {len(selected_rows)} entries select kari che. Eksathe multiple entries khali delete thai shake.")
+                    st.warning(f"⚠️ You have selected {len(selected_rows)} entries. Multiple entries can only be deleted, not edited.")
                     if st.button("🗑️ Delete Selected Entries", type="primary"):
                         to_delete = {}
                         for row_idx in selected_rows:
@@ -312,7 +308,7 @@ else:
                                     is_dup = not df_new[(df_new["Employee Name"] == formatted_e_name) & (df_new["Date"] == date_str_e)].empty
 
                                 if is_dup:
-                                    st.error("⚠️ Aa tarikh par aa employee ni entry pehla thi j che!")
+                                    st.error("⚠️ An entry for this employee on this date already exists!")
                                 else:
                                     day_str_e = e_date.strftime("%a")
                                     t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
@@ -345,7 +341,7 @@ else:
 
                     with col_delete:
                         st.subheader("🗑️ Delete")
-                        st.write("Aa entry ne hamesha mate kadhva mate niche click karo:")
+                        st.write("Click below to permanently delete this entry:")
                         if st.button("Delete This Entry", type="primary"):
                             df_orig = load_data(selected_sheet_orig)
                             df_orig = df_orig.drop(selected_idx) 
