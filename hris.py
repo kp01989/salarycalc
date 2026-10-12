@@ -294,21 +294,23 @@ with st.expander("➕ Add New Attendance Entry / Search", expanded=True):
         if all_emps:
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
-    with st.form("entry_form"):
-        c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
-        with c1:
-            entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
-            
-        dynamic_key_in = f"in_{entry_date}_{st.session_state.form_reset_counter}"
-        dynamic_key_out = f"out_{entry_date}_{st.session_state.form_reset_counter}"
+    # Time inputs outside st.form so they correctly capture selected time values
+    c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
+    with c1:
+        entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
         
-        with c2:
-            in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
-        with c3:
-            out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
-            
+    dynamic_key_in = f"in_{entry_date}_{st.session_state.form_reset_counter}"
+    dynamic_key_out = f"out_{entry_date}_{st.session_state.form_reset_counter}"
+    
+    with c2:
+        in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
+    with c3:
+        out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
+        
+    with c4:
         st.write("")
-        submit = st.form_submit_button("Save Attendance", type="primary")
+        st.write("")
+        submit = st.button("Save Attendance", type="primary", use_container_width=True)
 
     if submit:
         if not formatted_name:
@@ -360,14 +362,12 @@ now = datetime.now()
 current_month_name = now.strftime("%b") 
 current_year = now.year
 
-# Automatically pull attendance data if employee name is present in sidebar
 auto_present_hrs = float(last_data["Present_Hrs"])
 auto_ot_mins = int(last_data["OT"])
 auto_late_mins = int(last_data["Late"])
 auto_early_mins = int(last_data["Early"])
 
 if emp_sidebar_name:
-    # Filter attendance for selected month/year if available
     pass
 
 kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
