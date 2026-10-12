@@ -109,7 +109,6 @@ def calculate_times(in_time, out_time, day_str):
             
         ot_mins = total_worked_mins - reg_mins
         
-        # New Rule: 30 min thi ochu OT -> 0, baki exact jetlu hoy etlu j
         if ot_mins < 30:
             ot_mins = 0
             
@@ -148,6 +147,16 @@ def on_top_name_change():
         st.session_state.filter_month = current_month_str
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
+
+# CSS trick for button alignment
+st.markdown("""
+    <style>
+        .stDownloadButton button {
+            margin-top: 27px; /* Adjust this value to push the button down */
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
@@ -221,18 +230,6 @@ st.subheader("📋 Attendance Sheet")
 if not formatted_name:
     st.info("👆 Please enter a name in the box above to view or add data.")
 else:
-    # --- Alignment Fix start ---
-    # CSS trick to align the download button with the dropdown properly
-    st.markdown("""
-        <style>
-            div[data-testid="column"]:nth-of-type(2) {
-                display: flex;
-                align-items: flex-end;
-                padding-bottom: 2px;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
     col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
 
     with col_s1:
