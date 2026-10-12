@@ -152,11 +152,19 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
+# CSS to make input boxes compact and clean
+st.markdown("""
+    <style>
+        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
+            max-width: 320px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
-    # Name ane Date/Time badha ne compact columns ma set karya che jethi mota dabla na lage
-    col_input1, col_input2 = st.columns([2, 3])
+    col_input1, col_input2 = st.columns([1.5, 2.5])
     
     with col_input1:
         st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
@@ -169,7 +177,7 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
     with st.form("entry_form"):
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
         with c1:
             entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
             
@@ -181,6 +189,7 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
         with c3:
             out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
             
+        st.write("")
         submit = st.form_submit_button("Save Entry", type="primary")
 
     if submit:
