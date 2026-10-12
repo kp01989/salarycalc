@@ -110,38 +110,29 @@ current_month_str = get_sheet_name(date.today())
 if 'last_edited' not in st.session_state:
     st.session_state.last_edited = None
 
-if 'filter_emp' not in st.session_state:
-    st.session_state.filter_emp = "Select Employee"
-
 if 'filter_month' not in st.session_state:
     st.session_state.filter_month = current_month_str
 
 if 'top_emp_input' not in st.session_state:
     st.session_state.top_emp_input = ""
 
-# Jevu upar naam type thay, niche nu filter Current Month + E naam par set thai jay
+# Jevu upar naam type thay, niche nu filter Current Month par set thai jay
 def on_top_name_change():
-    val = st.session_state.top_emp_input.strip().title()
+    val = st.session_state.top_emp_input.strip()
     if val:
-        st.session_state.filter_emp = val
         st.session_state.filter_month = current_month_str
-    else:
-        # Box khali kare to niche reset thai jay
-        st.session_state.filter_emp = "Select Employee"
-
-# Jevu niche dropdown mathi naam select thay, upar nu box pan set thai jay
-def on_bottom_name_change():
-    val = st.session_state.filter_emp
-    if val not in ["Select Employee", "All"]:
-        st.session_state.top_emp_input = val
-    else:
-        st.session_state.top_emp_input = ""
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 st.title("📅 Daily Attendance Tracker")
 
-with st.expander("➕ Add New Entry", expanded=True):
-    st.text_input("Employee Name", placeholder="Type name and press Enter/Tab", key="top_emp_input", on_change=on_top_name_change)
+# Ene khabar pade ke kava kava naam file ma che etle list bataie
+all_emps = get_all_employees()
+if all_emps:
+    st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
+
+with st.expander("➕ Add New Entry / Search", expanded=True):
+    # Aa ek j box add ane search banne nu kaam karse
+    st.text_input("Employee Name", placeholder="Type name (e.g. Kp) or type 'All' to view everyone", key="top_emp_input", on_change=on_top_name_change)
     formatted_name = st.session_state.top_emp_input.strip().title()
 
     with st.form("entry_form"):
@@ -158,8 +149,8 @@ with st.expander("➕ Add New Entry", expanded=True):
     if submit:
         if not formatted_name:
             st.error("Please enter an Employee Name above!")
-        elif formatted_name == "Select Employee" or formatted_name == "All":
-            st.error("Please enter a valid Employee Name!")
+        elif formatted_name == "All":
+            st.error("You cannot add an entry for 'All'. Please type a valid name!")
         elif out_time < in_time:
             st.error("Out Time cannot be before In Time!")
         else:
@@ -189,7 +180,6 @@ with st.expander("➕ Add New Entry", expanded=True):
                 df_month = pd.concat([df_month, new_entry], ignore_index=True)
                 save_data(df_month, target_sheet) 
                 
-                st.session_state.filter_emp = formatted_name
                 st.session_state.filter_month = target_sheet
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
                 
@@ -197,33 +187,24 @@ with st.expander("➕ Add New Entry", expanded=True):
                 st.rerun() 
 
 st.divider()
-st.subheader("📋 Search & Attendance Sheet")
+st.subheader("📋 Attendance Sheet")
 
-# --- INDEPENDENT FILTER SECTION ---
-col_s1, col_s2, col_s3 = st.columns([2, 2, 1])
-
-with col_s1:
-    all_sheets_raw = get_all_sheet_names()
-    if current_month_str not in all_sheets_raw:
-        all_sheets_raw.insert(0, current_month_str)
-    
-    available_sheets = ["All Months"] + all_sheets_raw
-    st.selectbox("Select Month to View", available_sheets, key="filter_month")
-    selected_sheet = st.session_state.filter_month
-
-with col_s2:
-    all_emps = get_all_employees()
-    opts = ["Select Employee", "All"] + all_emps
-    
-    if st.session_state.filter_emp not in opts and st.session_state.filter_emp != "":
-        opts.append(st.session_state.filter_emp)
-        
-    st.selectbox("Filter by Employee", opts, key="filter_emp", on_change=on_bottom_name_change)
-    selected_emp = st.session_state.filter_emp
-
-if selected_emp == "Select Employee":
-    st.info("👆 Please type a name above or select from 'Filter by Employee' to view data.")
+# Jo upar nu box khali hoy to niche nu table hide rehse
+if not formatted_name:
+    st.info("👆 Please type a name in the box above to view or add data.")
 else:
+    # --- MONTH FILTER & DOWNLOAD SECTION ---
+    col_s1, col_spacer, col_s3 = st.columns([2, 2, 1])
+
+    with col_s1:
+        all_sheets_raw = get_all_sheet_names()
+        if current_month_str not in all_sheets_raw:
+            all_sheets_raw.insert(0, current_month_str)
+        
+        available_sheets = ["All Months"] + all_sheets_raw
+        st.selectbox("Select Month to View", available_sheets, key="filter_month")
+        selected_sheet = st.session_state.filter_month
+
     if selected_sheet == "All Months":
         df_list = []
         for sht in get_all_sheet_names():
@@ -248,11 +229,12 @@ else:
         df_display = df_display.reset_index(drop=True)
         df_display = df_display.fillna("")
 
-        if selected_emp != "All":
-            df_display = df_display[df_display["Employee Name"] == selected_emp]
+        # Upar na box mathi direct filter
+        if formatted_name != "All":
+            df_display = df_display[df_display["Employee Name"] == formatted_name]
 
         if df_display.empty:
-            st.warning(f"No records found for '{selected_emp}' in {selected_sheet}.")
+            st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
         else:
             with col_s3:
                 st.write("") 
@@ -265,7 +247,7 @@ else:
                     df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
                     
                 excel_data = buffer.getvalue()
-                file_name_export = f"Attendance_{export_sheet_name}_{selected_emp}.xlsx".replace(" ", "_")
+                file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
                 st.download_button(
                     label="⬇️ Download Data (Excel)",
                     data=excel_data,
@@ -382,8 +364,9 @@ else:
                                         df_new = pd.concat([df_new, updated_row], ignore_index=True)
                                         save_data(df_new, new_sheet)
                                     
-                                    st.session_state.filter_emp = formatted_e_name
                                     st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
+                                    # Update master search input if name changed during edit
+                                    st.session_state.top_emp_input = formatted_e_name
                                     st.success("✅ Entry updated successfully!")
                                     st.rerun()
 
