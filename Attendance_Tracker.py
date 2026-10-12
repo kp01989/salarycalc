@@ -155,7 +155,12 @@ st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="�
 st.title("📅 Daily Attendance Tracker")
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
-    st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
+    # Name ane Date/Time badha ne compact columns ma set karya che jethi mota dabla na lage
+    col_input1, col_input2 = st.columns([2, 3])
+    
+    with col_input1:
+        st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
+    
     formatted_name = st.session_state.top_emp_input.strip().title()
 
     if formatted_name == "Admin":
@@ -164,16 +169,16 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
     with st.form("entry_form"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
+        c1, c2, c3 = st.columns(3)
+        with c1:
             entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
             
         dynamic_key_in = f"in_{entry_date}_{st.session_state.form_reset_counter}"
         dynamic_key_out = f"out_{entry_date}_{st.session_state.form_reset_counter}"
         
-        with col2:
+        with c2:
             in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
-        with col3:
+        with c3:
             out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
             
         submit = st.form_submit_button("Save Entry", type="primary")
@@ -312,7 +317,7 @@ else:
         st.subheader("📋 Attendance Sheet")
 
         # --- COMPACT WIDTH MONTH FILTER & DOWNLOAD SECTION ---
-        col_s1, col_s2, col_s3 = st.columns([1, 1, 2]) # Ratio set to keep dropdown compact
+        col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
         with col_s1:
             st.selectbox("Select Month to View", available_sheets, key="filter_month")
             selected_sheet = st.session_state.filter_month
