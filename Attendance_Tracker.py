@@ -61,47 +61,51 @@ def save_data(df, sheet_name):
 
 def calculate_times(in_time, out_time, day_str):
     fmt = "%H:%M"
-    t1 = datetime.strptime(in_time.strftime(fmt), fmt)
-    t2 = datetime.strptime(out_time.strftime(fmt), fmt)
+    if not isinstance(in_time, str):
+        in_time = in_time.strftime(fmt)
+    if not isinstance(out_time, str):
+        out_time = out_time.strftime(fmt)
+        
+    t1 = datetime.strptime(in_time, fmt)
+    t2 = datetime.strptime(out_time, fmt)
     std_in = datetime.strptime(STANDARD_IN, fmt)
     std_out = datetime.strptime(STANDARD_OUT, fmt)
     
-    worked_mins_total = 0
-    if t2 >= t1:
-        delta = t2 - t1
-        worked_mins_total = delta.seconds // 60
-        hours, minutes = divmod(worked_mins_total, 60)
-        worked_hrs = f"{hours:02d}:{minutes:02d}"
-    else:
-        worked_hrs = "00:00"
+    if t2 < t1:
+        return "00:00", "", "", "00:00"
         
-    late_hrs, out_hrs, ot_hrs, total_hrs = "", "", "00:00", "00:00"
+    total_worked_mins = (t2 - t1).seconds // 60
     
     if day_str == "Sun":
-        ot_hrs = worked_hrs
-        total_hrs = "00:00"
+        reg_mins = 0
+        ot_mins = total_worked_mins 
     else:
-        if worked_mins_total > 600:
-            total_hrs = "10:00" 
-            extra_mins = worked_mins_total - 600
-            e_h, e_m = divmod(extra_mins, 60)
-            ot_hrs = f"{e_h:02d}:{e_m:02d}" 
-        else:
-            total_hrs = worked_hrs
-            ot_hrs = "00:00"
+        actual_start = max(t1, std_in)
+        actual_end = min(t2, std_out)
         
-        if t1 > std_in:
-            late_delta = t1 - std_in
-            h, r = divmod(late_delta.seconds, 3600)
-            m, _ = divmod(r, 60)
-            late_hrs = f"{h:02d}:{m:02d}"
-
-        if t2 < std_out and t2 >= t1:
-            out_delta = std_out - t2
-            h, r = divmod(out_delta.seconds, 3600)
-            m, _ = divmod(r, 60)
-            out_hrs = f"{h:02d}:{m:02d}"
+        if actual_end > actual_start:
+            reg_mins = (actual_end - actual_start).seconds // 60
+        else:
+            reg_mins = 0
             
+        ot_mins = total_worked_mins - reg_mins
+        
+        # સાચું લોજીક: જો 30 મિનિટથી ઓછું રોકાય તો 0, નહિતર જેટલી મિનિટ રોકાયો હોય એટલી પૂરી મિનિટ મળશે
+        if ot_mins < 30:
+            ot_mins = 0
+            
+    late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
+    out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
+    
+    def mins_to_str(m):
+        h, m = divmod(int(m), 60)
+        return f"{h:02d}:{m:02d}"
+        
+    total_hrs = mins_to_str(reg_mins)
+    ot_hrs = mins_to_str(ot_mins)
+    late_hrs = mins_to_str(late_mins) if late_mins > 0 else ""
+    out_hrs = mins_to_str(out_early_mins) if out_early_mins > 0 else ""
+    
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 # --- Session States ---
@@ -115,6 +119,9 @@ if 'filter_month' not in st.session_state:
 
 if 'top_emp_input' not in st.session_state:
     st.session_state.top_emp_input = ""
+    
+if 'form_reset_counter' not in st.session_state:
+    st.session_state.form_reset_counter = 0
 
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
@@ -136,12 +143,15 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     with st.form("entry_form"):
         col1, col2, col3 = st.columns(3)
         with col1:
-            # DD/MM/YYYY format added here
             entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
+            
+        dynamic_key_in = f"in_{entry_date}_{st.session_state.form_reset_counter}"
+        dynamic_key_out = f"out_{entry_date}_{st.session_state.form_reset_counter}"
+        
         with col2:
-            in_time = st.time_input("In Time", value=time(8, 0))
+            in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
         with col3:
-            out_time = st.time_input("Out Time", value=time(18, 0))
+            out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
             
         submit = st.form_submit_button("Save Entry", type="primary")
 
@@ -181,6 +191,7 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
                 
                 st.session_state.filter_month = target_sheet
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
+                st.session_state.form_reset_counter += 1
                 
                 st.success(f"Entry for {formatted_name} saved successfully!")
                 st.rerun() 
@@ -191,7 +202,6 @@ st.subheader("📋 Attendance Sheet")
 if not formatted_name:
     st.info("👆 Please enter a name in the box above to view or add data.")
 else:
-    # --- MONTH FILTER & DOWNLOAD SECTION ---
     col_s1, col_spacer, col_s3 = st.columns([2, 2, 1])
 
     with col_s1:
@@ -311,7 +321,6 @@ else:
                             ce1, ce2, ce3 = st.columns(3)
                             with ce1:
                                 d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
-                                # DD/MM/YYYY format added here
                                 e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
                             with ce2:
                                 in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
