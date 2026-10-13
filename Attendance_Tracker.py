@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, date, time
 import os
 import io
-import time as tm  # 3 second na delay mate add karyu che
+import time as tm
 
 # Excel File Name
 FILE_NAME = "Attendance_Tracker.xlsx"
@@ -73,16 +73,13 @@ def calculate_times(in_time, out_time, day_str):
             
         ot_mins = total_worked_mins - reg_mins
         
-        # 30 min no rule
         if ot_mins < 30:
             ot_mins = 0
             
-        # Late ane Early proper calculate thase
         late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
         out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
     def mins_to_str(m):
-        # 0 hoy to ekdam khali (Blank) j rehse
         if m <= 0:
             return ""
         h, m = divmod(int(m), 60)
@@ -107,7 +104,6 @@ def load_data(sheet_name):
             cols_to_drop = ["Late Minutes", "Out Minutes"]
             df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
             
-            # Auto-Recalculate Old Data
             for idx, row in df.iterrows():
                 in_t = str(row.get("In Time", "08:00"))
                 out_t = str(row.get("Out Time", "18:00"))
@@ -154,6 +150,9 @@ if 'top_emp_input' not in st.session_state:
 if 'form_reset_counter' not in st.session_state:
     st.session_state.form_reset_counter = 0
 
+if 'flash_msg' not in st.session_state:
+    st.session_state.flash_msg = ""
+
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
     if val:
@@ -161,7 +160,6 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
-# Custom CSS for compact inputs and Colored Summary Metrics
 st.markdown("""
     <style>
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
@@ -180,6 +178,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📅 Daily Attendance Tracker")
+
+# --- Top Flash Message Logic ---
+msg_placeholder = st.empty()
+has_msg = False
+if st.session_state.flash_msg:
+    msg_placeholder.success(st.session_state.flash_msg)
+    has_msg = True
+    st.session_state.flash_msg = ""  # Clear after showing
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
     col_input1, col_input2 = st.columns([1.5, 2.5])
@@ -250,9 +256,8 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
                 st.session_state.form_reset_counter += 1
                 
-                # 3 second wait and explicit date message
-                st.success(f"✅ Record for {formatted_name} on {date_str} saved successfully!")
-                tm.sleep(3)
+                # Instantly save message and rerun
+                st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                 st.rerun() 
 
 st.divider()
@@ -414,8 +419,7 @@ else:
                         save_data(df_orig, sht)
                     
                     st.session_state.last_edited = None
-                    st.success("✅ Selected entries permanently deleted!")
-                    tm.sleep(3)
+                    st.session_state.flash_msg = "✅ Selected entries permanently deleted!"
                     st.rerun()
             else:
                 selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
@@ -482,8 +486,7 @@ else:
                                     save_data(df_new, new_sheet)
                                 
                                 st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
-                                st.success(f"✅ Record for {formatted_e_name} on {date_str_e} updated successfully!")
-                                tm.sleep(3)
+                                st.session_state.flash_msg = f"✅ Record for {formatted_e_name} on {date_str_e} updated successfully!"
                                 st.rerun()
 
                 with col_delete:
@@ -495,6 +498,10 @@ else:
                         save_data(df_orig, selected_sheet_orig)
                         
                         st.session_state.last_edited = None
-                        st.success(f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!")
-                        tm.sleep(3)
+                        st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
                         st.rerun()
+
+# --- 3 Second Timer to clear top message Without Blocking UI ---
+if has_msg:
+    tm.sleep(3)
+    msg_placeholder.empty()
