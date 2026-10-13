@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, time
 import os
 import io
+import time as tm  # 3 second na delay mate add karyu che
 
 # Excel File Name
 FILE_NAME = "Attendance_Tracker.xlsx"
@@ -81,7 +82,7 @@ def calculate_times(in_time, out_time, day_str):
         out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
     def mins_to_str(m):
-        # તારા કહ્યા પ્રમાણે, જો 0 હોય તો ખાલી (Blank) જ રહેશે.
+        # 0 hoy to ekdam khali (Blank) j rehse
         if m <= 0:
             return ""
         h, m = divmod(int(m), 60)
@@ -169,7 +170,6 @@ st.markdown("""
         .stDownloadButton button {
             margin-top: 27px;
         }
-        /* Masta color background for Summary */
         [data-testid="stMetric"] {
             background-color: #1e2530;
             padding: 15px;
@@ -250,7 +250,9 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
                 st.session_state.last_edited = f"{formatted_name}_{date_str}"
                 st.session_state.form_reset_counter += 1
                 
-                st.success(f"Entry for {formatted_name} saved successfully!")
+                # 3 second wait and explicit date message
+                st.success(f"✅ Record for {formatted_name} on {date_str} saved successfully!")
+                tm.sleep(3)
                 st.rerun() 
 
 st.divider()
@@ -291,7 +293,6 @@ else:
         df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
         df_display = df_display.reset_index(drop=True)
         
-        # બધી જ કોલમમાં 00:00 ની જગ્યાએ એકદમ ખાલી (Blank) સેટ કરી દીધું છે. 
         df_display = df_display.fillna("") 
 
         if formatted_name != "Admin":
@@ -413,7 +414,8 @@ else:
                         save_data(df_orig, sht)
                     
                     st.session_state.last_edited = None
-                    st.success("✅ Entries permanently deleted!")
+                    st.success("✅ Selected entries permanently deleted!")
+                    tm.sleep(3)
                     st.rerun()
             else:
                 selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
@@ -480,7 +482,8 @@ else:
                                     save_data(df_new, new_sheet)
                                 
                                 st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
-                                st.success("✅ Entry updated successfully!")
+                                st.success(f"✅ Record for {formatted_e_name} on {date_str_e} updated successfully!")
+                                tm.sleep(3)
                                 st.rerun()
 
                 with col_delete:
@@ -492,5 +495,6 @@ else:
                         save_data(df_orig, selected_sheet_orig)
                         
                         st.session_state.last_edited = None
-                        st.success("✅ Entry permanently deleted!")
+                        st.success(f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!")
+                        tm.sleep(3)
                         st.rerun()
