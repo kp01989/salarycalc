@@ -54,6 +54,8 @@ def calculate_times(in_time, out_time, day_str):
     if day_str == "Sun":
         reg_mins = 0
         ot_mins = total_worked_mins 
+        late_mins = 0
+        out_early_mins = 0
     else:
         actual_start = max(t1, std_in)
         actual_end = min(t2, std_out)
@@ -65,13 +67,11 @@ def calculate_times(in_time, out_time, day_str):
             
         ot_mins = total_worked_mins - reg_mins
         
+        # 30 min no rule
         if ot_mins < 30:
             ot_mins = 0
             
-    if day_str == "Sun":
-        late_mins = 0
-        out_early_mins = 0
-    else:
+        # Late ane Early proper calculate thase
         late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
         out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
@@ -152,11 +152,21 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
-# CSS to make input boxes compact and clean
+# Custom CSS for compact inputs and Summary Box
 st.markdown("""
     <style>
+        .summary-container {
+            background-color: #1e2530;
+            border: 2px solid #303d4f;
+            border-radius: 12px;
+            padding: 20px 20px 10px 20px;
+            margin-bottom: 25px;
+        }
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
             max-width: 320px;
+        }
+        .stDownloadButton button {
+            margin-top: 27px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -181,16 +191,19 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
         with c1:
             entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
             
-        dynamic_key_in = f"in_{entry_date}_{st.session_state.form_reset_counter}"
-        dynamic_key_out = f"out_{entry_date}_{st.session_state.form_reset_counter}"
+        # FIX: Date badlavathi time reset na thai ena mate key mathi date a kadhi nakhi
+        dynamic_key_in = f"in_{st.session_state.form_reset_counter}"
+        dynamic_key_out = f"out_{st.session_state.form_reset_counter}"
         
         with c2:
             in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
         with c3:
             out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
             
-        st.write("")
-        submit = st.form_submit_button("Save Entry", type="primary")
+        with c4:
+            st.write("")
+            st.write("")
+            submit = st.form_submit_button("Save Entry", type="primary")
 
     if submit:
         if not formatted_name:
@@ -308,19 +321,18 @@ else:
         out_hours, out_mins = divmod(total_out_mins, 60)
 
         # --- DISPLAY SUMMARY INSIDE PROPER CONTAINER ---
+        st.markdown('<div class="summary-container">', unsafe_allow_html=True)
         st.subheader("📊 Summary")
-        
-        container = st.container(border=True)
-        with container:
-            m1, m2, m3, m4 = st.columns(4)
-            with m1:
-                st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
-            with m2:
-                st.metric(label="🔥 Total Overtime Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
-            with m3:
-                st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
-            with m4:
-                st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
+        with m2:
+            st.metric(label="🔥 Total Overtime Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
+        with m3:
+            st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
+        with m4:
+            st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
         st.subheader("📋 Attendance Sheet")
@@ -332,8 +344,6 @@ else:
             selected_sheet = st.session_state.filter_month
 
         with col_s2:
-            st.write("")
-            st.write("")
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
