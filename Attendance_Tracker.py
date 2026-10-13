@@ -34,20 +34,25 @@ def get_all_employees():
     except Exception:
         return []
 
+def parse_time(time_val):
+    """Excel mathi time read karti vakhte format issue solve karva"""
+    time_str = str(time_val).strip()
+    try:
+        return datetime.strptime(time_str, "%H:%M")
+    except ValueError:
+        try:
+            return datetime.strptime(time_str, "%H:%M:%S")
+        except ValueError:
+            return datetime.strptime("00:00", "%H:%M")
+
 def calculate_times(in_time, out_time, day_str):
-    fmt = "%H:%M"
-    if not isinstance(in_time, str):
-        in_time = in_time.strftime(fmt)
-    if not isinstance(out_time, str):
-        out_time = out_time.strftime(fmt)
-        
-    t1 = datetime.strptime(in_time, fmt)
-    t2 = datetime.strptime(out_time, fmt)
-    std_in = datetime.strptime(STANDARD_IN, fmt)
-    std_out = datetime.strptime(STANDARD_OUT, fmt)
+    t1 = parse_time(in_time)
+    t2 = parse_time(out_time)
+    std_in = datetime.strptime(STANDARD_IN, "%H:%M")
+    std_out = datetime.strptime(STANDARD_OUT, "%H:%M")
     
     if t2 < t1:
-        return "00:00", "", "", "00:00"
+        return "", "", "", ""
         
     total_worked_mins = (t2 - t1).seconds // 60
     
@@ -76,13 +81,16 @@ def calculate_times(in_time, out_time, day_str):
         out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
     def mins_to_str(m):
+        # તારા કહ્યા પ્રમાણે, જો 0 હોય તો ખાલી (Blank) જ રહેશે.
+        if m <= 0:
+            return ""
         h, m = divmod(int(m), 60)
         return f"{h:02d}:{m:02d}"
         
     total_hrs = mins_to_str(reg_mins)
     ot_hrs = mins_to_str(ot_mins)
-    late_hrs = mins_to_str(late_mins) if late_mins > 0 else ""
-    out_hrs = mins_to_str(out_early_mins) if out_early_mins > 0 else ""
+    late_hrs = mins_to_str(late_mins) 
+    out_hrs = mins_to_str(out_early_mins) 
     
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
@@ -94,7 +102,7 @@ def load_data(sheet_name):
             if "Employee Name" not in df.columns:
                 df.insert(0, "Employee Name", "-")
             if "OT Hours" not in df.columns:
-                df["OT Hours"] = "00:00"
+                df["OT Hours"] = ""
             cols_to_drop = ["Late Minutes", "Out Minutes"]
             df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
             
@@ -152,21 +160,21 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
-# Custom CSS for compact inputs and Summary Box
+# Custom CSS for compact inputs and Colored Summary Metrics
 st.markdown("""
     <style>
-        .summary-container {
-            background-color: #1e2530;
-            border: 2px solid #303d4f;
-            border-radius: 12px;
-            padding: 20px 20px 10px 20px;
-            margin-bottom: 25px;
-        }
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
             max-width: 320px;
         }
         .stDownloadButton button {
             margin-top: 27px;
+        }
+        /* Masta color background for Summary */
+        [data-testid="stMetric"] {
+            background-color: #1e2530;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #303d4f;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -191,7 +199,6 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
         with c1:
             entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
             
-        # FIX: Date badlavathi time reset na thai ena mate key mathi date a kadhi nakhi
         dynamic_key_in = f"in_{st.session_state.form_reset_counter}"
         dynamic_key_out = f"out_{st.session_state.form_reset_counter}"
         
@@ -283,7 +290,9 @@ else:
         df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
         df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
         df_display = df_display.reset_index(drop=True)
-        df_display = df_display.fillna("")
+        
+        # બધી જ કોલમમાં 00:00 ની જગ્યાએ એકદમ ખાલી (Blank) સેટ કરી દીધું છે. 
+        df_display = df_display.fillna("") 
 
         if formatted_name != "Admin":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
