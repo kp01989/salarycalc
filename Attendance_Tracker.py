@@ -79,7 +79,6 @@ def calculate_times(in_time, out_time, day_str):
         out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
     def mins_to_str(m):
-        # 0 hase to khanu ekdam blank rehse
         if m <= 0:
             return ""
         h, m = divmod(int(m), 60)
@@ -143,6 +142,9 @@ if 'last_edited' not in st.session_state:
 
 if 'filter_month' not in st.session_state:
     st.session_state.filter_month = current_month_str
+
+if 'top_emp_input' not in st.session_state:
+    st.session_state.top_emp_input = ""
     
 if 'form_reset_counter' not in st.session_state:
     st.session_state.form_reset_counter = 0
@@ -150,11 +152,16 @@ if 'form_reset_counter' not in st.session_state:
 if 'flash_msg' not in st.session_state:
     st.session_state.flash_msg = ""
 
+def on_top_name_change():
+    val = st.session_state.top_emp_input.strip()
+    if val:
+        st.session_state.filter_month = current_month_str
+
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
 st.markdown("""
     <style>
-        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"], div[data-baseweb="select"] {
+        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
             max-width: 320px;
         }
         .stDownloadButton button {
@@ -183,21 +190,14 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     col_input1, col_input2 = st.columns([1.5, 2.5])
     
     with col_input1:
-        # Dropdown for Employee Selection
+        st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
+    
+    formatted_name = st.session_state.top_emp_input.strip().title()
+
+    if formatted_name == "Admin":
         all_emps = get_all_employees()
-        emp_list_options = ["-- Select Employee --", "👑 Admin (View All)"] + all_emps + ["➕ Add New Employee"]
-        
-        selected_option = st.selectbox("Select Employee", emp_list_options)
-        
-        if selected_option == "➕ Add New Employee":
-            entered_name = st.text_input("Enter New Name Here")
-            formatted_name = entered_name.strip().title()
-        elif selected_option == "👑 Admin (View All)":
-            formatted_name = "Admin"
-        elif selected_option == "-- Select Employee --":
-            formatted_name = ""
-        else:
-            formatted_name = selected_option
+        if all_emps:
+            st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
     with st.form("entry_form"):
         c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
@@ -219,9 +219,9 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
 
     if submit:
         if not formatted_name:
-            st.error("Please select or enter an Employee Name above!")
+            st.error("Please enter an Employee Name above!")
         elif formatted_name == "Admin":
-            st.error("You cannot add an entry for 'Admin'. Please select a valid name!")
+            st.error("You cannot add an entry for 'Admin'. Please type a valid name!")
         elif out_time < in_time:
             st.error("Out Time cannot be before In Time!")
         else:
@@ -261,7 +261,7 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
 st.divider()
 
 if not formatted_name:
-    st.info("👆 Please select an Employee Name from the list above to view data.")
+    st.info("👆 Please enter a name in the box above to view or add data.")
 else:
     all_sheets_raw = get_all_sheet_names()
     if current_month_str not in all_sheets_raw:
@@ -293,8 +293,6 @@ else:
 
     if not df_display.empty:
         df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
-        
-        # Admin select kare to Name-wise sorting thase
         df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
         df_display = df_display.reset_index(drop=True)
         
