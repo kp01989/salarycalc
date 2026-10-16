@@ -269,9 +269,12 @@ else:
     
     available_sheets = ["All Months"] + all_sheets_raw
 
-    if selected_sheet := st.session_state.get('filter_month', current_month_str):
-        pass
-    selected_sheet = st.session_state.filter_month
+    st.subheader("📋 Attendance Sheet")
+    
+    # અહિંયાથી ડ્રોપડાઉન હંમેશા દેખાશે!
+    col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
+    with col_s1:
+        selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month")
 
     if selected_sheet == "All Months":
         df_list = []
@@ -346,14 +349,6 @@ else:
         with m4:
             st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
         st.markdown('</div>', unsafe_allow_html=True)
-
-        st.divider()
-        st.subheader("📋 Attendance Sheet")
-
-        col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
-        with col_s1:
-            st.selectbox("Select Month to View", available_sheets, key="filter_month")
-            selected_sheet = st.session_state.filter_month
 
         with col_s2:
             buffer = io.BytesIO()
