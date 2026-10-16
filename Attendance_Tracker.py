@@ -6,6 +6,7 @@ import io
 import time as tm
 
 # Excel File Name
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_NAME = "Attendance_Tracker.xlsx"
 
 STANDARD_IN = "08:00"
