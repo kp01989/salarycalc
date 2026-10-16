@@ -5,9 +5,11 @@ import os
 import io
 import time as tm
 
-# Excel File Name
+# ==========================================
+# 1. FIXED FILE PATH (Data ક્યારેય નહિ ઉડે)
+# ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FILE_NAME = "Attendance_Tracker.xlsx"
+FILE_NAME = os.path.join(BASE_DIR, "Attendance_Tracker.xlsx")
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
@@ -174,6 +176,10 @@ st.markdown("""
             border-radius: 12px;
             border: 1px solid #303d4f;
         }
+        /* Table Headers ne pan center karva */
+        th {
+            text-align: center !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -270,12 +276,9 @@ else:
     
     available_sheets = ["All Months"] + all_sheets_raw
 
-    st.subheader("📋 Attendance Sheet")
-    
-    # અહિંયાથી ડ્રોપડાઉન હંમેશા દેખાશે!
-    col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
-    with col_s1:
-        selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month")
+    if selected_sheet := st.session_state.get('filter_month', current_month_str):
+        pass
+    selected_sheet = st.session_state.filter_month
 
     if selected_sheet == "All Months":
         df_list = []
@@ -351,6 +354,14 @@ else:
             st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
         st.markdown('</div>', unsafe_allow_html=True)
 
+        st.divider()
+        st.subheader("📋 Attendance Sheet")
+
+        col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
+        with col_s1:
+            st.selectbox("Select Month to View", available_sheets, key="filter_month")
+            selected_sheet = st.session_state.filter_month
+
         with col_s2:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -369,6 +380,7 @@ else:
                 use_container_width=True 
             )
 
+        # --- Data Center & Middle Align Logic ---
         def highlight_rows(row):
             colors = [''] * len(row)
             if row['Day'] == 'Sun':
@@ -377,10 +389,16 @@ else:
                 colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
             return colors
         
+        # DataFrame ની બધી જ કોલમને Center અને Middle માં સેટ કરવા
+        styled_df = df_display.style.apply(highlight_rows, axis=1).set_properties(**{
+            'text-align': 'center',
+            'vertical-align': 'middle'
+        })
+        
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
         event = st.dataframe(
-            df_display.style.apply(highlight_rows, axis=1), 
+            styled_df, 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",           
