@@ -397,15 +397,26 @@ else:
         
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
+       center_align = st.column_config.Column(alignment="center")
+
         event = st.dataframe(
-            styled_df, 
+            df_display.style.apply(highlight_rows, axis=1), 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",           
             selection_mode="multi-row",  
             column_config={
-                "_Original_Sheet": None,
-                "_Original_Index": None   
+                "Employee Name": center_align,
+                "Date": center_align,
+                "Day": center_align,
+                "In Time": center_align,
+                "Out Time": center_align,
+                "Late Hours": center_align,
+                "Out Hours": center_align,
+                "Total Hours": center_align,
+                "OT Hours": center_align,
+                "_Original_Sheet": None,  # Aa hide karva
+                "_Original_Index": None   # Aa hide karva
             }
         )
         
