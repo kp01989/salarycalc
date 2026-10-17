@@ -415,8 +415,8 @@ else:
                 "Out Hours": center_align,
                 "Total Hours": center_align,
                 "OT Hours": center_align,
-                "_Original_Sheet": None,  # Aa hide karva
-                "_Original_Index": None   # Aa hide karva
+                "_Original_Sheet": None,  # To hide this
+                "_Original_Index": None   # To hide this
             }
         )
         
