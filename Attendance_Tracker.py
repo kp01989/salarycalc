@@ -6,7 +6,7 @@ import io
 import time as tm
 
 # ==========================================
-# 1. FIXED FILE PATH (Data ક્યારેય નહિ ઉડે)
+# 1. FIXED FILE PATH (Data safe rehse)
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_NAME = os.path.join(BASE_DIR, "Attendance_Tracker.xlsx")
@@ -176,7 +176,7 @@ st.markdown("""
             border-radius: 12px;
             border: 1px solid #303d4f;
         }
-        /* Table Headers ne pan center karva */
+        /* Table Headers ne center karva */
         th {
             text-align: center !important;
         }
@@ -389,7 +389,6 @@ else:
                 colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
             return colors
         
-        # DataFrame ની બધી જ કોલમને Center અને Middle માં સેટ કરવા
         styled_df = df_display.style.apply(highlight_rows, axis=1).set_properties(**{
             'text-align': 'center',
             'vertical-align': 'middle'
@@ -397,10 +396,10 @@ else:
         
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
-       center_align = st.column_config.Column(alignment="center")
+        center_align = st.column_config.Column(alignment="center")
 
         event = st.dataframe(
-            df_display.style.apply(highlight_rows, axis=1), 
+            styled_df, 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",           
@@ -415,8 +414,8 @@ else:
                 "Out Hours": center_align,
                 "Total Hours": center_align,
                 "OT Hours": center_align,
-                "_Original_Sheet": None,  # To hide this
-                "_Original_Index": None   # To hide this
+                "_Original_Sheet": None,
+                "_Original_Index": None   
             }
         )
         
@@ -526,3 +525,6 @@ else:
 if has_msg:
     tm.sleep(3)
     msg_placeholder.empty()
+```<ElicitationsGroup>
+  <FollowUp>Code copy kari ne run kar ane ke pachi, center alignment barabar aave che ke nai?</FollowUp>
+</ElicitationsGroup>
