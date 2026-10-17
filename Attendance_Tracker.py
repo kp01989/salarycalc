@@ -525,6 +525,3 @@ else:
 if has_msg:
     tm.sleep(3)
     msg_placeholder.empty()
-<ElicitationsGroup>
-  <FollowUp>Code copy kari ne run kar ane ke pachi, center alignment barabar aave che ke nai?</FollowUp>
-</ElicitationsGroup>
