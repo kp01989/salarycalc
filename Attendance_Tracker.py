@@ -191,22 +191,10 @@ st.markdown("""
             border-radius: 12px;
             border: 1px solid #303d4f;
         }
-        /* Table Headers center */
-        th {
-            text-align: center !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("📅 Daily Attendance Tracker")
-
-# --- Top Flash Message Logic ---
-msg_placeholder = st.empty()
-has_msg = False
-if st.session_state.flash_msg:
-    msg_placeholder.success(st.session_state.flash_msg)
-    has_msg = True
-    st.session_state.flash_msg = "" 
 
 with st.expander("➕ Add New Entry / Search", expanded=True):
     col_input1, col_input2 = st.columns([1.5, 2.5])
@@ -279,6 +267,14 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
                 
                 st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                 st.rerun() 
+
+# --- Flash Message Moved Here (In/Out સેક્શનની બરાબર નીચે) ---
+msg_placeholder = st.empty()
+has_msg = False
+if st.session_state.flash_msg:
+    msg_placeholder.success(st.session_state.flash_msg)
+    has_msg = True
+    st.session_state.flash_msg = "" 
 
 st.divider()
 
@@ -403,28 +399,16 @@ else:
                 colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
             return colors
         
-        styled_df = df_display.style.apply(highlight_rows, axis=1)
-        
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
-        center_align = st.column_config.Column(alignment="center")
-
+        # Default Streamlit Alignment
         event = st.dataframe(
-            styled_df, 
+            df_display.style.apply(highlight_rows, axis=1), 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",           
             selection_mode="multi-row",  
             column_config={
-                "Employee Name": center_align,
-                "Date": center_align,
-                "Day": center_align,
-                "In Time": center_align,
-                "Out Time": center_align,
-                "Late Hours": center_align,
-                "Out Hours": center_align,
-                "Total Hours": center_align,
-                "OT Hours": center_align,
                 "_Original_Sheet": None,
                 "_Original_Index": None   
             }
@@ -533,6 +517,7 @@ else:
                         st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
                         st.rerun()
 
+# --- 3 Second Timer to clear message ---
 if has_msg:
     tm.sleep(3)
     msg_placeholder.empty()
