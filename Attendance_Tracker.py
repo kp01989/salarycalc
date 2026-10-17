@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
+import requests
 from datetime import datetime, date, time
-import os
 import io
 import time as tm
 
 # ==========================================
-# 1. FIXED FILE PATH (Data safe rehse)
+# 1. FIREBASE CLOUD DATABASE URL (Data કાયમ સેવ રહેશે)
 # ==========================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FILE_NAME = os.path.join(BASE_DIR, "Attendance_Tracker.xlsx")
+FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
@@ -18,21 +17,33 @@ def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
 def get_all_sheet_names():
-    if os.path.exists(FILE_NAME):
-        xl = pd.ExcelFile(FILE_NAME)
-        return xl.sheet_names
+    url = f"{FIREBASE_URL}.json?shallow=true"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                return list(data.keys())
+    except Exception:
+        pass
     return [get_sheet_name(date.today())]
 
 def get_all_employees():
-    if not os.path.exists(FILE_NAME):
-        return []
+    url = f"{FIREBASE_URL}.json"
     try:
-        xl = pd.ExcelFile(FILE_NAME)
+        response = requests.get(url)
+        data = response.json()
         emps = set()
-        for sheet in xl.sheet_names:
-            df = pd.read_excel(FILE_NAME, sheet_name=sheet, dtype=str)
-            if "Employee Name" in df.columns:
-                emps.update(df["Employee Name"].dropna().unique())
+        if data:
+            for sheet, records in data.items():
+                if isinstance(records, list):
+                    for r in records:
+                        if r is not None and "Employee Name" in r:
+                            emps.add(r["Employee Name"])
+                elif isinstance(records, dict):
+                    for key, r in records.items():
+                        if r is not None and "Employee Name" in r:
+                            emps.add(r["Employee Name"])
         valid_emps = [e for e in emps if e != "-"]
         return sorted(list(valid_emps))
     except Exception:
@@ -96,16 +107,20 @@ def calculate_times(in_time, out_time, day_str):
 
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
-    if os.path.exists(FILE_NAME):
-        try:
-            df = pd.read_excel(FILE_NAME, sheet_name=sheet_name, dtype=str)
-            if "Employee Name" not in df.columns:
-                df.insert(0, "Employee Name", "-")
-            if "OT Hours" not in df.columns:
-                df["OT Hours"] = ""
-            cols_to_drop = ["Late Minutes", "Out Minutes"]
-            df = df.drop(columns=[col for col in cols_to_drop if col in df.columns], errors='ignore')
+    url = f"{FIREBASE_URL}/{sheet_name}.json"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data:
+            if isinstance(data, dict):
+                df = pd.DataFrame(list(data.values()))
+            else:
+                df = pd.DataFrame([row for row in data if row is not None])
             
+            for col in columns:
+                if col not in df.columns:
+                    df[col] = ""
+                    
             for idx, row in df.iterrows():
                 in_t = str(row.get("In Time", "08:00"))
                 out_t = str(row.get("Out Time", "18:00"))
@@ -124,18 +139,18 @@ def load_data(sheet_name):
                     pass
             
             return df
-        except ValueError:
+        else:
             return pd.DataFrame(columns=columns)
-    else:
+    except Exception:
         return pd.DataFrame(columns=columns)
 
 def save_data(df, sheet_name):
-    if not os.path.exists(FILE_NAME):
-        with pd.ExcelWriter(FILE_NAME, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-    else:
-        with pd.ExcelWriter(FILE_NAME, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    url = f"{FIREBASE_URL}/{sheet_name}.json"
+    data = df.to_dict(orient='records')
+    try:
+        requests.put(url, json=data)
+    except Exception:
+        pass
 
 # --- Session States ---
 current_month_str = get_sheet_name(date.today())
@@ -176,7 +191,7 @@ st.markdown("""
             border-radius: 12px;
             border: 1px solid #303d4f;
         }
-        /* Table Headers ne center karva */
+        /* Table Headers center */
         th {
             text-align: center !important;
         }
@@ -380,7 +395,6 @@ else:
                 use_container_width=True 
             )
 
-        # --- Data Center & Middle Align Logic ---
         def highlight_rows(row):
             colors = [''] * len(row)
             if row['Day'] == 'Sun':
@@ -389,10 +403,7 @@ else:
                 colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
             return colors
         
-        styled_df = df_display.style.apply(highlight_rows, axis=1).set_properties(**{
-            'text-align': 'center',
-            'vertical-align': 'middle'
-        })
+        styled_df = df_display.style.apply(highlight_rows, axis=1)
         
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
