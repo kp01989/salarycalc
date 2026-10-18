@@ -405,7 +405,7 @@ else:
                 header_font = Font(bold=True)
                 total_font = Font(bold=True, size=12)
                 
-                # Top Row (Employee Name formatting) - A1:B1 merge, C1:D1 merge
+                # Top Row (Employee Name formatting)
                 worksheet.merge_cells('A1:B1')
                 worksheet.merge_cells('C1:D1')
                 
@@ -464,16 +464,20 @@ else:
                     cell.fill = total_fill
                     cell.font = total_font
                     cell.alignment = center_align
-                
-                # *** NAVU: BADI ROW NI HEIGHT 18 SET KARVI ***
-                for row_idx in range(1, worksheet.max_row + 1):
-                    worksheet.row_dimensions[row_idx].height = 18
 
-                # *** NAVU: DATE WALI COLUMN POHRI NA THAI JAY ENI MATE KHAS LOGIC ***
+                # *** NAVU: BADI ROW NI HEIGHT 18 SET KARVI, ANE KHALI ROW NI 8 (patli) ***
+                empty_row_idx = max_data_row + 1
+                for row_idx in range(1, worksheet.max_row + 1):
+                    if row_idx == 2 or row_idx == empty_row_idx:
+                        # 6 points etle approx 8 pixels thase
+                        worksheet.row_dimensions[row_idx].height = 6 
+                    else:
+                        worksheet.row_dimensions[row_idx].height = 18
+                
+                # Auto-fit Columns width fixed for merged cells
                 for col_idx in range(1, worksheet.max_column + 1):
                     max_length = 0
                     col_letter = get_column_letter(col_idx)
-                    # Upar na 2 row (Name wadi) check nahi karvani jethi col pohri na thay
                     for row_idx in range(3, worksheet.max_row + 1): 
                         cell_val = worksheet.cell(row=row_idx, column=col_idx).value
                         try:
