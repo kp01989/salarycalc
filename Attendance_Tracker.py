@@ -4,7 +4,7 @@ import requests
 from datetime import datetime, date, time
 import io
 import time as tm
-from openpyxl.styles import Alignment, PatternFill, Border, Side, Font # Font add karyu white ane bold mate
+from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 
 # ==========================================
 # 1. FIREBASE CLOUD DATABASE URL (Data કાયમ સેવ રહેશે)
@@ -385,16 +385,34 @@ else:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
+                
+                # TOTAL NI ROW EXCEL MATE BANAVI (Automatically Last Ma Aavse)
+                total_row_data = {
+                    "Date": "",
+                    "Day": "",
+                    "Employee Name": "TOTAL",
+                    "In Time": "",
+                    "Out Time": "",
+                    "Late Hours": f"{late_hours:02d}:{late_mins:02d}",
+                    "Out Hours": f"{out_hours:02d}:{out_mins:02d}",
+                    "Total Hours": f"{reg_hours:02d}:{reg_mins:02d}",
+                    "OT Hours": f"{ot_hours:02d}:{ot_mins:02d}"
+                }
+                total_row_df = pd.DataFrame([total_row_data])
+                df_export = pd.concat([df_export, total_row_df], ignore_index=True)
+                
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                 df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
                 
                 worksheet = writer.sheets[export_sheet_name]
                 
-                # Styles Banavya (White Bold Font Add Karyu)
+                # Styles Banavya
                 center_align = Alignment(horizontal='center', vertical='center')
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                
                 red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
                 gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid') 
+                total_fill = PatternFill(start_color='FFFFCC', end_color='FFFFCC', fill_type='solid') # Yellow fill for Total
                 
                 white_bold_font = Font(color="FFFFFF", bold=True)
                 header_font = Font(bold=True)
@@ -405,9 +423,12 @@ else:
                         day_col_idx = idx
                         break
                 
-                for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column), 1):
+                max_row = worksheet.max_row
+                for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=worksheet.max_column), 1):
                     is_sunday = False
-                    if row_idx > 1 and day_col_idx:
+                    is_total = (row_idx == max_row) # Check if it is the Total row
+                    
+                    if row_idx > 1 and not is_total and day_col_idx:
                         cell_val = row[day_col_idx-1].value
                         if cell_val == "Sun":
                             is_sunday = True
@@ -417,10 +438,13 @@ else:
                         cell.border = thin_border
                         if row_idx == 1:
                             cell.fill = gray_fill  
-                            cell.font = header_font # Header bold
+                            cell.font = header_font 
+                        elif is_total:
+                            cell.fill = total_fill
+                            cell.font = header_font # Total Row Bold
                         elif is_sunday:
                             cell.fill = red_fill   
-                            cell.font = white_bold_font # Sunday row white & bold
+                            cell.font = white_bold_font 
                 
                 for col in worksheet.columns:
                     max_length = 0
@@ -447,7 +471,6 @@ else:
         def highlight_rows(row):
             colors = [''] * len(row)
             if row['Day'] == 'Sun':
-                # App ma pan Sunday white, bold ane red thase
                 colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
             elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
                 colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
