@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, date, time
 import io
 import time as tm
+from openpyxl.styles import Alignment, PatternFill, Border, Side, Font # Font add karyu white ane bold mate
 
 # ==========================================
 # 1. FIREBASE CLOUD DATABASE URL (Data કાયમ સેવ રહેશે)
@@ -106,7 +107,6 @@ def calculate_times(in_time, out_time, day_str):
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 def load_data(sheet_name):
-    # અહીંયા આપણે ડેટાબેઝ માટે કોલમ નક્કી કર્યા છે 
     columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     try:
@@ -139,7 +139,6 @@ def load_data(sheet_name):
                 except Exception:
                     pass
             
-            # આ લાઈન થી આપણે ફરજીયાત એજ ક્રમ માં ડેટા બહાર કાઢીશું
             return df[columns]
         else:
             return pd.DataFrame(columns=columns)
@@ -321,6 +320,12 @@ else:
         if formatted_name != "Admin":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
 
+        final_display_columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
+        for c in final_display_columns:
+             if c not in df_display.columns:
+                 df_display[c] = ""
+        df_display = df_display[final_display_columns]
+
     if df_display.empty:
         st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
     else:
@@ -376,11 +381,57 @@ else:
             selected_sheet = st.session_state.filter_month
 
         with col_s2:
+            # --- Excel Formatting & Download Logic ---
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                 df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
+                
+                worksheet = writer.sheets[export_sheet_name]
+                
+                # Styles Banavya (White Bold Font Add Karyu)
+                center_align = Alignment(horizontal='center', vertical='center')
+                thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
+                gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid') 
+                
+                white_bold_font = Font(color="FFFFFF", bold=True)
+                header_font = Font(bold=True)
+                
+                day_col_idx = None
+                for idx, col in enumerate(df_export.columns, 1):
+                    if col == "Day":
+                        day_col_idx = idx
+                        break
+                
+                for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=1, max_col=worksheet.max_column), 1):
+                    is_sunday = False
+                    if row_idx > 1 and day_col_idx:
+                        cell_val = row[day_col_idx-1].value
+                        if cell_val == "Sun":
+                            is_sunday = True
+                            
+                    for cell in row:
+                        cell.alignment = center_align
+                        cell.border = thin_border
+                        if row_idx == 1:
+                            cell.fill = gray_fill  
+                            cell.font = header_font # Header bold
+                        elif is_sunday:
+                            cell.fill = red_fill   
+                            cell.font = white_bold_font # Sunday row white & bold
+                
+                for col in worksheet.columns:
+                    max_length = 0
+                    col_letter = col[0].column_letter
+                    for cell in col:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    worksheet.column_dimensions[col_letter].width = max_length + 3
                 
             excel_data = buffer.getvalue()
             file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
@@ -396,24 +447,16 @@ else:
         def highlight_rows(row):
             colors = [''] * len(row)
             if row['Day'] == 'Sun':
-                colors = ['background-color: #ff7f7f; color: white'] * len(row)
-            if st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
+                # App ma pan Sunday white, bold ane red thase
+                colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
+            elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
                 colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
             return colors
         
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
-        # અહિયાં આપણે ટેબલ દેખાડતી વખતે ફરીથી ક્રમ ચેક કરીશું
-        final_display_columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
-        # જો કોઈ કોલમ રહી ગયી હોય તો એડ કરવા
-        for c in final_display_columns:
-             if c not in df_display.columns:
-                 df_display[c] = ""
-        
-        df_display_reordered = df_display[final_display_columns]
-
         event = st.dataframe(
-            df_display_reordered.style.apply(highlight_rows, axis=1), 
+            df_display.style.apply(highlight_rows, axis=1), 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",           
