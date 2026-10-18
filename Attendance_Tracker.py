@@ -106,7 +106,8 @@ def calculate_times(in_time, out_time, day_str):
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 def load_data(sheet_name):
-    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
+    # અહીંયા આપણે ડેટાબેઝ માટે કોલમ નક્કી કર્યા છે 
+    columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     try:
         response = requests.get(url)
@@ -138,7 +139,8 @@ def load_data(sheet_name):
                 except Exception:
                     pass
             
-            return df
+            # આ લાઈન થી આપણે ફરજીયાત એજ ક્રમ માં ડેટા બહાર કાઢીશું
+            return df[columns]
         else:
             return pd.DataFrame(columns=columns)
     except Exception:
@@ -248,9 +250,9 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
             else:
                 total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
                 new_entry = pd.DataFrame({
-                    "Employee Name": [formatted_name],
                     "Date": [date_str],
                     "Day": [day_str],
+                    "Employee Name": [formatted_name],
                     "In Time": [in_time.strftime("%H:%M")],
                     "Out Time": [out_time.strftime("%H:%M")],
                     "Late Hours": [late_hrs],
@@ -268,7 +270,7 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
                 st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                 st.rerun() 
 
-# --- Flash Message Moved Here (In/Out સેક્શનની બરાબર નીચે) ---
+# --- Flash Message ---
 msg_placeholder = st.empty()
 has_msg = False
 if st.session_state.flash_msg:
@@ -401,9 +403,17 @@ else:
         
         st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
 
-        # Default Streamlit Alignment
+        # અહિયાં આપણે ટેબલ દેખાડતી વખતે ફરીથી ક્રમ ચેક કરીશું
+        final_display_columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
+        # જો કોઈ કોલમ રહી ગયી હોય તો એડ કરવા
+        for c in final_display_columns:
+             if c not in df_display.columns:
+                 df_display[c] = ""
+        
+        df_display_reordered = df_display[final_display_columns]
+
         event = st.dataframe(
-            df_display.style.apply(highlight_rows, axis=1), 
+            df_display_reordered.style.apply(highlight_rows, axis=1), 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",           
@@ -480,9 +490,9 @@ else:
                                 t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
                                 
                                 updated_row = pd.DataFrame({
-                                    "Employee Name": [formatted_e_name],
                                     "Date": [date_str_e],
                                     "Day": [day_str_e],
+                                    "Employee Name": [formatted_e_name],
                                     "In Time": [e_in.strftime("%H:%M")],
                                     "Out Time": [e_out.strftime("%H:%M")],
                                     "Late Hours": [l_hrs],
