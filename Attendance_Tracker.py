@@ -465,11 +465,16 @@ else:
                     cell.font = total_font
                     cell.alignment = center_align
                 
-                # Auto-fit Columns width fixed for merged cells
+                # *** NAVU: BADI ROW NI HEIGHT 18 SET KARVI ***
+                for row_idx in range(1, worksheet.max_row + 1):
+                    worksheet.row_dimensions[row_idx].height = 18
+
+                # *** NAVU: DATE WALI COLUMN POHRI NA THAI JAY ENI MATE KHAS LOGIC ***
                 for col_idx in range(1, worksheet.max_column + 1):
                     max_length = 0
                     col_letter = get_column_letter(col_idx)
-                    for row_idx in range(1, worksheet.max_row + 1):
+                    # Upar na 2 row (Name wadi) check nahi karvani jethi col pohri na thay
+                    for row_idx in range(3, worksheet.max_row + 1): 
                         cell_val = worksheet.cell(row=row_idx, column=col_idx).value
                         try:
                             if cell_val and len(str(cell_val)) > max_length:
