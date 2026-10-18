@@ -386,7 +386,11 @@ else:
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
                 
-                # TOTAL NI ROW EXCEL MATE BANAVI (Automatically Last Ma Aavse)
+                # Khali Row (1 Row Chhodva Mate)
+                empty_row_data = {col: "" for col in df_export.columns}
+                empty_row_df = pd.DataFrame([empty_row_data])
+                
+                # TOTAL ni Row
                 total_row_data = {
                     "Date": "",
                     "Day": "",
@@ -399,7 +403,9 @@ else:
                     "OT Hours": f"{ot_hours:02d}:{ot_mins:02d}"
                 }
                 total_row_df = pd.DataFrame([total_row_data])
-                df_export = pd.concat([df_export, total_row_df], ignore_index=True)
+                
+                # Banne row ne main data ma merge karvi
+                df_export = pd.concat([df_export, empty_row_df, total_row_df], ignore_index=True)
                 
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                 df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
@@ -412,10 +418,11 @@ else:
                 
                 red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
                 gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid') 
-                total_fill = PatternFill(start_color='FFFFCC', end_color='FFFFCC', fill_type='solid') # Yellow fill for Total
+                total_fill = PatternFill(start_color='FFFFCC', end_color='FFFFCC', fill_type='solid') 
                 
                 white_bold_font = Font(color="FFFFFF", bold=True)
                 header_font = Font(bold=True)
+                total_font = Font(bold=True, size=12) # Font 1 size moti
                 
                 day_col_idx = None
                 for idx, col in enumerate(df_export.columns, 1):
@@ -424,11 +431,14 @@ else:
                         break
                 
                 max_row = worksheet.max_row
+                empty_row_idx = max_row - 1 # Ekdum chhelle thi upar ni row
+                
                 for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=worksheet.max_column), 1):
                     is_sunday = False
-                    is_total = (row_idx == max_row) # Check if it is the Total row
+                    is_total = (row_idx == max_row) 
+                    is_empty = (row_idx == empty_row_idx)
                     
-                    if row_idx > 1 and not is_total and day_col_idx:
+                    if row_idx > 1 and not is_total and not is_empty and day_col_idx:
                         cell_val = row[day_col_idx-1].value
                         if cell_val == "Sun":
                             is_sunday = True
@@ -441,7 +451,7 @@ else:
                             cell.font = header_font 
                         elif is_total:
                             cell.fill = total_fill
-                            cell.font = header_font # Total Row Bold
+                            cell.font = total_font
                         elif is_sunday:
                             cell.fill = red_fill   
                             cell.font = white_bold_font 
