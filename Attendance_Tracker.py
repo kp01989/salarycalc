@@ -5,6 +5,7 @@ from datetime import datetime, date, time
 import io
 import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
+from openpyxl.utils import get_column_letter
 
 # ==========================================
 # 1. FIREBASE CLOUD DATABASE URL (Data કાયમ સેવ રહેશે)
@@ -384,11 +385,10 @@ else:
             # --- Excel Formatting & Download Logic ---
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                # 1. Employee Name column remove karvi excel mathi
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                 
-                # 2. DataFrame ne row 3 thi write karvu (index=False, startrow=2)
+                # DataFrame ne row 3 thi write karvu
                 df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
                 worksheet = writer.sheets[export_sheet_name]
                 
@@ -403,9 +403,9 @@ else:
                 
                 white_bold_font = Font(color="FFFFFF", bold=True)
                 header_font = Font(bold=True)
-                total_font = Font(bold=True, size=12) # Font 1 size moti
+                total_font = Font(bold=True, size=12)
                 
-                # 3. Top Row (Employee Name formatting) - A1 ane B1 merge, C1 ane D1 merge
+                # Top Row (Employee Name formatting) - A1:B1 merge, C1:D1 merge
                 worksheet.merge_cells('A1:B1')
                 worksheet.merge_cells('C1:D1')
                 
@@ -421,12 +421,11 @@ else:
                 c1.font = header_font
                 c1.alignment = center_align
                 
-                # Apply borders to Row 1
                 for r in worksheet['A1:D1']:
                     for c in r:
                         c.border = thin_border
                         
-                # 4. Format Headers (Row 3)
+                # Format Headers (Row 3)
                 for col_idx in range(1, 9):
                     cell = worksheet.cell(row=3, column=col_idx)
                     cell.fill = gray_fill
@@ -434,8 +433,8 @@ else:
                     cell.alignment = center_align
                     cell.border = thin_border
                 
-                # 5. Format Data Rows (Sunday highlight & center align)
-                day_col_idx = 2 # Day is in column B
+                # Format Data Rows
+                day_col_idx = 2 
                 max_data_row = 3 + len(df_export)
                 
                 for row_idx in range(4, max_data_row + 1):
@@ -449,7 +448,7 @@ else:
                             cell.fill = red_fill
                             cell.font = white_bold_font
                             
-                # 6. Total Row Setup (Leave 1 row empty -> max_data_row + 2)
+                # Total Row Setup
                 total_row_idx = max_data_row + 2
                 worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
                 
@@ -466,14 +465,15 @@ else:
                     cell.font = total_font
                     cell.alignment = center_align
                 
-                # 7. Auto-fit Columns width
-                for col in worksheet.columns:
+                # Auto-fit Columns width fixed for merged cells
+                for col_idx in range(1, worksheet.max_column + 1):
                     max_length = 0
-                    col_letter = col[0].column_letter
-                    for cell in col:
+                    col_letter = get_column_letter(col_idx)
+                    for row_idx in range(1, worksheet.max_row + 1):
+                        cell_val = worksheet.cell(row=row_idx, column=col_idx).value
                         try:
-                            if cell.value and len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
+                            if cell_val and len(str(cell_val)) > max_length:
+                                max_length = len(str(cell_val))
                         except:
                             pass
                     worksheet.column_dimensions[col_letter].width = max_length + 3
