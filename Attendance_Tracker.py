@@ -108,7 +108,8 @@ def calculate_times(in_time, out_time, day_str):
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 def load_data(sheet_name):
-    columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
+    # Employee Name aagal aavi gayu
+    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     try:
         response = requests.get(url)
@@ -250,9 +251,9 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
             else:
                 total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
                 new_entry = pd.DataFrame({
+                    "Employee Name": [formatted_name],
                     "Date": [date_str],
                     "Day": [day_str],
-                    "Employee Name": [formatted_name],
                     "In Time": [in_time.strftime("%H:%M")],
                     "Out Time": [out_time.strftime("%H:%M")],
                     "Late Hours": [late_hrs],
@@ -321,7 +322,8 @@ else:
         if formatted_name != "Admin":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
 
-        final_display_columns = ["Date", "Day", "Employee Name", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
+        # Table na columns no kram (Employee Name pehla)
+        final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
         for c in final_display_columns:
              if c not in df_display.columns:
                  df_display[c] = ""
@@ -465,16 +467,13 @@ else:
                     cell.font = total_font
                     cell.alignment = center_align
 
-                # *** NAVU: BADI ROW NI HEIGHT 18 SET KARVI, ANE KHALI ROW NI 8 (patli) ***
                 empty_row_idx = max_data_row + 1
                 for row_idx in range(1, worksheet.max_row + 1):
                     if row_idx == 2 or row_idx == empty_row_idx:
-                        # 6 points etle approx 8 pixels thase
                         worksheet.row_dimensions[row_idx].height = 6 
                     else:
                         worksheet.row_dimensions[row_idx].height = 18
                 
-                # Auto-fit Columns width fixed for merged cells
                 for col_idx in range(1, worksheet.max_column + 1):
                     max_length = 0
                     col_letter = get_column_letter(col_idx)
@@ -586,9 +585,9 @@ else:
                                 t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
                                 
                                 updated_row = pd.DataFrame({
+                                    "Employee Name": [formatted_e_name],
                                     "Date": [date_str_e],
                                     "Day": [day_str_e],
-                                    "Employee Name": [formatted_e_name],
                                     "In Time": [e_in.strftime("%H:%M")],
                                     "Out Time": [e_out.strftime("%H:%M")],
                                     "Late Hours": [l_hrs],
