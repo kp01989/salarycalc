@@ -384,32 +384,12 @@ else:
             # --- Excel Formatting & Download Logic ---
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
-                
-                # Khali Row (1 Row Chhodva Mate)
-                empty_row_data = {col: "" for col in df_export.columns}
-                empty_row_df = pd.DataFrame([empty_row_data])
-                
-                # TOTAL ni Row
-                total_row_data = {
-                    "Date": "",
-                    "Day": "",
-                    "Employee Name": "TOTAL",
-                    "In Time": "",
-                    "Out Time": "",
-                    "Late Hours": f"{late_hours:02d}:{late_mins:02d}",
-                    "Out Hours": f"{out_hours:02d}:{out_mins:02d}",
-                    "Total Hours": f"{reg_hours:02d}:{reg_mins:02d}",
-                    "OT Hours": f"{ot_hours:02d}:{ot_mins:02d}"
-                }
-                total_row_df = pd.DataFrame([total_row_data])
-                
-                # Banne row ne main data ma merge karvi
-                df_export = pd.concat([df_export, empty_row_df, total_row_df], ignore_index=True)
-                
+                # 1. Employee Name column remove karvi excel mathi
+                df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
-                df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
                 
+                # 2. DataFrame ne row 3 thi write karvu (index=False, startrow=2)
+                df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
                 worksheet = writer.sheets[export_sheet_name]
                 
                 # Styles Banavya
@@ -417,51 +397,82 @@ else:
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 
                 red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
-                gray_fill = PatternFill(start_color='D3D3D3', end_color='D3D3D3', fill_type='solid') 
-                total_fill = PatternFill(start_color='FFFFCC', end_color='FFFFCC', fill_type='solid') 
+                gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
+                yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
                 
                 white_bold_font = Font(color="FFFFFF", bold=True)
                 header_font = Font(bold=True)
                 total_font = Font(bold=True, size=12) # Font 1 size moti
                 
-                day_col_idx = None
-                for idx, col in enumerate(df_export.columns, 1):
-                    if col == "Day":
-                        day_col_idx = idx
-                        break
+                # 3. Top Row (Employee Name formatting) - A1 ane B1 merge, C1 ane D1 merge
+                worksheet.merge_cells('A1:B1')
+                worksheet.merge_cells('C1:D1')
                 
-                max_row = worksheet.max_row
-                empty_row_idx = max_row - 1 # Ekdum chhelle thi upar ni row
+                a1 = worksheet['A1']
+                a1.value = "Employee Name :"
+                a1.fill = gray_fill
+                a1.font = header_font
+                a1.alignment = center_align
                 
-                for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=worksheet.max_column), 1):
-                    is_sunday = False
-                    is_total = (row_idx == max_row) 
-                    is_empty = (row_idx == empty_row_idx)
-                    
-                    if row_idx > 1 and not is_total and not is_empty and day_col_idx:
-                        cell_val = row[day_col_idx-1].value
-                        if cell_val == "Sun":
-                            is_sunday = True
-                            
-                    for cell in row:
+                c1 = worksheet['C1']
+                c1.value = formatted_name
+                c1.fill = yellow_fill_name
+                c1.font = header_font
+                c1.alignment = center_align
+                
+                # Apply borders to Row 1
+                for r in worksheet['A1:D1']:
+                    for c in r:
+                        c.border = thin_border
+                        
+                # 4. Format Headers (Row 3)
+                for col_idx in range(1, 9):
+                    cell = worksheet.cell(row=3, column=col_idx)
+                    cell.fill = gray_fill
+                    cell.font = header_font
+                    cell.alignment = center_align
+                    cell.border = thin_border
+                
+                # 5. Format Data Rows (Sunday highlight & center align)
+                day_col_idx = 2 # Day is in column B
+                max_data_row = 3 + len(df_export)
+                
+                for row_idx in range(4, max_data_row + 1):
+                    day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
+                    is_sunday = (day_val == "Sun")
+                    for col_idx in range(1, 9):
+                        cell = worksheet.cell(row=row_idx, column=col_idx)
                         cell.alignment = center_align
                         cell.border = thin_border
-                        if row_idx == 1:
-                            cell.fill = gray_fill  
-                            cell.font = header_font 
-                        elif is_total:
-                            cell.fill = total_fill
-                            cell.font = total_font
-                        elif is_sunday:
-                            cell.fill = red_fill   
-                            cell.font = white_bold_font 
+                        if is_sunday:
+                            cell.fill = red_fill
+                            cell.font = white_bold_font
+                            
+                # 6. Total Row Setup (Leave 1 row empty -> max_data_row + 2)
+                total_row_idx = max_data_row + 2
+                worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
                 
+                worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
+                worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
+                worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
+                worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
+                worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
+                
+                for col_idx in range(1, 9):
+                    cell = worksheet.cell(row=total_row_idx, column=col_idx)
+                    cell.border = thin_border
+                    cell.fill = total_fill
+                    cell.font = total_font
+                    cell.alignment = center_align
+                
+                # 7. Auto-fit Columns width
                 for col in worksheet.columns:
                     max_length = 0
                     col_letter = col[0].column_letter
                     for cell in col:
                         try:
-                            if len(str(cell.value)) > max_length:
+                            if cell.value and len(str(cell.value)) > max_length:
                                 max_length = len(str(cell.value))
                         except:
                             pass
