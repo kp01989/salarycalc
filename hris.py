@@ -4,6 +4,9 @@ import requests
 import os
 import io
 from datetime import datetime
+import time as tm
+from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
+from openpyxl.utils import get_column_letter
 
 # ==========================================
 # 1. Page Setup & FIREBASE Connection
@@ -95,24 +98,18 @@ def fetch_attendance_data(emp_name, month_name, year):
                 else:
                     df = pd.DataFrame([row for row in data if row is not None])
                 
-                # Filter for employee
                 if "Employee Name" in df.columns:
                     df = df[df["Employee Name"].str.lower() == emp_name.strip().lower()]
-                    
                     for _, row in df.iterrows():
-                        # Pay Hrs (Total Hours)
                         h, m = parse_firebase_time(row.get("Total Hours", "00:00"))
                         total_reg_mins += (h * 60) + m
                         
-                        # OT Hours
                         h, m = parse_firebase_time(row.get("OT Hours", "00:00"))
                         total_ot_mins += (h * 60) + m
                         
-                        # Late Hours
                         h, m = parse_firebase_time(row.get("Late Hours", "00:00"))
                         total_late_mins += (h * 60) + m
                         
-                        # Out Hours
                         h, m = parse_firebase_time(row.get("Out Hours", "00:00"))
                         total_out_mins_att += (h * 60) + m
                         
@@ -139,9 +136,9 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("👤 Employee Name", placeholder="Enter Name...", label_visibility="collapsed").title()
     st.divider()
 
+    user_file = get_user_file(emp_sidebar_name)
     last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
-    user_file = get_user_file(emp_sidebar_name)
     is_new_employee = True
     last_pl_balance = 0.0
     last_saved_month = None
@@ -200,6 +197,7 @@ with col1:
         default_month = current_month_name 
         def_year = current_year
         
+        # --- AUTO-INCREMENT LOGIC ADDED BACK ---
         if emp_sidebar_name and not is_new_employee and last_saved_month in m_list:
             last_idx = m_list.index(last_saved_month)
             if last_idx < 11: 
@@ -317,7 +315,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         ]
     })
     
-    # Emojis Removed from Header
     header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [f"{emp_name}"]})
     slip_df = pd.concat([header_row, slip_df], ignore_index=True)
     
@@ -327,7 +324,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         workbook = writer.book
         worksheet = writer.sheets['Salary_Slip']
         
-        # New Formatting: Left alignment for Labels with slight indent
+        # Formatting for Excel
         base_header_left = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
         base_header_center = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
         
@@ -347,6 +344,10 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         worksheet.set_column('A:A', 22)
         worksheet.set_column('B:B', 25)
         
+        # Row height 18 px logic
+        for i in range(len(slip_df)):
+            worksheet.set_row(i, 18)
+        
         currency_labels = [
             "CTC Salary", "Bonus", "Gratuity", "Actual Salary", 
             "PT", "PF", "ESI", "TDS", "Loan", "Food", 
@@ -356,7 +357,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-            # Column A formatting
             if row_num == 0:
                 dict_col0 = base_header_left.copy()
             elif lbl == "Pay Salary":
@@ -371,7 +371,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
             worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
 
-            # Column B formatting
             if row_num == 0:
                 dict_col1 = base_header_center.copy()
             elif lbl == "Working Hrs":
@@ -403,10 +402,36 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 # 7. Button Execution Logic
 # ==========================================
 st.write("")
-_, btn_col, _ = st.columns([1, 1.5, 1])
+# --- NAVA BUTTONS NU LOGIC (SAVE & DELETE SPECIFIC MONTH) ---
+_, btn_col1, btn_col2, _ = st.columns([0.5, 1.5, 1.5, 0.5])
 
-with btn_col:
+with btn_col1:
     save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
+with btn_col2:
+    delete_clicked = st.button(f"🗑️ Delete {month} '{year} Data", type="secondary", use_container_width=True)
+
+# Delete Logic (Only specific month)
+if delete_clicked:
+    if not emp_sidebar_name:
+        st.error("Please enter Employee Name in the sidebar!")
+    elif user_file and os.path.exists(user_file):
+        df_del = pd.read_csv(user_file)
+        orig_len = len(df_del)
+        # Select mahina no data filter kari do
+        df_del = df_del[~((df_del['Month'].astype(str).str.strip() == month) & (df_del['Year'] == year))]
+        
+        if len(df_del) < orig_len:
+            if df_del.empty:
+                os.remove(user_file)
+            else:
+                df_del.to_csv(user_file, index=False)
+            st.success(f"✅ {month} '{year} no data delete thai gayo!")
+            tm.sleep(1.5)
+            st.rerun()
+        else:
+            st.warning(f"⚠️ {month} '{year} no koi data save nathi!")
+    else:
+        st.warning("⚠️ Koi data file mali nathi!")
 
 if save_clicked:
     if not emp_sidebar_name: 
@@ -449,7 +474,10 @@ if save_clicked:
         }])
         
         if os.path.exists(user_file):
-            pd.concat([pd.read_csv(user_file), new_rec], ignore_index=True).to_csv(user_file, index=False)
+            df_existing = pd.read_csv(user_file)
+            # Remove existing record for the same month/year before appending new one
+            df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == month) & (df_existing['Year'] == year))]
+            pd.concat([df_existing, new_rec], ignore_index=True).to_csv(user_file, index=False)
         else: 
             new_rec.to_csv(user_file, index=False)
             
@@ -469,7 +497,7 @@ if st.session_state.get('calc_result'):
         _, btn_col, _ = st.columns([1, 1.5, 1])
         with btn_col:
             st.download_button(
-                label="📄 Download Colorful Excel Slip",
+                label="📄 Download Excel Slip",
                 data=excel_data,
                 file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
