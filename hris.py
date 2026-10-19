@@ -36,7 +36,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. State Management (Password Removed)
+# 3. State Management
 # ==========================================
 if 'calc_result' not in st.session_state:
     st.session_state['calc_result'] = None
@@ -83,7 +83,7 @@ def fetch_attendance_data(emp_name, month_name, year):
     total_reg_mins = 0
     total_ot_mins = 0
     total_late_mins = 0
-    total_early_mins = 0
+    total_out_mins_att = 0
     
     try:
         response = requests.get(url)
@@ -112,9 +112,9 @@ def fetch_attendance_data(emp_name, month_name, year):
                         h, m = parse_firebase_time(row.get("Late Hours", "00:00"))
                         total_late_mins += (h * 60) + m
                         
-                        # Out Hours (Early)
+                        # Out Hours
                         h, m = parse_firebase_time(row.get("Out Hours", "00:00"))
-                        total_early_mins += (h * 60) + m
+                        total_out_mins_att += (h * 60) + m
                         
     except Exception as e:
         pass
@@ -123,7 +123,7 @@ def fetch_attendance_data(emp_name, month_name, year):
         "reg_h": total_reg_mins // 60, "reg_m": total_reg_mins % 60,
         "ot_h": total_ot_mins // 60, "ot_m": total_ot_mins % 60,
         "late_h": total_late_mins // 60, "late_m": total_late_mins % 60,
-        "early_h": total_early_mins // 60, "early_m": total_early_mins % 60
+        "out_h": total_out_mins_att // 60, "out_m": total_out_mins_att % 60
     }
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
@@ -164,7 +164,8 @@ with st.sidebar:
 
                 key_mapping = {
                     "CTC": "CTC", "Working Hrs": "Working_Hrs", 
-                    "Gratuity": "Gratuity", "PT": "PT", "TDS": "TDS", "ESIC": "ESIC"
+                    "Gratuity": "Gratuity", "PT": "PT", "TDS": "TDS", "ESIC": "ESIC",
+                    "Food": "Food", "Advance": "Advance", "Difference": "Difference"
                 }
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row_chronological: 
@@ -216,7 +217,7 @@ with col1:
             year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
             
         # FETCH DATA FROM ATTENDANCE CLOUD based on Month and Year
-        att_data = fetch_attendance_data(emp_name, month, year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "early_h": 0, "early_m": 0}
+        att_data = fetch_attendance_data(emp_name, month, year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "out_h": 0, "out_m": 0}
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
@@ -246,10 +247,10 @@ with col1:
             with l_h_col: late_hrs_input = st.number_input("⏰ Late Hrs", value=att_data["late_h"], step=1, key=f"lhrs_{kb}")
             with l_m_col: late_mins_input = st.number_input("⏱️ Late Mins", value=att_data["late_m"], min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
 
-            # --- EARLY GOING ---
+            # --- OUT GOING ---
             e_h_col, e_m_col = st.columns(2)
-            with e_h_col: early_hrs_input = st.number_input("🚶 Out Hrs", value=att_data["early_h"], step=1, key=f"ehrs_{kb}")
-            with e_m_col: early_mins_input = st.number_input("⏱️ Out Mins", value=att_data["early_m"], min_value=0, max_value=59, step=1, key=f"emins_{kb}")
+            with e_h_col: out_hrs_input = st.number_input("🚶 Out Hrs", value=att_data["out_h"], step=1, key=f"out_hrs_{kb}")
+            with e_m_col: out_mins_input = st.number_input("⏱️ Out Mins", value=att_data["out_m"], min_value=0, max_value=59, step=1, key=f"out_mins_{kb}")
 
             # --- OT (Overtime) ---
             o_h_col, o_m_col = st.columns(2)
@@ -269,7 +270,7 @@ with col2:
             gratuity = st.number_input("🎁 Gratuity (₹)", value=float(last_data["Gratuity"]), key=f"gr_{kb}")
             advance = st.number_input("🏦 Loan/Advance (₹)", value=float(last_data["Advance"]), key=f"ad_{kb}")
             esic = st.number_input("🏥 ESIC (₹)", value=float(last_data["ESIC"]), key=f"esic_{kb}")
-            difference = st.number_input("🧮 Difference (₹)", value=0.0, key=f"diff_{kb}")
+            difference = st.number_input("🧮 Difference (₹)", value=float(last_data["Difference"]), key=f"diff_{kb}")
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -278,14 +279,14 @@ final_pl_balance = available_pl - used_pl
 pl_hours_to_add = used_pl * 10 
 
 total_late_mins = (late_hrs_input * 60) + late_mins_input
-total_early_mins = (early_hrs_input * 60) + early_mins_input
+total_out_mins = (out_hrs_input * 60) + out_mins_input
 
 total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
 
-# Ahiya base Pay Hrs (Jema already late cut thain avelu chhe)
+# Pay Hrs calculation
 total_pay_mins = (present_hrs_input * 60) + present_mins_input
 
-# PL add karvi
+# Add PL Hours
 total_min = total_pay_mins + int(pl_hours_to_add * 60)
 
 if total_min < 0: total_min = 0
@@ -297,13 +298,14 @@ calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
 def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
+    # Emojis Removed From Labels
     slip_df = pd.DataFrame({
         "Label": [
-            "💰 CTC Salary", "🎁 Gratuity", "🎉 Bonus", "💵 Actual Salary", 
-            "🏢 Working Hrs", "✅ Pay Hrs", "🏖️ PL Used", 
-            "⏳ OT Hrs", "⏰ Late Hrs", "🚶 Out Hrs", "⏱️ Final Pay Hrs", 
-            "🏛️ PT", "🛡️ PF", "🏥 ESI", "✂️ TDS", "🏦 Loan", "🍽️ Food", 
-            "⚖️ PL Balance", "💸 Pay Salary", "💳 Bank Salary", "🧮 Diff"
+            "CTC Salary", "Gratuity", "Bonus", "Actual Salary", 
+            "Working Hrs", "Pay Hrs", "PL Used", 
+            "OT Hrs", "Late Hrs", "Out Hrs", "Final Pay Hrs", 
+            "PT", "PF", "ESI", "TDS", "Loan", "Food", 
+            "PL Balance", "Pay Salary", "Bank Salary", "Diff"
         ],
         "Value": [
             sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], 
@@ -315,7 +317,8 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         ]
     })
     
-    header_row = pd.DataFrame({"Label": [f"📅 {month_str}'{year_val}"], "Value": [f"👤 {emp_name}"]})
+    # Emojis Removed from Header
+    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [f"{emp_name}"]})
     slip_df = pd.concat([header_row, slip_df], ignore_index=True)
     
     output = io.BytesIO()
@@ -324,14 +327,18 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         workbook = writer.book
         worksheet = writer.sheets['Salary_Slip']
         
-        base_header = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
-        base_label = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
+        # New Formatting: Left alignment for Labels with slight indent
+        base_header_left = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_header_center = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
+        
+        base_label_left = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
         base_val_text = {'align': 'center', 'valign': 'vcenter'}
         base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
         base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
         base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
-        base_pay_label = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
-        base_pay_val = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+        
+        base_pay_label_left = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
         
         base_diff_pos = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
         base_diff_neg = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
@@ -341,20 +348,21 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         worksheet.set_column('B:B', 25)
         
         currency_labels = [
-            "💰 CTC Salary", "🎉 Bonus", "🎁 Gratuity", "💵 Actual Salary", 
-            "🏛️ PT", "🛡️ PF", "🏥 ESI", "✂️ TDS", "🏦 Loan", "🍽️ Food", 
-            "💳 Bank Salary", "🧮 Diff"
+            "CTC Salary", "Bonus", "Gratuity", "Actual Salary", 
+            "PT", "PF", "ESI", "TDS", "Loan", "Food", 
+            "Bank Salary", "Diff"
         ]
         
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
+            # Column A formatting
             if row_num == 0:
-                dict_col0 = base_header.copy()
-            elif lbl == "💸 Pay Salary":
-                dict_col0 = base_pay_label.copy()
+                dict_col0 = base_header_left.copy()
+            elif lbl == "Pay Salary":
+                dict_col0 = base_pay_label_left.copy()
             else:
-                dict_col0 = base_label.copy()
+                dict_col0 = base_label_left.copy()
 
             dict_col0['border'] = 1
             if row_num == 0: dict_col0['top'] = 2
@@ -363,15 +371,16 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
             worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
 
+            # Column B formatting
             if row_num == 0:
-                dict_col1 = base_header.copy()
-            elif lbl == "🏢 Working Hrs":
+                dict_col1 = base_header_center.copy()
+            elif lbl == "Working Hrs":
                 dict_col1 = base_val_yellow.copy()
-            elif lbl in ["✅ Pay Hrs", "🏖️ PL Used", "⏱️ Final Pay Hrs"]:
+            elif lbl in ["Pay Hrs", "PL Used", "Final Pay Hrs"]:
                 dict_col1 = base_val_green.copy()
-            elif lbl == "💸 Pay Salary":
-                dict_col1 = base_pay_val.copy()
-            elif lbl == "🧮 Diff":
+            elif lbl == "Pay Salary":
+                dict_col1 = base_pay_val_center.copy()
+            elif lbl == "Diff":
                 diff_val = float(val) if val != "-" else 0
                 if diff_val > 0: dict_col1 = base_diff_pos.copy()
                 elif diff_val < 0: dict_col1 = base_diff_neg.copy()
@@ -421,7 +430,7 @@ if save_clicked:
                 "pl_balance": final_pl_balance,
                 "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
                 "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
-                "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
+                "out_hrs": f"{total_out_mins//60}:{total_out_mins%60:02d}",
                 "pay_hrs": calc_final_hrs.replace('h', ':').replace('m', '').replace(' ', ''),
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
                 "pay_salary_val": net_sal - difference,
@@ -432,7 +441,7 @@ if save_clicked:
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
             "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", 
-            "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
+            "Late Mins": total_late_mins, "Out Mins": total_out_mins, "OT Mins": total_ot_mins,
             "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, 
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
@@ -555,7 +564,7 @@ if emp_sidebar_name:
                     
                     ot_m = int(row.get("OT Mins", 0))
                     late_m = int(row.get("Late Mins", 0))
-                    early_m = int(row.get("Early Mins", 0))
+                    out_m = int(row.get("Out Mins", row.get("Early Mins", 0)))
                     
                     fh = str(row.get("Final Present Hrs", "0h 0m"))
                     try:
@@ -580,7 +589,7 @@ if emp_sidebar_name:
                         "pl_balance": row.get("PL Balance", 0),
                         "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
                         "late_hrs": f"{late_m//60}:{late_m%60:02d}",
-                        "out_hrs": f"{early_m//60}:{early_m%60:02d}",
+                        "out_hrs": f"{out_m//60}:{out_m%60:02d}",
                         "pay_hrs": pay_str,
                         "pt": row.get("PT", 0),
                         "tds": row.get("TDS", 0),
