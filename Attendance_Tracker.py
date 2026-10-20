@@ -1,694 +1,632 @@
 import streamlit as st
 import pandas as pd
 import requests
-import os
+from datetime import datetime, date, time
 import io
-from datetime import datetime
 import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 
 # ==========================================
-# 1. Page Setup & FIREBASE Connection
+# 1. FIREBASE CLOUD DATABASE URL (Data કાયમ સેવ રહેશે)
 # ==========================================
-st.set_page_config(page_title="Salary Management System", layout="wide")
-month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-month_dict = {m: i+1 for i, m in enumerate(month_order)}
-
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 
-# ==========================================
-# 2. Custom CSS
-# ==========================================
-st.markdown("""
-<style>
-    .block-container { padding-top: 1.5rem; padding-bottom: 1rem; }
-    .stButton > button { 
-        transition: all 0.2s ease-in-out !important; 
-        cursor: pointer !important; 
-    }
-    .stButton > button:hover { 
-        transform: scale(1.05) !important; 
-        box-shadow: 0px 4px 15px rgba(255, 75, 75, 0.4) !important; 
-    }
-    [data-testid="stDataEditor"] [role="gridcell"] input[type="checkbox"] { 
-        opacity: 1 !important; 
-        visibility: visible !important; 
-    }
-</style>
-""", unsafe_allow_html=True)
+STANDARD_IN = "08:00"
+STANDARD_OUT = "18:00"
 
-# ==========================================
-# 3. State Management
-# ==========================================
-if 'calc_result' not in st.session_state:
-    st.session_state['calc_result'] = None
-if 'form_key' not in st.session_state:
-    st.session_state['form_key'] = 0
-if 'flash_msg' not in st.session_state:
-    st.session_state['flash_msg'] = None
+def get_sheet_name(selected_date):
+    return selected_date.strftime("%b'%Y")
 
-st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
-st.divider()
-
-# Show Flash Message if exists
-if st.session_state['flash_msg']:
-    st.success(st.session_state['flash_msg'])
-    st.session_state['flash_msg'] = None # Clear it after showing
-
-# ==========================================
-# 4. Helper Functions & Configs
-# ==========================================
-def get_user_file(name):
-    if not name: return None
-    return f"{name.strip().replace(' ', '_')}_salary.csv"
-
-def clean_legacy_columns(df):
-    if 'Std Hrs' in df.columns:
-        if 'Working Hrs' in df.columns:
-            df['Working Hrs'] = df['Working Hrs'].fillna(df['Std Hrs'])
-            df['Working Hrs'] = df.apply(lambda r: r['Std Hrs'] if pd.isna(r.get('Working Hrs')) or r.get('Working Hrs') == 0 else r['Working Hrs'], axis=1)
-            df = df.drop(columns=['Std Hrs'])
-        else:
-            df = df.rename(columns={'Std Hrs': 'Working Hrs'})
-    if 'Opening PL' not in df.columns:
-        df['Opening PL'] = 0.0
-    if 'In Hand Salary' not in df.columns:
-        df['In Hand Salary'] = 0.0
-    df = df.loc[:, ~df.columns.duplicated()]
-    return df
-
-def parse_firebase_time(time_str):
-    if pd.isna(time_str) or str(time_str).strip() == "":
-        return 0, 0
-    try:
-        parts = str(time_str).split(':')
-        h = int(parts[0])
-        m = int(parts[1]) if len(parts) > 1 else 0
-        return h, m
-    except:
-        return 0, 0
-
-def fetch_attendance_data(emp_name, month_name, year):
-    sheet_name = f"{month_name}'{year}"
-    url = f"{FIREBASE_URL}/{sheet_name}.json"
-    
-    total_reg_mins, total_ot_mins, total_late_mins, total_out_mins_att = 0, 0, 0, 0
-    
+def get_all_sheet_names():
+    url = f"{FIREBASE_URL}.json?shallow=true"
     try:
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()
             if data:
-                if isinstance(data, dict):
-                    df = pd.DataFrame(list(data.values()))
-                else:
-                    df = pd.DataFrame([row for row in data if row is not None])
-                
-                if "Employee Name" in df.columns:
-                    df = df[df["Employee Name"].str.lower() == emp_name.strip().lower()]
-                    for _, row in df.iterrows():
-                        h, m = parse_firebase_time(row.get("Total Hours", "00:00"))
-                        total_reg_mins += (h * 60) + m
-                        
-                        h, m = parse_firebase_time(row.get("OT Hours", "00:00"))
-                        total_ot_mins += (h * 60) + m
-                        
-                        h, m = parse_firebase_time(row.get("Late Hours", "00:00"))
-                        total_late_mins += (h * 60) + m
-                        
-                        h, m = parse_firebase_time(row.get("Out Hours", "00:00"))
-                        total_out_mins_att += (h * 60) + m
-                        
-    except Exception as e:
+                return list(data.keys())
+    except Exception:
         pass
-        
-    return {
-        "reg_h": total_reg_mins // 60, "reg_m": total_reg_mins % 60,
-        "ot_h": total_ot_mins // 60, "ot_m": total_ot_mins % 60,
-        "late_h": total_late_mins // 60, "late_m": total_late_mins % 60,
-        "out_h": total_out_mins_att // 60, "out_m": total_out_mins_att % 60
-    }
+    return [get_sheet_name(date.today())]
 
-def recalculate_future_pl(df, start_index):
-    for i in range(start_index + 1, len(df)):
-        prev_balance = float(df.at[df.index[i-1], 'PL Balance'])
-        used_pl_current = float(df.at[df.index[i], 'PL Used'])
-        
-        new_opening = prev_balance + 1.0
-        new_balance = new_opening - used_pl_current
-        
-        df.at[df.index[i], 'Opening PL'] = new_opening
-        df.at[df.index[i], 'PL Balance'] = new_balance
-    return df
+def get_all_employees():
+    url = f"{FIREBASE_URL}.json"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        emps = set()
+        if data:
+            for sheet, records in data.items():
+                if isinstance(records, list):
+                    for r in records:
+                        if r is not None and "Employee Name" in r:
+                            emps.add(r["Employee Name"])
+                elif isinstance(records, dict):
+                    for key, r in records.items():
+                        if r is not None and "Employee Name" in r:
+                            emps.add(r["Employee Name"])
+        valid_emps = [e for e in emps if e != "-"]
+        return sorted(list(valid_emps))
+    except Exception:
+        return []
 
-money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference", "In Hand Salary"]
-table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
-
-# ==========================================
-# 5. Sidebar Profile & Form Default Data Logic
-# ==========================================
-with st.sidebar:
-    st.header("👤 Profile")
-    emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed").title()
-    
-    user_file = get_user_file(emp_sidebar_name)
-    
-    if emp_sidebar_name and user_file and os.path.exists(user_file):
-        st.write("")
-        if st.button("🗑️ Delete All Data", type="secondary", use_container_width=True, help="Permanently delete all data for this employee"):
-            try:
-                os.remove(user_file)
-                st.session_state['calc_result'] = None 
-                st.session_state['flash_msg'] = f"✅ All data for {emp_sidebar_name} has been deleted!"
-                st.rerun()
-            except Exception as e:
-                st.error("Error deleting file.")
-                
-    st.divider()
-
-    is_new_employee = True
-    df_hist_sorted = pd.DataFrame() 
-
-    if user_file and os.path.exists(user_file):
+def parse_time(time_val):
+    time_str = str(time_val).strip()
+    try:
+        return datetime.strptime(time_str, "%H:%M")
+    except ValueError:
         try:
-            df_hist = pd.read_csv(user_file)
-            df_hist = clean_legacy_columns(df_hist)
-            if not df_hist.empty:
-                is_new_employee = False
-                df_hist['Month_Num'] = df_hist['Month'].astype(str).str.strip().map(month_dict)
-                df_hist_sorted = df_hist.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
-        except:
-            pass
+            return datetime.strptime(time_str, "%H:%M:%S")
+        except ValueError:
+            return datetime.strptime("00:00", "%H:%M")
 
-# ==========================================
-# 6. Form Logic & Input
-# ==========================================
-kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
-
-col1, col2 = st.columns(2)
-
-now = datetime.now()
-current_month_name = now.strftime("%b") 
-current_year = now.year
-
-with col1:
-    with st.container(border=True):
-        st.subheader("💰 Basic Details")
-        emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
-        
-        m_col, y_col = st.columns(2)
-        m_list = list(month_dict.keys())
-        
-        default_month = current_month_name 
-        def_year = current_year
-        if not is_new_employee and not df_hist_sorted.empty:
-            last_row = df_hist_sorted.iloc[-1]
-            last_saved_month = str(last_row.get("Month", "")).strip()
-            if last_saved_month in m_list:
-                last_idx = m_list.index(last_saved_month)
-                if last_idx < 11: 
-                    default_month = m_list[last_idx + 1]
-                    def_year = int(last_row.get("Year", current_year))
-                else:
-                    default_month = 'Jan' 
-                    def_year = int(last_row.get("Year", current_year)) + 1
-
-        def_m_idx = m_list.index(default_month) if default_month in m_list else 0
-
-        with m_col:
-            selected_month = st.selectbox("📅 Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
-        with y_col:
-            selected_year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
-
-        form_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0.0}
-        
-        opening_pl = 0.0
-        is_editing_past = False
-        
-        if not is_new_employee and not df_hist_sorted.empty:
-            existing_row = df_hist_sorted[(df_hist_sorted['Month'].astype(str).str.strip() == selected_month) & (df_hist_sorted['Year'] == selected_year)]
-            
-            if not existing_row.empty:
-                is_editing_past = True
-                row = existing_row.iloc[0]
-                form_data["CTC"] = float(row.get("CTC", 0.0))
-                form_data["Working_Hrs"] = float(row.get("Working Hrs", 0.0))
-                form_data["Food"] = float(row.get("Food", 0.0))
-                form_data["Gratuity"] = float(row.get("Gratuity", 0.0))
-                form_data["PT"] = float(row.get("PT", 200.0))
-                form_data["Bonus"] = float(row.get("Bonus", 0.0))
-                form_data["Advance"] = float(row.get("Advance", 0.0))
-                form_data["Difference"] = float(row.get("Difference", 0.0))
-                form_data["TDS"] = float(row.get("TDS", 0.0))
-                form_data["ESIC"] = float(row.get("ESIC", 0.0))
-                form_data["PL_Used"] = float(row.get("PL Used", 0.0))
-                opening_pl = float(row.get("Opening PL", 0.0))
-                
-            else:
-                last_row = df_hist_sorted.iloc[-1]
-                form_data["CTC"] = float(last_row.get("CTC", 0.0))
-                form_data["Working_Hrs"] = float(last_row.get("Working Hrs", 0.0))
-                form_data["PT"] = float(last_row.get("PT", 200.0))
-                form_data["TDS"] = float(last_row.get("TDS", 0.0))
-                form_data["ESIC"] = float(last_row.get("ESIC", 0.0))
-                opening_pl = float(last_row.get("PL Balance", 0.0)) + 1.0
-
-        att_data = fetch_attendance_data(emp_name, selected_month, selected_year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "out_h": 0, "out_m": 0}
-            
-        c1_1, c1_2 = st.columns(2)
-        with c1_1:
-            ctc_salary = st.number_input("CTC Salary (₹)", value=form_data["CTC"], key=f"ctc_{kb}")
-            
-            p_h_col, p_m_col = st.columns(2)
-            with p_h_col:
-                present_hrs_input = st.number_input("Pay Hrs", value=att_data["reg_h"], step=1, key=f"phrs_{kb}")
-            with p_m_col:
-                present_mins_input = st.number_input("Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
-            
-            if is_new_employee:
-                opening_pl = st.number_input("Opening PL Balance", value=0.0, step=0.5, key=f"opl_{kb}")
-            else:
-                st.text_input("Opening PL Balance (Auto)", value=str(opening_pl), disabled=True)
-
-            used_pl = st.number_input("PL Used", value=form_data["PL_Used"], step=0.5, key=f"plu_{kb}")
-
-        with c1_2:
-            work_hrs = st.number_input("Working Hrs", value=form_data["Working_Hrs"], key=f"shrs_{kb}")
-            
-            l_h_col, l_m_col = st.columns(2)
-            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=att_data["late_h"], step=1, key=f"lhrs_{kb}")
-            with l_m_col: late_mins_input = st.number_input("Late Mins", value=att_data["late_m"], min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
-
-            e_h_col, e_m_col = st.columns(2)
-            with e_h_col: out_hrs_input = st.number_input("Out Hrs", value=att_data["out_h"], step=1, key=f"out_hrs_{kb}")
-            with e_m_col: out_mins_input = st.number_input("Out Mins", value=att_data["out_m"], min_value=0, max_value=59, step=1, key=f"out_mins_{kb}")
-
-            o_h_col, o_m_col = st.columns(2)
-            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=att_data["ot_h"], step=1, key=f"othrs_{kb}")
-            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=att_data["ot_m"], min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
-
-with col2:
-    with st.container(border=True):
-        st.subheader("📉 Deductions & Additions")
-        c2_1, c2_2 = st.columns(2)
-        with c2_1:
-            food = st.number_input("Food (₹)", value=form_data["Food"], key=f"food_{kb}")
-            pt_tax = st.number_input("PT Tax (₹)", value=form_data["PT"], key=f"pt_{kb}")
-            tds = st.number_input("TDS (₹)", value=form_data["TDS"], key=f"tds_{kb}")
-            bonus = st.number_input("Bonus (₹)", value=form_data["Bonus"], key=f"bn_{kb}")
-        with c2_2:
-            gratuity = st.number_input("Gratuity (₹)", value=form_data["Gratuity"], key=f"gr_{kb}")
-            advance = st.number_input("Loan/Advance (₹)", value=form_data["Advance"], key=f"ad_{kb}")
-            esic = st.number_input("ESIC (₹)", value=form_data["ESIC"], key=f"esic_{kb}")
-            difference = st.number_input("Difference (₹)", value=form_data["Difference"], key=f"diff_{kb}")
-
-# ==========================================
-# TIME & PL CALCULATION LOGIC
-# ==========================================
-final_pl_balance = opening_pl - used_pl
-pl_hours_to_add = used_pl * 10 
-
-total_late_mins = (late_hrs_input * 60) + late_mins_input
-total_out_mins = (out_hrs_input * 60) + out_mins_input
-total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
-
-total_pay_mins = (present_hrs_input * 60) + present_mins_input
-total_min = total_pay_mins + int(pl_hours_to_add * 60)
-
-if total_min < 0: total_min = 0
-calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
-
-# ==========================================
-# 7. Save Data & Excel Generation Helper
-# ==========================================
-def generate_excel_slip(slip_data, emp_name, month_str, year_val):
-    sd = slip_data
+def calculate_times(in_time, out_time, day_str):
+    t1 = parse_time(in_time)
+    t2 = parse_time(out_time)
+    std_in = datetime.strptime(STANDARD_IN, "%H:%M")
+    std_out = datetime.strptime(STANDARD_OUT, "%H:%M")
     
-    slip_df = pd.DataFrame({
-        "Label": [
-            "CTC Salary", "Gratuity", "Bonus", "Actual Salary", 
-            "Working Hrs", "Pay Hrs", "PL Used", 
-            "OT Hrs", "Late Hrs", "Out Hrs", "Final Pay Hrs", 
-            "PT", "PF", "ESI", "TDS", "Loan", "Food", 
-            "PL Balance", "Pay Salary", "OT Salary", "In Hand Salary", "Bank Salary", "Diff"
-        ],
-        "Value": [
-            sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], 
-            sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], 
-            sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], 
-            sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", 
-            sd['advance'], sd['food'], sd['pl_balance'], 
-            sd['pay_salary_val'], sd['ot_sal'], sd['in_hand_salary'], sd['bank_salary_val'], sd['difference']
-        ]
-    })
+    if t2 < t1:
+        return "", "", "", ""
+        
+    total_worked_mins = (t2 - t1).seconds // 60
     
-    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [f"{emp_name}"]})
-    slip_df = pd.concat([header_row, slip_df], ignore_index=True)
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
-        workbook = writer.book
-        worksheet = writer.sheets['Salary_Slip']
+    if day_str == "Sun":
+        reg_mins = 0
+        ot_mins = total_worked_mins 
+        late_mins = 0
+        out_early_mins = 0
+    else:
+        actual_start = max(t1, std_in)
+        actual_end = min(t2, std_out)
         
-        base_header_left = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_header_center = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
-        
-        base_label_left = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_val_text = {'align': 'center', 'valign': 'vcenter'}
-        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
-        base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
-        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
-        
-        base_pay_label_left = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
-        
-        base_ot_label_left = {'bold': True, 'bg_color': '#F4B084', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_ot_val_center = {'bold': True, 'bg_color': '#F4B084', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
-        
-        base_diff_pos_red = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
-        base_diff_neg_green = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
-        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
-
-        worksheet.set_column('A:A', 22)
-        worksheet.set_column('B:B', 25)
-        
-        for i in range(len(slip_df)):
-            worksheet.set_row(i, 18)
-        
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
-        total_rows = len(slip_df)
-        
-        for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-            if row_num == 0: dict_col0 = base_header_left.copy()
-            elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col0 = base_pay_label_left.copy()
-            elif lbl == "OT Salary": dict_col0 = base_ot_label_left.copy()
-            else: dict_col0 = base_label_left.copy()
-
-            dict_col0['border'] = 1
-            if row_num == 0: dict_col0['top'] = 2
-            if row_num == total_rows - 1: dict_col0['bottom'] = 2
-            dict_col0['left'] = 2
-            worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
-
-            if row_num == 0: dict_col1 = base_header_center.copy()
-            elif lbl == "Working Hrs": dict_col1 = base_val_yellow.copy()
-            elif lbl in ["Pay Hrs", "PL Used", "Final Pay Hrs"]: dict_col1 = base_val_green.copy()
-            elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col1 = base_pay_val_center.copy()
-            elif lbl == "OT Salary": dict_col1 = base_ot_val_center.copy()
-            elif lbl == "Diff":
-                diff_val = float(val) if val != "-" else 0
-                if diff_val > 0: dict_col1 = base_diff_pos_red.copy()
-                elif diff_val < 0: dict_col1 = base_diff_neg_green.copy()
-                else: dict_col1 = base_diff_zero.copy()
-            elif lbl in currency_labels and val != "-": dict_col1 = base_val_curr.copy()
-            else: dict_col1 = base_val_text.copy()
-
-            dict_col1['border'] = 1
-            if row_num == 0: dict_col1['top'] = 2
-            if row_num == total_rows - 1: dict_col1['bottom'] = 2
-            dict_col1['right'] = 2
-            worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
-            
-    return output.getvalue()
-
-# ==========================================
-# 7. Button Execution Logic
-# ==========================================
-st.write("")
-_, btn_col1, btn_col2, _ = st.columns([0.5, 1.5, 1.5, 0.5])
-
-with btn_col1:
-    save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
-with btn_col2:
-    delete_clicked = st.button(f"🗑️ Delete {selected_month} '{selected_year} Data", type="secondary", use_container_width=True)
-
-# Delete Logic 
-if delete_clicked:
-    if not emp_sidebar_name:
-        st.error("Please enter Employee Name in the sidebar!")
-    elif user_file and os.path.exists(user_file):
-        df_del = pd.read_csv(user_file)
-        orig_len = len(df_del)
-        df_del = df_del[~((df_del['Month'].astype(str).str.strip() == selected_month) & (df_del['Year'] == selected_year))]
-        
-        if len(df_del) < orig_len:
-            if df_del.empty:
-                os.remove(user_file)
-            else:
-                df_del['Month_Num'] = df_del['Month'].astype(str).str.strip().map(month_dict)
-                df_del = df_del.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
-                df_del = df_del.drop(columns=['Month_Num'])
-                df_del.to_csv(user_file, index=False)
-                
-            st.session_state['calc_result'] = None # Clear calc_result
-            st.session_state['flash_msg'] = f"✅ Data for {selected_month} '{selected_year} deleted successfully!"
-            st.rerun()
+        if actual_end > actual_start:
+            reg_mins = (actual_end - actual_start).seconds // 60
         else:
-            st.warning(f"⚠️ No data saved for {selected_month} '{selected_year}!")
-    else:
-        st.warning("⚠️ No data file found!")
-
-if save_clicked:
-    if not emp_sidebar_name: 
-        st.error("Please enter Employee Name in the sidebar!")
-    else:
-        base_sal = ctc_salary - gratuity - bonus
-        hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
-        
-        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        net_sal_exact = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance
-        
-        pay_salary_val = round(net_sal_exact)
-        in_hand_salary = pay_salary_val + round(ot_salary)
-        bank_salary_val = in_hand_salary + difference
-        
-        st.session_state['calc_result'] = {
-            "name": emp_name, "month": selected_month, "year": selected_year, "in_hand": in_hand_salary, "ot_sal": round(ot_salary, 2), "pl": final_pl_balance,
-            "slip_data": {
-                "work_hrs_str": f"{int(work_hrs)}:00",
-                "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
-                "actual_salary": ctc_salary - gratuity - bonus,
-                "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
-                "pl_used": used_pl,
-                "pl_balance": final_pl_balance,
-                "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
-                "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
-                "out_hrs": f"{total_out_mins//60}:{total_out_mins%60:02d}",
-                "pay_hrs": calc_final_hrs.replace('h', ':').replace('m', '').replace(' ', ''),
-                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
-                "pay_salary_val": pay_salary_val,
-                "ot_sal": round(ot_salary, 2),
-                "in_hand_salary": in_hand_salary,
-                "bank_salary_val": bank_salary_val
-            }
-        }
-        
-        new_rec_dict = {
-            "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": selected_month, "Year": selected_year,
-            "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", 
-            "Late Mins": total_late_mins, "Out Mins": total_out_mins, "OT Mins": total_ot_mins,
-            "Final Present Hrs": calc_final_hrs, 
-            "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "OT Salary": round(ot_salary, 2), "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
-            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
-            "Advance": advance, "Bonus": bonus, "Difference": difference
-        }
-        new_rec = pd.DataFrame([new_rec_dict])
-        
-        if os.path.exists(user_file):
-            df_existing = pd.read_csv(user_file)
-            if 'Opening PL' not in df_existing.columns:
-                df_existing['Opening PL'] = 0.0
-            if 'In Hand Salary' not in df_existing.columns:
-                df_existing['In Hand Salary'] = 0.0
-                
-            df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == selected_month) & (df_existing['Year'] == selected_year))]
-            df_combined = pd.concat([df_existing, new_rec], ignore_index=True)
-            df_combined['Month_Num'] = df_combined['Month'].astype(str).str.strip().map(month_dict)
-            df_combined = df_combined.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
+            reg_mins = 0
             
-            updated_idx = df_combined.index[(df_combined['Month'] == selected_month) & (df_combined['Year'] == selected_year)].tolist()[0]
-            if updated_idx < len(df_combined) - 1:
-                df_combined = recalculate_future_pl(df_combined, updated_idx)
-            
-            df_combined = df_combined.drop(columns=['Month_Num'])
-            df_combined.to_csv(user_file, index=False)
-        else: 
-            new_rec.to_csv(user_file, index=False)
-            
-        st.session_state['form_key'] += 1
-        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {in_hand_salary:,.2f} | OT Salary: ₹ {round(ot_salary, 2):,.2f} | PL Balance: {final_pl_balance}"
-        st.rerun()
-
-# ==========================================
-# SLIP DOWNLOAD BUTTON (AFTER SAVE)
-# ==========================================
-if st.session_state.get('calc_result'):
-    res = st.session_state['calc_result']
-    if res['name'] == emp_sidebar_name:
-        excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
+        ot_mins = total_worked_mins - reg_mins
         
-        _, btn_col, _ = st.columns([1, 1.5, 1])
-        with btn_col:
-            st.download_button(
-                label="📄 Download Excel Slip",
-                data=excel_data,
-                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-    else:
-        st.session_state['calc_result'] = None
-
-# ==========================================
-# 8. Search Section
-# ==========================================
-st.divider()
-st.subheader("🔍 Search Records")
-with st.container(border=True):
-    s1, s2, s3, s4 = st.columns([4, 1.5, 1.5, 1.5])
-    search_n = s1.text_input("Search Name", placeholder="Name...", label_visibility="collapsed", key="sn").title()
-    search_m = s2.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
-    search_y = s3.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
+        if ot_mins < 30:
+            ot_mins = 0
+            
+        late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
+        out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
-    if s4.button("🔍 Search", use_container_width=True):
-        s_file = get_user_file(search_n)
-        if os.path.exists(s_file):
-            df_s = pd.read_csv(s_file)
-            df_s = clean_legacy_columns(df_s)
-                
-            res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
-            if not res.empty:
-                res.index = range(1, len(res) + 1)
-                st.dataframe(res, use_container_width=True, column_config=table_format_config)
-            else: 
-                st.warning("No record found for this month/year.")
-        else: 
-            st.error("File not found.")
+    def mins_to_str(m):
+        if m <= 0:
+            return ""
+        h, m = divmod(int(m), 60)
+        return f"{h:02d}:{m:02d}"
+        
+    total_hrs = mins_to_str(reg_mins)
+    ot_hrs = mins_to_str(ot_mins)
+    late_hrs = mins_to_str(late_mins) 
+    out_hrs = mins_to_str(out_early_mins) 
+    
+    return total_hrs, late_hrs, out_hrs, ot_hrs
 
-# ==========================================
-# 9. History & Download Old Slips
-# ==========================================
-if emp_sidebar_name:
-    st.divider()
-    user_file = get_user_file(emp_sidebar_name)
-    if os.path.exists(user_file):
-        st.subheader(f"📂 History: {emp_sidebar_name}")
-        h_df = pd.read_csv(user_file).fillna(0)
-        h_df = clean_legacy_columns(h_df)
-
-        if 'Month' in h_df.columns:
-            h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
-            if 'Year' in h_df.columns:
-                h_df = h_df.sort_values(['Year', 'Sort_M']).drop(columns=['Sort_M']).reset_index(drop=True)
+def load_data(sheet_name):
+    # Employee Name aagal aavi gayu
+    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
+    url = f"{FIREBASE_URL}/{sheet_name}.json"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data:
+            if isinstance(data, dict):
+                df = pd.DataFrame(list(data.values()))
             else:
-                h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
+                df = pd.DataFrame([row for row in data if row is not None])
+            
+            for col in columns:
+                if col not in df.columns:
+                    df[col] = ""
+                    
+            for idx, row in df.iterrows():
+                in_t = str(row.get("In Time", "08:00"))
+                out_t = str(row.get("Out Time", "18:00"))
+                day_s = str(row.get("Day", "Mon"))
+                
+                if pd.isna(row.get("In Time")) or in_t.lower() == 'nan':
+                    continue
+                    
+                try:
+                    tot, late, out_e, ot = calculate_times(in_t, out_t, day_s)
+                    df.at[idx, "Total Hours"] = tot
+                    df.at[idx, "Late Hours"] = late
+                    df.at[idx, "Out Hours"] = out_e
+                    df.at[idx, "OT Hours"] = ot
+                except Exception:
+                    pass
+            
+            return df[columns]
+        else:
+            return pd.DataFrame(columns=columns)
+    except Exception:
+        return pd.DataFrame(columns=columns)
 
-        cols = list(h_df.columns)
-        if 'Opening PL' in cols and 'PL Used' in cols and 'PL Balance' in cols:
-            cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
-            h_df = h_df[cols]
+def save_data(df, sheet_name):
+    url = f"{FIREBASE_URL}/{sheet_name}.json"
+    data = df.to_dict(orient='records')
+    try:
+        requests.put(url, json=data)
+    except Exception:
+        pass
 
-        edited_df = st.data_editor(
-            h_df, 
+# --- Session States ---
+current_month_str = get_sheet_name(date.today())
+
+if 'last_edited' not in st.session_state:
+    st.session_state.last_edited = None
+
+if 'filter_month' not in st.session_state:
+    st.session_state.filter_month = current_month_str
+
+if 'top_emp_input' not in st.session_state:
+    st.session_state.top_emp_input = ""
+    
+if 'form_reset_counter' not in st.session_state:
+    st.session_state.form_reset_counter = 0
+
+if 'flash_msg' not in st.session_state:
+    st.session_state.flash_msg = ""
+
+def on_top_name_change():
+    val = st.session_state.top_emp_input.strip()
+    if val:
+        st.session_state.filter_month = current_month_str
+
+st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
+
+st.markdown("""
+    <style>
+        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
+            max-width: 320px;
+        }
+        .stDownloadButton button {
+            margin-top: 27px;
+        }
+        [data-testid="stMetric"] {
+            background-color: #1e2530;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #303d4f;
+        }
+        /* Hide the "Press Enter to submit form" text */
+        div[data-testid="InputInstructions"] {
+            display: none !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("📅 Daily Attendance Tracker")
+
+with st.expander("➕ Add New Entry / Search", expanded=True):
+    col_input1, col_input2 = st.columns([1.5, 2.5])
+    
+    with col_input1:
+        st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
+    
+    formatted_name = st.session_state.top_emp_input.strip().title()
+
+    if formatted_name == "Admin":
+        all_emps = get_all_employees()
+        if all_emps:
+            st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
+
+    with st.form("entry_form"):
+        c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
+        with c1:
+            entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
+            
+        dynamic_key_in = f"in_{st.session_state.form_reset_counter}"
+        dynamic_key_out = f"out_{st.session_state.form_reset_counter}"
+        
+        with c2:
+            in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
+        with c3:
+            out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
+            
+        with c4:
+            st.write("")
+            st.write("")
+            submit = st.form_submit_button("Save Entry", type="primary")
+
+    if submit:
+        if not formatted_name:
+            st.error("Please enter an Employee Name above!")
+        elif formatted_name == "Admin":
+            st.error("You cannot add an entry for 'Admin'. Please type a valid name!")
+        elif out_time < in_time:
+            st.error("Out Time cannot be before In Time!")
+        else:
+            target_sheet = get_sheet_name(entry_date)
+            df_month = load_data(target_sheet)
+            
+            day_str = entry_date.strftime("%a")
+            date_str = entry_date.strftime("%d/%m/%Y")
+            
+            is_duplicate = not df_month[(df_month["Employee Name"] == formatted_name) & (df_month["Date"] == date_str)].empty
+            
+            if is_duplicate:
+                st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
+            else:
+                total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
+                new_entry = pd.DataFrame({
+                    "Employee Name": [formatted_name],
+                    "Date": [date_str],
+                    "Day": [day_str],
+                    "In Time": [in_time.strftime("%H:%M")],
+                    "Out Time": [out_time.strftime("%H:%M")],
+                    "Late Hours": [late_hrs],
+                    "Out Hours": [out_hrs],
+                    "Total Hours": [total_hrs],
+                    "OT Hours": [ot_hrs]
+                })
+                df_month = pd.concat([df_month, new_entry], ignore_index=True)
+                save_data(df_month, target_sheet) 
+                
+                st.session_state.filter_month = target_sheet
+                st.session_state.last_edited = f"{formatted_name}_{date_str}"
+                st.session_state.form_reset_counter += 1
+                
+                st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
+                st.rerun() 
+
+# --- Flash Message ---
+msg_placeholder = st.empty()
+has_msg = False
+if st.session_state.flash_msg:
+    msg_placeholder.success(st.session_state.flash_msg)
+    has_msg = True
+    st.session_state.flash_msg = "" 
+
+st.divider()
+
+if not formatted_name:
+    st.info("👆 Please enter a name in the box above to view or add data.")
+else:
+    all_sheets_raw = get_all_sheet_names()
+    if current_month_str not in all_sheets_raw:
+        all_sheets_raw.insert(0, current_month_str)
+    
+    available_sheets = ["All Months"] + all_sheets_raw
+
+    if selected_sheet := st.session_state.get('filter_month', current_month_str):
+        pass
+    selected_sheet = st.session_state.filter_month
+
+    if selected_sheet == "All Months":
+        df_list = []
+        for sht in get_all_sheet_names():
+            df_temp = load_data(sht)
+            if not df_temp.empty:
+                df_temp["_Original_Sheet"] = sht
+                df_temp["_Original_Index"] = df_temp.index
+                df_list.append(df_temp)
+        if df_list:
+            df_display = pd.concat(df_list, ignore_index=True)
+        else:
+            df_display = pd.DataFrame()
+    else:
+        df_display = load_data(selected_sheet)
+        if not df_display.empty:
+            df_display["_Original_Sheet"] = selected_sheet
+            df_display["_Original_Index"] = df_display.index
+
+    if not df_display.empty:
+        df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
+        df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
+        df_display = df_display.reset_index(drop=True)
+        
+        df_display = df_display.fillna("") 
+
+        if formatted_name != "Admin":
+            df_display = df_display[df_display["Employee Name"] == formatted_name]
+
+        # Table na columns no kram (Employee Name pehla)
+        final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
+        for c in final_display_columns:
+             if c not in df_display.columns:
+                 df_display[c] = ""
+        df_display = df_display[final_display_columns]
+
+    if df_display.empty:
+        st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
+    else:
+        # --- CALCULATE TOTALS FOR SUMMARY ---
+        total_reg_mins = 0
+        for val in df_display["Total Hours"]:
+            if pd.notna(val) and ":" in str(val):
+                h, m = map(int, str(val).split(":"))
+                total_reg_mins += h * 60 + m
+        reg_hours, reg_mins = divmod(total_reg_mins, 60)
+        
+        total_ot_mins = 0
+        for val in df_display["OT Hours"]:
+            if pd.notna(val) and ":" in str(val):
+                h, m = map(int, str(val).split(":"))
+                total_ot_mins += h * 60 + m
+        ot_hours, ot_mins = divmod(total_ot_mins, 60)
+
+        total_late_mins = 0
+        for val in df_display["Late Hours"]:
+            if pd.notna(val) and ":" in str(val):
+                h, m = map(int, str(val).split(":"))
+                total_late_mins += h * 60 + m
+        late_hours, late_mins = divmod(total_late_mins, 60)
+
+        total_out_mins = 0
+        for val in df_display["Out Hours"]:
+            if pd.notna(val) and ":" in str(val):
+                h, m = map(int, str(val).split(":"))
+                total_out_mins += h * 60 + m
+        out_hours, out_mins = divmod(total_out_mins, 60)
+
+        # --- DISPLAY SUMMARY INSIDE PROPER CONTAINER ---
+        st.markdown('<div class="summary-container">', unsafe_allow_html=True)
+        st.subheader("📊 Summary")
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
+        with m2:
+            st.metric(label="🔥 Total Overtime Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
+        with m3:
+            st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
+        with m4:
+            st.metric(label="🚪 Total Out Hours", value=f"{out_hours:02d}:{out_mins:02d}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.divider()
+        st.subheader("📋 Attendance Sheet")
+
+        col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
+        with col_s1:
+            st.selectbox("Select Month to View", available_sheets, key="filter_month")
+            selected_sheet = st.session_state.filter_month
+
+        with col_s2:
+            # --- Excel Formatting & Download Logic ---
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
+                export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
+                
+                # DataFrame ne row 3 thi write karvu
+                df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
+                worksheet = writer.sheets[export_sheet_name]
+                
+                # Styles Banavya
+                center_align = Alignment(horizontal='center', vertical='center')
+                thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                
+                red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
+                gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
+                yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
+                
+                white_bold_font = Font(color="FFFFFF", bold=True)
+                header_font = Font(bold=True)
+                total_font = Font(bold=True, size=12)
+                
+                # Top Row (Employee Name formatting)
+                worksheet.merge_cells('A1:B1')
+                worksheet.merge_cells('C1:D1')
+                
+                a1 = worksheet['A1']
+                a1.value = "Employee Name :"
+                a1.fill = gray_fill
+                a1.font = header_font
+                a1.alignment = center_align
+                
+                c1 = worksheet['C1']
+                c1.value = formatted_name
+                c1.fill = yellow_fill_name
+                c1.font = header_font
+                c1.alignment = center_align
+                
+                for r in worksheet['A1:D1']:
+                    for c in r:
+                        c.border = thin_border
+                        
+                # Format Headers (Row 3)
+                for col_idx in range(1, 9):
+                    cell = worksheet.cell(row=3, column=col_idx)
+                    cell.fill = gray_fill
+                    cell.font = header_font
+                    cell.alignment = center_align
+                    cell.border = thin_border
+                
+                # Format Data Rows
+                day_col_idx = 2 
+                max_data_row = 3 + len(df_export)
+                
+                for row_idx in range(4, max_data_row + 1):
+                    day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
+                    is_sunday = (day_val == "Sun")
+                    for col_idx in range(1, 9):
+                        cell = worksheet.cell(row=row_idx, column=col_idx)
+                        cell.alignment = center_align
+                        cell.border = thin_border
+                        if is_sunday:
+                            cell.fill = red_fill
+                            cell.font = white_bold_font
+                            
+                # Total Row Setup
+                total_row_idx = max_data_row + 2
+                worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
+                
+                worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
+                worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
+                worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
+                worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
+                worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
+                
+                for col_idx in range(1, 9):
+                    cell = worksheet.cell(row=total_row_idx, column=col_idx)
+                    cell.border = thin_border
+                    cell.fill = total_fill
+                    cell.font = total_font
+                    cell.alignment = center_align
+
+                empty_row_idx = max_data_row + 1
+                for row_idx in range(1, worksheet.max_row + 1):
+                    if row_idx == 2 or row_idx == empty_row_idx:
+                        worksheet.row_dimensions[row_idx].height = 6 
+                    else:
+                        worksheet.row_dimensions[row_idx].height = 18
+                
+                for col_idx in range(1, worksheet.max_column + 1):
+                    max_length = 0
+                    col_letter = get_column_letter(col_idx)
+                    for row_idx in range(3, worksheet.max_row + 1): 
+                        cell_val = worksheet.cell(row=row_idx, column=col_idx).value
+                        try:
+                            if cell_val and len(str(cell_val)) > max_length:
+                                max_length = len(str(cell_val))
+                        except:
+                            pass
+                    worksheet.column_dimensions[col_letter].width = max_length + 3
+                
+            excel_data = buffer.getvalue()
+            file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
+            
+            st.download_button(
+                label="⬇️ Download Data (Excel)",
+                data=excel_data,
+                file_name=file_name_export,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True 
+            )
+
+        def highlight_rows(row):
+            colors = [''] * len(row)
+            if row['Day'] == 'Sun':
+                colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
+            elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
+                colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
+            return colors
+        
+        st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
+
+        event = st.dataframe(
+            df_display.style.apply(highlight_rows, axis=1), 
             use_container_width=True, 
-            num_rows="dynamic",
-            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}",
-            column_config=table_format_config
+            hide_index=True,
+            on_select="rerun",           
+            selection_mode="multi-row",  
+            column_config={
+                "_Original_Sheet": None,
+                "_Original_Index": None   
+            }
         )
         
-        if not h_df.equals(edited_df):
-            edited_df.to_csv(user_file, index=False)
-            st.toast("✅ Record auto-updated successfully!") 
-            st.rerun()
+        selected_rows = event.selection.rows
+        if len(selected_rows) > 0:
+            st.markdown("---")
+            
+            if len(selected_rows) > 1:
+                st.warning(f"⚠️ You have selected {len(selected_rows)} entries. Multiple entries can only be deleted, not edited.")
+                if st.button("🗑️ Delete Selected Entries", type="primary"):
+                    to_delete = {}
+                    for row_idx in selected_rows:
+                        sht = df_display.iloc[row_idx]["_Original_Sheet"]
+                        idx = df_display.iloc[row_idx]["_Original_Index"]
+                        if sht not in to_delete:
+                            to_delete[sht] = []
+                        to_delete[sht].append(idx)
 
-        st.write("")
-        with st.container(border=True):
-            st.markdown("#### 📥 Download Slip from History")
-            h1, h2 = st.columns([2, 1])
-            with h1:
-                options = []
-                for idx, r in h_df.iterrows():
-                    options.append(f"{str(r.get('Month', '')).strip()} - {int(r.get('Year', current_year))}")
+                    for sht, indices in to_delete.items():
+                        df_orig = load_data(sht)
+                        df_orig = df_orig.drop(indices) 
+                        save_data(df_orig, sht)
+                    
+                    st.session_state.last_edited = None
+                    st.session_state.flash_msg = "✅ Selected entries permanently deleted!"
+                    st.rerun()
+            else:
+                selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
+                selected_sheet_orig = df_display.iloc[selected_rows[0]]["_Original_Sheet"]
+                row_data = df_display.iloc[selected_rows[0]]
                 
-                unique_options = list(dict.fromkeys(options))
-                selected_opt = st.selectbox("Select Month & Year:", unique_options, key="hist_dl_sel")
-            
-            with h2:
-                st.write("") 
-                st.write("")
-                if selected_opt:
-                    sel_m, sel_y = selected_opt.split(" - ")
-                    row = h_df[(h_df['Month'].astype(str).str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
-                    
-                    p_hrs_val = row.get("Present Hrs", "0:00")
-                    if isinstance(p_hrs_val, str) and ":" in p_hrs_val:
-                        p_hrs, p_mins = p_hrs_val.split(":")
-                        p_hrs, p_mins = int(p_hrs), int(p_mins)
-                    else:
-                        p_hrs = int(float(p_hrs_val))
-                        p_mins = int(round((float(p_hrs_val) - p_hrs) * 100))
-                    
-                    ot_m = int(row.get("OT Mins", 0))
-                    late_m = int(row.get("Late Mins", 0))
-                    out_m = int(row.get("Out Mins", row.get("Early Mins", 0)))
-                    
-                    fh = str(row.get("Final Present Hrs", "0h 0m"))
-                    try:
-                        h, m = fh.replace('m','').split('h ')
-                        pay_str = f"{int(h)}:{int(m):02d}"
-                    except:
-                        pay_str = "0:00"
+                col_edit, col_delete = st.columns([3, 1])
+                
+                with col_edit:
+                    st.subheader("✏️ Edit Selected Entry")
+                    with st.form("edit_form"):
+                        e_name = st.text_input("Employee Name", value=row_data["Employee Name"])
+                        ce1, ce2, ce3 = st.columns(3)
+                        with ce1:
+                            d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
+                            e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
+                        with ce2:
+                            in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
+                            e_in = st.time_input("In Time", value=in_obj, key="e_in")
+                        with ce3:
+                            out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
+                            e_out = st.time_input("Out Time", value=out_obj, key="e_out")
+                            
+                        if st.form_submit_button("Update Entry", type="secondary"):
+                            formatted_e_name = e_name.strip().title()
+                            date_str_e = e_date.strftime("%d/%m/%Y")
+                            new_sheet = get_sheet_name(e_date)
+                            
+                            df_orig = load_data(selected_sheet_orig)
+                            
+                            if new_sheet == selected_sheet_orig:
+                                temp_check = df_orig.drop(selected_idx)
+                                is_dup = not temp_check[(temp_check["Employee Name"] == formatted_e_name) & (temp_check["Date"] == date_str_e)].empty
+                            else:
+                                df_new = load_data(new_sheet)
+                                is_dup = not df_new[(df_new["Employee Name"] == formatted_e_name) & (df_new["Date"] == date_str_e)].empty
+
+                            if is_dup:
+                                st.error("⚠️ An entry for this employee on this date already exists!")
+                            else:
+                                day_str_e = e_date.strftime("%a")
+                                t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
+                                
+                                updated_row = pd.DataFrame({
+                                    "Employee Name": [formatted_e_name],
+                                    "Date": [date_str_e],
+                                    "Day": [day_str_e],
+                                    "In Time": [e_in.strftime("%H:%M")],
+                                    "Out Time": [e_out.strftime("%H:%M")],
+                                    "Late Hours": [l_hrs],
+                                    "Out Hours": [o_hrs],
+                                    "Total Hours": [t_hrs],
+                                    "OT Hours": [ot_hrs]
+                                })
+                                
+                                if new_sheet == selected_sheet_orig:
+                                    updated_row.index = [selected_idx]
+                                    df_orig.update(updated_row)
+                                    save_data(df_orig, selected_sheet_orig)
+                                else:
+                                    df_orig = df_orig.drop(selected_idx)
+                                    save_data(df_orig, selected_sheet_orig)
+                                    df_new = pd.concat([df_new, updated_row], ignore_index=True)
+                                    save_data(df_new, new_sheet)
+                                
+                                st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
+                                st.session_state.flash_msg = f"✅ Record for {formatted_e_name} on {date_str_e} updated successfully!"
+                                st.rerun()
+
+                with col_delete:
+                    st.subheader("🗑️ Delete")
+                    st.write("Click below to permanently delete this entry:")
+                    if st.button("Delete This Entry", type="primary"):
+                        df_orig = load_data(selected_sheet_orig)
+                        df_orig = df_orig.drop(selected_idx) 
+                        save_data(df_orig, selected_sheet_orig)
                         
-                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
-                    
-                    net_sal_hist = float(row.get("Net Salary", 0)) 
-                    in_hand_hist = float(row.get("In Hand Salary", 0))
-                    diff_hist = float(row.get("Difference", 0))
-                    
-                    if in_hand_hist == 0:
-                        pay_salary_hist = round(net_sal_hist - diff_hist - float(row.get("OT Salary", 0)))
-                        in_hand_hist = pay_salary_hist + float(row.get("OT Salary", 0))
-                    else:
-                        pay_salary_hist = in_hand_hist - float(row.get("OT Salary", 0))
-                    
-                    hist_slip_data = {
-                        "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
-                        "ctc": row.get("CTC", 0),
-                        "bonus": row.get("Bonus", 0),
-                        "gratuity": row.get("Gratuity", 0),
-                        "actual_salary": actual_salary_hist,
-                        "present_hrs": f"{p_hrs}:{p_mins:02d}",
-                        "pl_used": row.get("PL Used", 0),
-                        "pl_balance": row.get("PL Balance", 0),
-                        "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
-                        "late_hrs": f"{late_m//60}:{late_m%60:02d}",
-                        "out_hrs": f"{out_m//60}:{out_m%60:02d}",
-                        "pay_hrs": pay_str,
-                        "pt": row.get("PT", 0),
-                        "tds": row.get("TDS", 0),
-                        "esic": row.get("ESIC", 0),
-                        "advance": row.get("Advance", 0),
-                        "food": row.get("Food", 0),
-                        "difference": diff_hist,
-                        "pay_salary_val": pay_salary_hist,
-                        "ot_sal": float(row.get("OT Salary", 0)),
-                        "in_hand_salary": in_hand_hist,
-                        "bank_salary_val": round(net_sal_hist)
-                    }
-                    
-                    excel_data_hist = generate_excel_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
-                    
-                    st.download_button(
-                        label=f"📄 Download Slip ({sel_m} {sel_y})",
-                        data=excel_data_hist,
-                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        key="hist_dl_btn"
-                    )
-            
-    else:
-        st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
+                        st.session_state.last_edited = None
+                        st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
+                        st.rerun()
+
+# --- 3 Second Timer to clear message ---
+if has_msg:
+    tm.sleep(3)
+    msg_placeholder.empty()
