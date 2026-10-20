@@ -188,7 +188,7 @@ with st.sidebar:
                 
     st.divider()
 
-    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
+    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     is_new_employee = True
     last_pl_balance = 0.0
@@ -369,8 +369,10 @@ late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
 early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
 ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
 
-# --- NEW TOTAL PAY HRS (Final Present + OT) ---
-total_pay_hrs_mins = total_min + total_ot_mins
+# --- NEW TOTAL PAY HRS (Final Present + OT - Late - Out) ---
+total_pay_hrs_mins = (total_min + total_ot_mins) - (total_late_mins + total_out_mins)
+if total_pay_hrs_mins < 0:
+    total_pay_hrs_mins = 0
 total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
 
 # ==========================================
@@ -383,7 +385,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         "Label": [
             "CTC Salary", "Gratuity", "Bonus", "Actual Salary", 
             "Working Hrs", "Pay Hrs", "PL Used", 
-            "OT Hrs", "Late Hrs", "Out Hrs", "Final Pay Hrs", 
+            "OT Hrs", "Late Hrs", "Out Hrs", "Total Pay Hrs", 
             "PT", "PF", "ESI", "TDS", "Loan", "Food", 
             "PL Balance", "Pay Salary", "OT Salary", "In Hand Salary", "Bank Salary", "Diff"
         ],
@@ -448,7 +450,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
             if row_num == 0: dict_col1 = base_header_center.copy()
             elif lbl == "Working Hrs": dict_col1 = base_val_yellow.copy()
-            elif lbl in ["Pay Hrs", "PL Used", "Final Pay Hrs"]: dict_col1 = base_val_green.copy()
+            elif lbl in ["Pay Hrs", "PL Used", "Total Pay Hrs"]: dict_col1 = base_val_green.copy()
             elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col1 = base_pay_val_center.copy()
             elif lbl == "OT Salary": dict_col1 = base_ot_val_center.copy()
             elif lbl == "Diff":
@@ -531,7 +533,7 @@ if save_clicked:
                 "ot_hrs": ot_hrs_str,
                 "late_hrs": late_hrs_str,
                 "out_hrs": early_hrs_str,
-                "pay_hrs": calc_final_hrs,
+                "pay_hrs": total_pay_hrs_str, # SLIP MA HAVE DIRECT TOTAL PAY HRS AAVSE
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
                 "pay_salary_val": pay_salary_val,
                 "ot_sal": round(ot_salary, 2),
@@ -646,7 +648,9 @@ if emp_sidebar_name:
         cols = list(h_df.columns)
         if 'Opening PL' in cols and 'PL Used' in cols and 'PL Balance' in cols:
             if 'Total Pay Hrs' in cols and 'Final Present Hrs' in cols:
-                cols.insert(cols.index('Final Present Hrs') + 1, cols.pop(cols.index('Total Pay Hrs')))
+                # Total Pay Hrs ne Final Present Hrs pachi adjust kari lidhu
+                if cols.index('Total Pay Hrs') != cols.index('Final Present Hrs') + 1:
+                    cols.insert(cols.index('Final Present Hrs') + 1, cols.pop(cols.index('Total Pay Hrs')))
             cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
             h_df = h_df[cols]
 
@@ -685,7 +689,7 @@ if emp_sidebar_name:
                     ot_val = str(row.get("OT Hrs", "0:00")).strip()
                     late_val = str(row.get("Late Hrs", "0:00")).strip()
                     early_val = str(row.get("Out Hrs", "0:00")).strip()
-                    pay_str = str(row.get("Final Present Hrs", "0:00")).strip()
+                    pay_str = str(row.get("Total Pay Hrs", row.get("Final Present Hrs", "0:00"))).strip() # Fetch Total Pay Hrs
                     present_str = str(row.get("Present Hrs", "0:00")).strip()
                         
                     actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
