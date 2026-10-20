@@ -370,11 +370,7 @@ early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
 ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
 
 # --- 2 HOURS FREE (GRACE PERIOD) RULE ---
-# 1. ટોટલ લેટ અને આઉટ મિનિટ્સ ગણો
 total_late_out_mins = total_late_mins + total_out_mins
-
-# 2. એમાંથી 120 મિનિટ (2 કલાક) બાદ કરો (અને જો વેલ્યુ માઇનસ માં જાય તો 0 ગણો)
-# એટલે કે જો કોઈ 1 કલાક લેટ હોય, તો 60 - 120 = -60 થાય, જે ઝીરો ગણાશે (એટલે કશું કપાશે નહિ, બાકીનો 1 કલાક વેડફાઈ જશે)
 deductible_mins = max(0, total_late_out_mins - 120) 
 
 # --- TOTAL PAY HRS (Final Present + OT - Extra Late/Out) ---
@@ -662,8 +658,18 @@ if emp_sidebar_name:
             cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
             h_df = h_df[cols]
 
+        # --- APPLY HIGHLIGHTING COLORS ---
+        def highlight_salary_columns(col):
+            if col.name == 'Net Salary':
+                return ['background-color: #4a1c1c; color: #ff9999; font-weight: bold'] * len(col)
+            elif col.name == 'In Hand Salary':
+                return ['background-color: #1c4a22; color: #99ff99; font-weight: bold'] * len(col)
+            return [''] * len(col)
+
+        styled_h_df = h_df.style.apply(highlight_salary_columns, axis=0)
+
         edited_df = st.data_editor(
-            h_df, 
+            styled_h_df, 
             use_container_width=True, 
             num_rows="dynamic",
             key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}",
