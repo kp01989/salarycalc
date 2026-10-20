@@ -194,6 +194,10 @@ st.markdown("""
             border-radius: 12px;
             border: 1px solid #303d4f;
         }
+        /* Hide the "Press Enter to submit form" text */
+        div[data-testid="InputInstructions"] {
+            display: none !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -372,7 +376,7 @@ else:
         with m3:
             st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
         with m4:
-            st.metric(label="🚪 Total Early Hours", value=f"{out_hours:02d}:{out_mins:02d}")
+            st.metric(label="🚪 Total Out Hours", value=f"{out_hours:02d}:{out_mins:02d}")
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.divider()
