@@ -90,7 +90,7 @@ def clean_legacy_columns(df):
         df['Final Present Hrs'] = df['Final Present Hrs'].astype(str).str.replace('h ', ':').str.replace('m', '')
         
     if 'Opening PL' not in df.columns:
-        df['Opening PL'] = 0
+        df['Opening PL'] = 0.0
     if 'In Hand Salary' not in df.columns:
         df['In Hand Salary'] = 0.0
     if 'Total Pay Hrs' not in df.columns:
@@ -317,7 +317,6 @@ with col1:
             with p_m_col:
                 present_mins_input = st.number_input("Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
             
-            # DECIMALS REMOVED FROM PL INPUTS
             if is_new_employee:
                 opening_pl = st.number_input("Opening PL Balance", value=0, step=1, key=f"opl_{kb}")
             else:
@@ -488,38 +487,10 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 # 7. Button Execution Logic
 # ==========================================
 st.write("")
-_, btn_col1, btn_col2, _ = st.columns([0.5, 1.5, 1.5, 0.5])
+_, btn_col, _ = st.columns([1, 1.5, 1])
 
-with btn_col1:
+with btn_col:
     save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
-with btn_col2:
-    delete_clicked = st.button(f"🗑️ Delete {selected_month} '{selected_year} Data", type="secondary", use_container_width=True)
-
-# Delete Logic 
-if delete_clicked:
-    if not emp_sidebar_name:
-        st.error("Please enter Employee Name in the sidebar!")
-    elif user_file and os.path.exists(user_file):
-        df_del = pd.read_csv(user_file)
-        orig_len = len(df_del)
-        df_del = df_del[~((df_del['Month'].astype(str).str.strip() == selected_month) & (df_del['Year'] == selected_year))]
-        
-        if len(df_del) < orig_len:
-            if df_del.empty:
-                os.remove(user_file)
-            else:
-                df_del['Month_Num'] = df_del['Month'].astype(str).str.strip().map(month_dict)
-                df_del = df_del.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
-                df_del = df_del.drop(columns=['Month_Num'])
-                df_del.to_csv(user_file, index=False)
-                
-            st.session_state['calc_result'] = None 
-            st.session_state['flash_msg'] = f"✅ Data for {selected_month} '{selected_year} deleted successfully!"
-            st.rerun()
-        else:
-            st.warning(f"⚠️ No data saved for {selected_month} '{selected_year}!")
-    else:
-        st.warning("⚠️ No data file found!")
 
 if save_clicked:
     if not emp_sidebar_name: 
@@ -703,4 +674,65 @@ if emp_sidebar_name:
                 selected_opt = st.selectbox("Select Month & Year:", unique_options, key="hist_dl_sel")
             
             with h2:
+                st.write("") 
                 st.write("")
+                if selected_opt:
+                    sel_m, sel_y = selected_opt.split(" - ")
+                    row = h_df[(h_df['Month'].astype(str).str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
+                    
+                    ot_val = str(row.get("OT Hrs", "0:00")).strip()
+                    late_val = str(row.get("Late Hrs", "0:00")).strip()
+                    early_val = str(row.get("Out Hrs", "0:00")).strip()
+                    pay_str = str(row.get("Total Pay Hrs", row.get("Final Present Hrs", "0:00"))).strip() 
+                    present_str = str(row.get("Present Hrs", "0:00")).strip()
+                        
+                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
+                    
+                    net_sal_hist = float(row.get("Net Salary", 0)) 
+                    in_hand_hist = float(row.get("In Hand Salary", 0))
+                    diff_hist = float(row.get("Difference", 0))
+                    
+                    if in_hand_hist == 0:
+                        pay_salary_hist = round(net_sal_hist - diff_hist - float(row.get("OT Salary", 0)))
+                        in_hand_hist = pay_salary_hist + float(row.get("OT Salary", 0))
+                    else:
+                        pay_salary_hist = in_hand_hist - float(row.get("OT Salary", 0))
+                    
+                    hist_slip_data = {
+                        "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
+                        "ctc": row.get("CTC", 0),
+                        "bonus": row.get("Bonus", 0),
+                        "gratuity": row.get("Gratuity", 0),
+                        "actual_salary": actual_salary_hist,
+                        "present_hrs": present_str,
+                        "pl_used": row.get("PL Used", 0),
+                        "pl_balance": row.get("PL Balance", 0),
+                        "ot_hrs": ot_val,
+                        "late_hrs": late_val,
+                        "out_hrs": early_val,
+                        "pay_hrs": pay_str,
+                        "pt": row.get("PT", 0),
+                        "tds": row.get("TDS", 0),
+                        "esic": row.get("ESIC", 0),
+                        "advance": row.get("Advance", 0),
+                        "food": row.get("Food", 0),
+                        "difference": diff_hist,
+                        "pay_salary_val": pay_salary_hist,
+                        "ot_sal": float(row.get("OT Salary", 0)),
+                        "in_hand_salary": in_hand_hist,
+                        "bank_salary_val": round(net_sal_hist)
+                    }
+                    
+                    excel_data_hist = generate_excel_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
+                    
+                    st.download_button(
+                        label=f"📄 Download Slip ({sel_m} {sel_y})",
+                        data=excel_data_hist,
+                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="hist_dl_btn"
+                    )
+            
+    else:
+        st.info("No salary data saved for this employee yet. (Calculate & Save Data to add new employee)")
