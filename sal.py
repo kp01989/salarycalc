@@ -66,6 +66,14 @@ def get_user_file(name):
     if not name: return None
     return f"{name.strip().replace(' ', '_')}_salary.csv"
 
+def format_mins_to_hrs(val):
+    try:
+        if pd.isna(val): return "0:00"
+        v = int(float(val))
+        return f"{v//60}:{v%60:02d}"
+    except:
+        return str(val)
+
 def clean_legacy_columns(df):
     if 'Std Hrs' in df.columns:
         if 'Working Hrs' in df.columns:
@@ -74,12 +82,26 @@ def clean_legacy_columns(df):
             df = df.drop(columns=['Std Hrs'])
         else:
             df = df.rename(columns={'Std Hrs': 'Working Hrs'})
+            
+    # Purani CSV na column name convert karva mate
+    rename_map = {'Late Mins': 'Late Hrs', 'Early Mins': 'Out Hrs', 'OT Mins': 'OT Hrs'}
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+    
+    # Purani raw minutes ne HH:MM ma convert karva
+    for col in ['Late Hrs', 'Out Hrs', 'OT Hrs']:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: format_mins_to_hrs(x) if str(x).replace('.0','').isdigit() else str(x))
+            
+    # Final Present Hrs nu format fix karva mate ('260h 0m' ne '260:00' ma)
+    if 'Final Present Hrs' in df.columns:
+        df['Final Present Hrs'] = df['Final Present Hrs'].astype(str).str.replace('h ', ':').str.replace('m', '')
+        
     df = df.loc[:, ~df.columns.duplicated()]
     return df
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
+money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
 
 # ==========================================
@@ -90,7 +112,7 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("👤 Employee Name", placeholder="Enter Name...", label_visibility="collapsed")
     st.divider()
 
-    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Late": 0, "Early": 0, "OT": 0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
+    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     user_file = get_user_file(emp_sidebar_name)
     is_new_employee = True
@@ -193,32 +215,17 @@ with col1:
         with c1_2:
             work_hrs = st.number_input("🏢 Working Hrs", value=float(last_data["Working_Hrs"]), key=f"shrs_{kb}")
             
-            # --- LATE ---
-            saved_late_val = int(last_data["Late"])
-            def_late_hrs = saved_late_val // 60
-            def_late_mins = saved_late_val % 60
-            
             l_h_col, l_m_col = st.columns(2)
-            with l_h_col: late_hrs_input = st.number_input("⏰ Late Hrs", value=def_late_hrs, step=1, key=f"lhrs_{kb}")
-            with l_m_col: late_mins_input = st.number_input("⏱️ Late Mins", value=def_late_mins, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
-
-            # --- EARLY GOING ---
-            saved_early_val = int(last_data["Early"])
-            def_early_hrs = saved_early_val // 60
-            def_early_mins = saved_early_val % 60
+            with l_h_col: late_hrs_input = st.number_input("⏰ Late Hrs", value=0, step=1, key=f"lhrs_{kb}")
+            with l_m_col: late_mins_input = st.number_input("⏱️ Late Mins", value=0, min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
             
             e_h_col, e_m_col = st.columns(2)
-            with e_h_col: early_hrs_input = st.number_input("🚶 Out Hrs", value=def_early_hrs, step=1, key=f"ehrs_{kb}")
-            with e_m_col: early_mins_input = st.number_input("⏱️ Out Mins", value=def_early_mins, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
-
-            # --- OT (Overtime) ---
-            saved_ot_val = int(last_data["OT"])
-            def_ot_hrs = saved_ot_val // 60
-            def_ot_mins = saved_ot_val % 60
+            with e_h_col: early_hrs_input = st.number_input("🚶 Out Hrs", value=0, step=1, key=f"ehrs_{kb}")
+            with e_m_col: early_mins_input = st.number_input("⏱️ Out Mins", value=0, min_value=0, max_value=59, step=1, key=f"emins_{kb}")
             
             o_h_col, o_m_col = st.columns(2)
-            with o_h_col: ot_hrs_input = st.number_input("⏳ OT Hrs", value=def_ot_hrs, step=1, key=f"othrs_{kb}")
-            with o_m_col: ot_mins_input = st.number_input("⏱️ OT Mins", value=def_ot_mins, min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
+            with o_h_col: ot_hrs_input = st.number_input("⏳ OT Hrs", value=0, step=1, key=f"othrs_{kb}")
+            with o_m_col: ot_mins_input = st.number_input("⏱️ OT Mins", value=0, min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
 
 with col2:
     with st.container(border=True):
@@ -258,7 +265,12 @@ else:
     total_min = adjusted_mins + total_ot_mins
 
 if total_min < 0: total_min = 0
-calc_final_hrs = f"{total_min // 60}h {total_min % 60}m"
+
+# PERFECT FORMATTING FOR HISTORY TABLE (HH:MM)
+calc_final_hrs = f"{total_min // 60}:{total_min % 60:02d}"
+late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
+early_hrs_str = f"{total_early_mins // 60}:{total_early_mins % 60:02d}"
+ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
 
 # ==========================================
 # 7. Save Data & Excel Generation Helper
@@ -293,7 +305,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         workbook = writer.book
         worksheet = writer.sheets['Salary_Slip']
         
-        # ADDED 'font_name': 'Segoe UI Emoji' TO FORCE COLORFUL EMOJIS IN EXCEL
         base_header = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
         base_label = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter', 'font_name': 'Segoe UI Emoji'}
         base_val_text = {'align': 'center', 'valign': 'vcenter'}
@@ -391,22 +402,23 @@ if save_clicked:
                 "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
                 "pl_used": used_pl,
                 "pl_balance": final_pl_balance,
-                "ot_hrs": f"{total_ot_mins//60}:{total_ot_mins%60:02d}",
-                "late_hrs": f"{total_late_mins//60}:{total_late_mins%60:02d}",
-                "out_hrs": f"{total_early_mins//60}:{total_early_mins%60:02d}",
-                "pay_hrs": f"{total_min//60}:{total_min%60:02d}",
+                "ot_hrs": ot_hrs_str,
+                "late_hrs": late_hrs_str,
+                "out_hrs": early_hrs_str,
+                "pay_hrs": calc_final_hrs,
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
                 "pay_salary_val": net_sal - difference,
                 "bank_salary_val": net_sal
             }
         }
         
+        # EXACT HH:MM FORMAT SAVE Logic Here
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
-            "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
-            "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
-            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, 
+            "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", 
+            "Late Hrs": late_hrs_str, "Out Hrs": early_hrs_str, "OT Hrs": ot_hrs_str,
+            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "Opening PL": available_pl, "PL Balance": final_pl_balance,
+            "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, "In Hand Salary": round(net_sal - difference),
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
             "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
@@ -425,7 +437,7 @@ if save_clicked:
 if st.session_state['calc_result']:
     res = st.session_state['calc_result']
     if res['name'] == emp_sidebar_name:
-        st.success(f"✅ Data Saved! Name: {res['name']} | Net Salary: ₹ {res['net']:,.2f} | OT Salary: ₹ {res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
+        st.success(f"✅ Data Saved! Name: {res['name']} | In Hand Salary: ₹ {res['net']:,.2f} | OT Salary: ₹ {res['ot_sal']:,.2f} | PL Balance: {res['pl']}")
         
         excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
         
@@ -517,20 +529,11 @@ if emp_sidebar_name:
                     sel_m, sel_y = selected_opt.split(" - ")
                     row = h_df[(h_df['Month'].astype(str).str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
                     
-                    p_hrs_val = float(row.get("Present Hrs", 0))
-                    p_hrs = int(p_hrs_val)
-                    p_mins = int(round((p_hrs_val - p_hrs) * 100))
-                    
-                    ot_m = int(row.get("OT Mins", 0))
-                    late_m = int(row.get("Late Mins", 0))
-                    early_m = int(row.get("Early Mins", 0))
-                    
-                    fh = str(row.get("Final Present Hrs", "0h 0m"))
-                    try:
-                        h, m = fh.replace('m','').split('h ')
-                        pay_str = f"{int(h)}:{int(m):02d}"
-                    except:
-                        pay_str = "0:00"
+                    ot_val = str(row.get("OT Hrs", "0:00")).strip()
+                    late_val = str(row.get("Late Hrs", "0:00")).strip()
+                    early_val = str(row.get("Out Hrs", "0:00")).strip()
+                    pay_str = str(row.get("Final Present Hrs", "0:00")).strip()
+                    present_str = str(row.get("Present Hrs", "0:00")).strip()
                         
                     actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
                     
@@ -543,12 +546,12 @@ if emp_sidebar_name:
                         "bonus": row.get("Bonus", 0),
                         "gratuity": row.get("Gratuity", 0),
                         "actual_salary": actual_salary_hist,
-                        "present_hrs": f"{p_hrs}:{p_mins:02d}",
+                        "present_hrs": present_str,
                         "pl_used": row.get("PL Used", 0),
                         "pl_balance": row.get("PL Balance", 0),
-                        "ot_hrs": f"{ot_m//60}:{ot_m%60:02d}",
-                        "late_hrs": f"{late_m//60}:{late_m%60:02d}",
-                        "out_hrs": f"{early_m//60}:{early_m%60:02d}",
+                        "ot_hrs": ot_val,
+                        "late_hrs": late_val,
+                        "out_hrs": early_val,
                         "pay_hrs": pay_str,
                         "pt": row.get("PT", 0),
                         "tds": row.get("TDS", 0),
