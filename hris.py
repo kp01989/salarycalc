@@ -564,7 +564,7 @@ if save_clicked:
             new_rec.to_csv(user_file, index=False)
             
         st.session_state['form_key'] += 1
-        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {int(in_hand_salary):,} | OT Salary: ₹ {int(ot_salary):,} | PL Balance: {final_pl_balance}"
+        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {int(in_hand_salary):,} | Bank Salary: ₹ {int(bank_salary_val):,} | OT Salary: ₹ {int(ot_salary):,} | PL Balance: {final_pl_balance}"
         st.rerun()
 
 # ==========================================
