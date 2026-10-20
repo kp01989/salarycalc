@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import requests
 import os
 import io
 from datetime import datetime
@@ -37,7 +38,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. State Management (Password Removed)
+# 3. State Management
 # ==========================================
 if 'calc_result' not in st.session_state:
     st.session_state['calc_result'] = None
@@ -92,11 +93,12 @@ def clean_legacy_columns(df):
         df['Opening PL'] = 0.0
     if 'In Hand Salary' not in df.columns:
         df['In Hand Salary'] = 0.0
+    if 'Total Pay Hrs' not in df.columns:
+        df['Total Pay Hrs'] = ""
         
     df = df.loc[:, ~df.columns.duplicated()]
     return df
 
-import requests
 def parse_firebase_time(time_str):
     if pd.isna(time_str) or str(time_str).strip() == "":
         return 0, 0
@@ -186,7 +188,7 @@ with st.sidebar:
                 
     st.divider()
 
-    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
+    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     is_new_employee = True
     last_pl_balance = 0.0
@@ -210,7 +212,8 @@ with st.sidebar:
 
                 key_mapping = {
                     "CTC": "CTC", "Working Hrs": "Working_Hrs", 
-                    "Gratuity": "Gratuity", "PT": "PT", "TDS": "TDS", "ESIC": "ESIC"
+                    "Gratuity": "Gratuity", "PT": "PT", "TDS": "TDS", "ESIC": "ESIC",
+                    "Food": "Food", "Advance": "Advance", "Difference": "Difference"
                 }
                 for csv_k, data_k in key_mapping.items():
                     if csv_k in last_row_chronological: 
@@ -366,6 +369,10 @@ late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
 early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
 ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
 
+# --- NEW TOTAL PAY HRS (Final Present + OT) ---
+total_pay_hrs_mins = total_min + total_ot_mins
+total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
+
 # ==========================================
 # 7. Save Data & Excel Generation Helper
 # ==========================================
@@ -504,11 +511,12 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        ot_salary = ((total_ot_mins // 60) * hr_rate) + ((total_ot_mins % 60) * (hr_rate/60.0))
-        net_sal_exact = ((total_min // 60) * hr_rate) + ((total_min % 60) * (hr_rate/60.0)) - food - pt_tax - tds - esic - advance
+        # --- SALARY CALCULATION DIRECTLY FROM "TOTAL PAY HRS" ---
+        total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
+        in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
         
-        pay_salary_val = round(net_sal_exact)
-        in_hand_salary = pay_salary_val + round(ot_salary)
+        ot_salary = (total_ot_mins / 60.0) * hr_rate
+        pay_salary_val = in_hand_salary - round(ot_salary)
         bank_salary_val = in_hand_salary + difference
         
         st.session_state['calc_result'] = {
@@ -536,7 +544,8 @@ if save_clicked:
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": selected_month, "Year": selected_year,
             "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", 
             "Late Hrs": late_hrs_str, "Out Hrs": early_hrs_str, "OT Hrs": ot_hrs_str,
-            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "Opening PL": opening_pl, "PL Balance": final_pl_balance,
+            "Final Present Hrs": calc_final_hrs, "Total Pay Hrs": total_pay_hrs_str,
+            "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "OT Salary": round(ot_salary, 2), "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
             "Advance": advance, "Bonus": bonus, "Difference": difference
@@ -549,6 +558,8 @@ if save_clicked:
                 df_existing['Opening PL'] = 0.0
             if 'In Hand Salary' not in df_existing.columns:
                 df_existing['In Hand Salary'] = 0.0
+            if 'Total Pay Hrs' not in df_existing.columns:
+                df_existing['Total Pay Hrs'] = ""
                 
             df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == selected_month) & (df_existing['Year'] == selected_year))]
             df_combined = pd.concat([df_existing, new_rec], ignore_index=True)
@@ -634,6 +645,8 @@ if emp_sidebar_name:
 
         cols = list(h_df.columns)
         if 'Opening PL' in cols and 'PL Used' in cols and 'PL Balance' in cols:
+            if 'Total Pay Hrs' in cols and 'Final Present Hrs' in cols:
+                cols.insert(cols.index('Final Present Hrs') + 1, cols.pop(cols.index('Total Pay Hrs')))
             cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
             h_df = h_df[cols]
 
