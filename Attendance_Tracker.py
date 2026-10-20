@@ -79,7 +79,7 @@ def clean_legacy_columns(df):
 
 month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-money_cols = ["CTC", "OT Salary", "Net Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
+money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
 
 # ==========================================
@@ -400,12 +400,13 @@ if save_clicked:
             }
         }
         
+        # PROPERLY ADDED ALL COLUMNS SO DATABASE DOESN'T BREAK
         new_rec = pd.DataFrame([{
             "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": month, "Year": year,
             "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": present_hrs_combined, 
             "Late Mins": total_late_mins, "Early Mins": total_early_mins, "OT Mins": total_ot_mins,
-            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, 
+            "Final Present Hrs": calc_final_hrs, "PL Used": used_pl, "Opening PL": available_pl, "PL Balance": final_pl_balance,
+            "OT Salary": round(ot_salary, 2), "Net Salary": net_sal, "In Hand Salary": round(net_sal - difference),
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
             "Advance": advance, "Bonus": bonus, "Difference": difference
         }])
