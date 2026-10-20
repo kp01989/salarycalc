@@ -188,7 +188,7 @@ with st.sidebar:
                 
     st.divider()
 
-    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Present_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
+    last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     is_new_employee = True
     last_pl_balance = 0.0
@@ -369,10 +369,19 @@ late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
 early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
 ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
 
-# --- NEW TOTAL PAY HRS (Final Present + OT - Late - Out) ---
-total_pay_hrs_mins = (total_min + total_ot_mins) - (total_late_mins + total_out_mins)
+# --- 2 HOURS FREE (GRACE PERIOD) RULE ---
+# 1. ટોટલ લેટ અને આઉટ મિનિટ્સ ગણો
+total_late_out_mins = total_late_mins + total_out_mins
+
+# 2. એમાંથી 120 મિનિટ (2 કલાક) બાદ કરો (અને જો વેલ્યુ માઇનસ માં જાય તો 0 ગણો)
+# એટલે કે જો કોઈ 1 કલાક લેટ હોય, તો 60 - 120 = -60 થાય, જે ઝીરો ગણાશે (એટલે કશું કપાશે નહિ, બાકીનો 1 કલાક વેડફાઈ જશે)
+deductible_mins = max(0, total_late_out_mins - 120) 
+
+# --- TOTAL PAY HRS (Final Present + OT - Extra Late/Out) ---
+total_pay_hrs_mins = (total_min + total_ot_mins) - deductible_mins
 if total_pay_hrs_mins < 0:
     total_pay_hrs_mins = 0
+    
 total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
 
 # ==========================================
@@ -533,7 +542,7 @@ if save_clicked:
                 "ot_hrs": ot_hrs_str,
                 "late_hrs": late_hrs_str,
                 "out_hrs": early_hrs_str,
-                "pay_hrs": total_pay_hrs_str, # SLIP MA HAVE DIRECT TOTAL PAY HRS AAVSE
+                "pay_hrs": total_pay_hrs_str,
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
                 "pay_salary_val": pay_salary_val,
                 "ot_sal": round(ot_salary, 2),
@@ -648,7 +657,6 @@ if emp_sidebar_name:
         cols = list(h_df.columns)
         if 'Opening PL' in cols and 'PL Used' in cols and 'PL Balance' in cols:
             if 'Total Pay Hrs' in cols and 'Final Present Hrs' in cols:
-                # Total Pay Hrs ne Final Present Hrs pachi adjust kari lidhu
                 if cols.index('Total Pay Hrs') != cols.index('Final Present Hrs') + 1:
                     cols.insert(cols.index('Final Present Hrs') + 1, cols.pop(cols.index('Total Pay Hrs')))
             cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
@@ -689,7 +697,7 @@ if emp_sidebar_name:
                     ot_val = str(row.get("OT Hrs", "0:00")).strip()
                     late_val = str(row.get("Late Hrs", "0:00")).strip()
                     early_val = str(row.get("Out Hrs", "0:00")).strip()
-                    pay_str = str(row.get("Total Pay Hrs", row.get("Final Present Hrs", "0:00"))).strip() # Fetch Total Pay Hrs
+                    pay_str = str(row.get("Total Pay Hrs", row.get("Final Present Hrs", "0:00"))).strip() 
                     present_str = str(row.get("Present Hrs", "0:00")).strip()
                         
                     actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
