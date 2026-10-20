@@ -163,8 +163,10 @@ def recalculate_future_pl(df, start_index):
         df.at[df.index[i], 'PL Balance'] = new_balance
     return df
 
-money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "TDS", "ESIC", "Advance", "Bonus", "Difference"]
-table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.2f") for col in money_cols}
+# Format variables for Data Editor (History Table)
+money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "ESIC", "Advance", "Bonus", "Difference"]
+table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.0f") for col in money_cols}
+table_format_config["TDS"] = st.column_config.NumberColumn(format="₹ %,.2f") # Khali TDS ma j decimal
 
 # ==========================================
 # 5. Sidebar Profile & Logic Setup
@@ -304,7 +306,7 @@ with col1:
             
         c1_1, c1_2 = st.columns(2)
         with c1_1:
-            ctc_salary = st.number_input("CTC Salary (₹)", value=form_data["CTC"], key=f"ctc_{kb}")
+            ctc_salary = st.number_input("CTC Salary (₹)", value=float(form_data["CTC"]), format="%.0f", key=f"ctc_{kb}")
             
             p_h_col, p_m_col = st.columns(2)
             with p_h_col:
@@ -320,7 +322,7 @@ with col1:
             used_pl = st.number_input("PL Used", value=form_data["PL_Used"], step=0.5, key=f"plu_{kb}")
 
         with c1_2:
-            work_hrs = st.number_input("Working Hrs", value=form_data["Working_Hrs"], key=f"shrs_{kb}")
+            work_hrs = st.number_input("Working Hrs", value=float(form_data["Working_Hrs"]), format="%.0f", key=f"shrs_{kb}")
             
             l_h_col, l_m_col = st.columns(2)
             with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=att_data["late_h"], step=1, key=f"lhrs_{kb}")
@@ -339,15 +341,15 @@ with col2:
         st.subheader("📉 Deductions & Additions")
         c2_1, c2_2 = st.columns(2)
         with c2_1:
-            food = st.number_input("Food (₹)", value=form_data["Food"], key=f"food_{kb}")
-            pt_tax = st.number_input("PT Tax (₹)", value=form_data["PT"], key=f"pt_{kb}")
-            tds = st.number_input("TDS (₹)", value=form_data["TDS"], key=f"tds_{kb}")
-            bonus = st.number_input("Bonus (₹)", value=form_data["Bonus"], key=f"bn_{kb}")
+            food = st.number_input("Food (₹)", value=float(form_data["Food"]), format="%.0f", key=f"food_{kb}")
+            pt_tax = st.number_input("PT Tax (₹)", value=float(form_data["PT"]), format="%.0f", key=f"pt_{kb}")
+            tds = st.number_input("TDS (₹)", value=float(form_data["TDS"]), format="%.2f", key=f"tds_{kb}")
+            bonus = st.number_input("Bonus (₹)", value=float(form_data["Bonus"]), format="%.0f", key=f"bn_{kb}")
         with c2_2:
-            gratuity = st.number_input("Gratuity (₹)", value=form_data["Gratuity"], key=f"gr_{kb}")
-            advance = st.number_input("Loan/Advance (₹)", value=form_data["Advance"], key=f"ad_{kb}")
-            esic = st.number_input("ESIC (₹)", value=form_data["ESIC"], key=f"esic_{kb}")
-            difference = st.number_input("Difference (₹)", value=form_data["Difference"], key=f"diff_{kb}")
+            gratuity = st.number_input("Gratuity (₹)", value=float(form_data["Gratuity"]), format="%.0f", key=f"gr_{kb}")
+            advance = st.number_input("Loan/Advance (₹)", value=float(form_data["Advance"]), format="%.0f", key=f"ad_{kb}")
+            esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f", key=f"esic_{kb}")
+            difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f", key=f"diff_{kb}")
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -418,19 +420,23 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         
         base_label_left = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
         base_val_text = {'align': 'center', 'valign': 'vcenter'}
-        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+        
+        # --- NEW FORMATTING WITHOUT DECIMALS (EXCEPT TDS) ---
+        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+        base_val_curr_tds = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'} # Only TDS gets .00
+        
         base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
         base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
         
         base_pay_label_left = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
         
         base_ot_label_left = {'bold': True, 'bg_color': '#F4B084', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_ot_val_center = {'bold': True, 'bg_color': '#F4B084', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+        base_ot_val_center = {'bold': True, 'bg_color': '#F4B084', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
         
-        base_diff_pos_red = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0.00'}
-        base_diff_neg_green = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0.00'}
-        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0.00'}
+        base_diff_pos_red = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0'}
+        base_diff_neg_green = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0'}
+        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0'}
 
         worksheet.set_column('A:A', 22)
         worksheet.set_column('B:B', 25)
@@ -438,7 +444,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         for i in range(len(slip_df)):
             worksheet.set_row(i, 18)
         
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "TDS", "Loan", "Food", "Bank Salary", "Diff"]
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "Loan", "Food", "Bank Salary", "Diff"]
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
@@ -463,6 +469,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
                 if diff_val > 0: dict_col1 = base_diff_pos_red.copy()
                 elif diff_val < 0: dict_col1 = base_diff_neg_green.copy()
                 else: dict_col1 = base_diff_zero.copy()
+            elif lbl == "TDS" and val != "-": dict_col1 = base_val_curr_tds.copy() # TDS specific format
             elif lbl in currency_labels and val != "-": dict_col1 = base_val_curr.copy()
             else: dict_col1 = base_val_text.copy()
 
@@ -518,16 +525,16 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # --- SALARY CALCULATION DIRECTLY FROM "TOTAL PAY HRS" ---
+        # --- SALARY CALCULATION ---
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
         in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
         
-        ot_salary = (total_ot_mins / 60.0) * hr_rate
-        pay_salary_val = in_hand_salary - round(ot_salary)
+        ot_salary = round((total_ot_mins / 60.0) * hr_rate) # OT ne pan round figure
+        pay_salary_val = in_hand_salary - ot_salary
         bank_salary_val = in_hand_salary + difference
         
         st.session_state['calc_result'] = {
-            "name": emp_name, "month": selected_month, "year": selected_year, "in_hand": in_hand_salary, "ot_sal": round(ot_salary, 2), "pl": final_pl_balance,
+            "name": emp_name, "month": selected_month, "year": selected_year, "in_hand": in_hand_salary, "ot_sal": ot_salary, "pl": final_pl_balance,
             "slip_data": {
                 "work_hrs_str": f"{int(work_hrs)}:00",
                 "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
@@ -541,7 +548,7 @@ if save_clicked:
                 "pay_hrs": total_pay_hrs_str,
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
                 "pay_salary_val": pay_salary_val,
-                "ot_sal": round(ot_salary, 2),
+                "ot_sal": ot_salary,
                 "in_hand_salary": in_hand_salary,
                 "bank_salary_val": bank_salary_val
             }
@@ -553,7 +560,7 @@ if save_clicked:
             "Late Hrs": late_hrs_str, "Out Hrs": early_hrs_str, "OT Hrs": ot_hrs_str,
             "Final Present Hrs": calc_final_hrs, "Total Pay Hrs": total_pay_hrs_str,
             "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
-            "OT Salary": round(ot_salary, 2), "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
+            "OT Salary": ot_salary, "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
             "Advance": advance, "Bonus": bonus, "Difference": difference
         }
@@ -583,7 +590,7 @@ if save_clicked:
             new_rec.to_csv(user_file, index=False)
             
         st.session_state['form_key'] += 1
-        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {in_hand_salary:,.2f} | OT Salary: ₹ {round(ot_salary, 2):,.2f} | PL Balance: {final_pl_balance}"
+        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {int(in_hand_salary):,} | OT Salary: ₹ {int(ot_salary):,} | PL Balance: {final_pl_balance}"
         st.rerun()
 
 # ==========================================
