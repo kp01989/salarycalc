@@ -402,7 +402,7 @@ if not is_new_employee and not df_hist_sorted.empty:
 att_data = fetch_attendance_data(emp_name, selected_month, selected_year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "out_h": 0, "out_m": 0}
 
 # ==========================================
-# 7. MAIN FORM 
+# 7. MAIN FORM
 # ==========================================
 with st.form(key=f"salary_form_{kb}"):
     col1, col_line, col2 = st.columns([1, 0.05, 1])
@@ -416,7 +416,7 @@ with st.form(key=f"salary_form_{kb}"):
             
             p_h_col, p_m_col = st.columns(2)
             with p_h_col:
-                present_hrs_input = st.number_input("Pay Hrs", value=att_data["reg_h"], step=1)
+                present_hrs_input = st.number_input("Present Hrs", value=att_data["reg_h"], step=1)
             with p_m_col:
                 present_mins_input = st.number_input("Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1)
             
@@ -474,7 +474,7 @@ with st.form(key=f"salary_form_{kb}"):
             difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
             
     st.write("")
-    _, btn_col, _ = st.columns([1, 1.5, 1])
+    _, btn_col, _ = st.columns([1, 2, 1])
     with btn_col:
         save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
 
@@ -592,7 +592,7 @@ if st.session_state.get('calc_result'):
     if res['name'] == emp_sidebar_name:
         excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
         
-        _, btn_col, _ = st.columns([1, 1.5, 1])
+        _, btn_col, _ = st.columns([1, 2, 1])
         with btn_col:
             st.download_button(
                 label="📄 Download Excel Slip",
@@ -608,7 +608,6 @@ if st.session_state.get('calc_result'):
 st.divider()
 st.subheader("🔍 Search Records")
 with st.container(border=True):
-    # Name nu box kadhi nakhyu
     s1, s2, s3 = st.columns([2, 2, 2])
     search_m = s1.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
     search_y = s2.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
