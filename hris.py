@@ -232,127 +232,133 @@ with st.sidebar:
             pass
 
 # ==========================================
-# 6. Form Logic & Input
+# 6. MONTH/YEAR (OUTSIDE FORM FOR AUTO-FILL)
 # ==========================================
 kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
-
-col1, col2 = st.columns(2)
 
 now = datetime.now()
 current_month_name = now.strftime("%b") 
 current_year = now.year
 
-with col1:
-    with st.container(border=True):
-        st.subheader("💰 Basic Details")
+m_list = list(month_dict.keys())
+default_month = current_month_name 
+def_year = current_year
+
+if not is_new_employee and not df_hist_sorted.empty:
+    last_row = df_hist_sorted.iloc[-1]
+    last_saved_month = str(last_row.get("Month", "")).strip()
+    if last_saved_month in m_list:
+        last_idx = m_list.index(last_saved_month)
+        if last_idx < 11: 
+            default_month = m_list[last_idx + 1]
+            def_year = int(last_row.get("Year", current_year))
+        else:
+            default_month = 'Jan' 
+            def_year = int(last_row.get("Year", current_year)) + 1
+
+def_m_idx = m_list.index(default_month) if default_month in m_list else 0
+
+with st.container(border=True):
+    col_m, col_y, col_emp = st.columns([1, 1, 2])
+    with col_m:
+        selected_month = st.selectbox("📅 Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
+    with col_y:
+        selected_year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
+    with col_emp:
         emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
-        
-        m_col, y_col = st.columns(2)
-        
-        m_list = list(month_dict.keys())
-        default_month = current_month_name 
-        def_year = current_year
-        
-        if not is_new_employee and not df_hist_sorted.empty:
-            last_row = df_hist_sorted.iloc[-1]
-            last_saved_month = str(last_row.get("Month", "")).strip()
-            if last_saved_month in m_list:
-                last_idx = m_list.index(last_saved_month)
-                if last_idx < 11: 
-                    default_month = m_list[last_idx + 1]
-                    def_year = int(last_row.get("Year", current_year))
-                else:
-                    default_month = 'Jan' 
-                    def_year = int(last_row.get("Year", current_year)) + 1
 
-        def_m_idx = m_list.index(default_month) if default_month in m_list else 0
+# Fetching Data Logic
+form_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0}
+opening_pl = 0
+is_editing_past = False
 
-        with m_col:
-            selected_month = st.selectbox("📅 Month", m_list, index=def_m_idx, disabled=(not is_new_employee), key=f"month_{kb}")
-        with y_col:
-            selected_year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=def_year, disabled=(not is_new_employee), key=f"year_{kb}")
-            
-        form_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0}
-        
-        opening_pl = 0
-        is_editing_past = False
-        
-        if not is_new_employee and not df_hist_sorted.empty:
-            existing_row = df_hist_sorted[(df_hist_sorted['Month'].astype(str).str.strip() == selected_month) & (df_hist_sorted['Year'] == selected_year)]
-            
-            if not existing_row.empty:
-                is_editing_past = True
-                row = existing_row.iloc[0]
-                form_data["CTC"] = float(row.get("CTC", 0.0))
-                form_data["Working_Hrs"] = float(row.get("Working Hrs", 0.0))
-                form_data["Food"] = float(row.get("Food", 0.0))
-                form_data["Gratuity"] = float(row.get("Gratuity", 0.0))
-                form_data["PT"] = float(row.get("PT", 200.0))
-                form_data["Bonus"] = float(row.get("Bonus", 0.0))
-                form_data["Advance"] = float(row.get("Advance", 0.0))
-                form_data["Difference"] = float(row.get("Difference", 0.0))
-                form_data["TDS"] = float(row.get("TDS", 0.0))
-                form_data["ESIC"] = float(row.get("ESIC", 0.0))
-                form_data["PL_Used"] = int(float(row.get("PL Used", 0)))
-                opening_pl = int(float(row.get("Opening PL", 0)))
-                
-            else:
-                last_row = df_hist_sorted.iloc[-1]
-                form_data["CTC"] = float(last_row.get("CTC", 0.0))
-                form_data["Working_Hrs"] = float(last_row.get("Working Hrs", 0.0))
-                form_data["PT"] = float(last_row.get("PT", 200.0))
-                form_data["TDS"] = float(last_row.get("TDS", 0.0))
-                form_data["ESIC"] = float(last_row.get("ESIC", 0.0))
-                opening_pl = int(float(last_row.get("PL Balance", 0))) + 1
+if not is_new_employee and not df_hist_sorted.empty:
+    existing_row = df_hist_sorted[(df_hist_sorted['Month'].astype(str).str.strip() == selected_month) & (df_hist_sorted['Year'] == selected_year)]
+    
+    if not existing_row.empty:
+        is_editing_past = True
+        row = existing_row.iloc[0]
+        form_data["CTC"] = float(row.get("CTC", 0.0))
+        form_data["Working_Hrs"] = float(row.get("Working Hrs", 0.0))
+        form_data["Food"] = float(row.get("Food", 0.0))
+        form_data["Gratuity"] = float(row.get("Gratuity", 0.0))
+        form_data["PT"] = float(row.get("PT", 200.0))
+        form_data["Bonus"] = float(row.get("Bonus", 0.0))
+        form_data["Advance"] = float(row.get("Advance", 0.0))
+        form_data["Difference"] = float(row.get("Difference", 0.0))
+        form_data["TDS"] = float(row.get("TDS", 0.0))
+        form_data["ESIC"] = float(row.get("ESIC", 0.0))
+        form_data["PL_Used"] = int(float(row.get("PL Used", 0)))
+        opening_pl = int(float(row.get("Opening PL", 0)))
+    else:
+        last_row = df_hist_sorted.iloc[-1]
+        form_data["CTC"] = float(last_row.get("CTC", 0.0))
+        form_data["Working_Hrs"] = float(last_row.get("Working Hrs", 0.0))
+        form_data["PT"] = float(last_row.get("PT", 200.0))
+        form_data["TDS"] = float(last_row.get("TDS", 0.0))
+        form_data["ESIC"] = float(last_row.get("ESIC", 0.0))
+        opening_pl = int(float(last_row.get("PL Balance", 0))) + 1
 
-        att_data = fetch_attendance_data(emp_name, selected_month, selected_year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "out_h": 0, "out_m": 0}
-            
+att_data = fetch_attendance_data(emp_name, selected_month, selected_year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "out_h": 0, "out_m": 0}
+
+# ==========================================
+# 7. MAIN FORM (PREVENTS DIMMING)
+# ==========================================
+with st.form(key=f"salary_form_{kb}"):
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("💰 Basic Details")
         c1_1, c1_2 = st.columns(2)
         with c1_1:
-            ctc_salary = st.number_input("CTC Salary (₹)", value=float(form_data["CTC"]), format="%.0f", key=f"ctc_{kb}")
+            ctc_salary = st.number_input("CTC Salary (₹)", value=float(form_data["CTC"]), format="%.0f")
             
             p_h_col, p_m_col = st.columns(2)
             with p_h_col:
-                present_hrs_input = st.number_input("Pay Hrs", value=att_data["reg_h"], step=1, key=f"phrs_{kb}")
+                present_hrs_input = st.number_input("Pay Hrs", value=att_data["reg_h"], step=1)
             with p_m_col:
-                present_mins_input = st.number_input("Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1, key=f"pmins_{kb}")
+                present_mins_input = st.number_input("Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1)
             
             if is_new_employee:
-                opening_pl = st.number_input("Opening PL Balance", value=0, step=1, key=f"opl_{kb}")
+                opening_pl = st.number_input("Opening PL Balance", value=0, step=1)
             else:
                 st.text_input("Opening PL Balance (Auto)", value=str(int(opening_pl)), disabled=True)
 
-            used_pl = st.number_input("PL Used", value=int(form_data["PL_Used"]), step=1, key=f"plu_{kb}")
+            used_pl = st.number_input("PL Used", value=int(form_data["PL_Used"]), step=1)
 
         with c1_2:
-            work_hrs = st.number_input("Working Hrs", value=float(form_data["Working_Hrs"]), format="%.0f", key=f"shrs_{kb}")
+            work_hrs = st.number_input("Working Hrs", value=float(form_data["Working_Hrs"]), format="%.0f")
             
             l_h_col, l_m_col = st.columns(2)
-            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=att_data["late_h"], step=1, key=f"lhrs_{kb}")
-            with l_m_col: late_mins_input = st.number_input("Late Mins", value=att_data["late_m"], min_value=0, max_value=59, step=1, key=f"lmins_{kb}")
+            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=att_data["late_h"], step=1)
+            with l_m_col: late_mins_input = st.number_input("Late Mins", value=att_data["late_m"], min_value=0, max_value=59, step=1)
             
             e_h_col, e_m_col = st.columns(2)
-            with e_h_col: out_hrs_input = st.number_input("Out Hrs", value=att_data["out_h"], step=1, key=f"out_hrs_{kb}")
-            with e_m_col: out_mins_input = st.number_input("Out Mins", value=att_data["out_m"], min_value=0, max_value=59, step=1, key=f"out_mins_{kb}")
+            with e_h_col: out_hrs_input = st.number_input("Out Hrs", value=att_data["out_h"], step=1)
+            with e_m_col: out_mins_input = st.number_input("Out Mins", value=att_data["out_m"], min_value=0, max_value=59, step=1)
             
             o_h_col, o_m_col = st.columns(2)
-            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=att_data["ot_h"], step=1, key=f"othrs_{kb}")
-            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=att_data["ot_m"], min_value=0, max_value=59, step=1, key=f"otmins_{kb}")
+            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=att_data["ot_h"], step=1)
+            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=att_data["ot_m"], min_value=0, max_value=59, step=1)
 
-with col2:
-    with st.container(border=True):
+    with col2:
         st.subheader("📉 Deductions & Additions")
         c2_1, c2_2 = st.columns(2)
         with c2_1:
-            food = st.number_input("Food (₹)", value=float(form_data["Food"]), format="%.0f", key=f"food_{kb}")
-            pt_tax = st.number_input("PT Tax (₹)", value=float(form_data["PT"]), format="%.0f", key=f"pt_{kb}")
-            tds = st.number_input("TDS (₹)", value=float(form_data["TDS"]), format="%.2f", key=f"tds_{kb}")
-            bonus = st.number_input("Bonus (₹)", value=float(form_data["Bonus"]), format="%.0f", key=f"bn_{kb}")
+            food = st.number_input("Food (₹)", value=float(form_data["Food"]), format="%.0f")
+            pt_tax = st.number_input("PT Tax (₹)", value=float(form_data["PT"]), format="%.0f")
+            tds = st.number_input("TDS (₹)", value=float(form_data["TDS"]), format="%.2f")
+            bonus = st.number_input("Bonus (₹)", value=float(form_data["Bonus"]), format="%.0f")
         with c2_2:
-            gratuity = st.number_input("Gratuity (₹)", value=float(form_data["Gratuity"]), format="%.0f", key=f"gr_{kb}")
-            advance = st.number_input("Loan/Advance (₹)", value=float(form_data["Advance"]), format="%.0f", key=f"ad_{kb}")
-            esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f", key=f"esic_{kb}")
-            difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f", key=f"diff_{kb}")
+            gratuity = st.number_input("Gratuity (₹)", value=float(form_data["Gratuity"]), format="%.0f")
+            advance = st.number_input("Loan/Advance (₹)", value=float(form_data["Advance"]), format="%.0f")
+            esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f")
+            difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
+            
+    st.write("")
+    _, btn_col, _ = st.columns([1, 1.5, 1])
+    with btn_col:
+        save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -386,7 +392,7 @@ if total_pay_hrs_mins < 0:
 total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
 
 # ==========================================
-# 7. Save Data & Excel Generation Helper
+# 8. Save Data & Excel Generation Helper
 # ==========================================
 def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
@@ -484,14 +490,8 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     return output.getvalue()
 
 # ==========================================
-# 7. Button Execution Logic
+# 9. Execution Logic
 # ==========================================
-st.write("")
-_, btn_col, _ = st.columns([1, 1.5, 1])
-
-with btn_col:
-    save_clicked = st.button("Calculate & Save Data", type="primary", use_container_width=True)
-
 if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
@@ -588,7 +588,7 @@ if st.session_state.get('calc_result'):
         st.session_state['calc_result'] = None
 
 # ==========================================
-# 8. Search Section
+# 10. Search Section
 # ==========================================
 st.divider()
 st.subheader("🔍 Search Records")
@@ -614,7 +614,7 @@ with st.container(border=True):
             st.error("File not found.")
 
 # ==========================================
-# 9. History & Download Old Slips
+# 11. History & Download Old Slips
 # ==========================================
 if emp_sidebar_name:
     st.divider()
