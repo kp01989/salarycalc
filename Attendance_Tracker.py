@@ -211,7 +211,7 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     
     formatted_name = st.session_state.top_emp_input.strip().title()
 
-    if formatted_name == "Admin":
+    if formatted_name == "Administrator":
         all_emps = get_all_employees()
         if all_emps:
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
