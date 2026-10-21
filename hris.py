@@ -402,7 +402,7 @@ if not is_new_employee and not df_hist_sorted.empty:
 att_data = fetch_attendance_data(emp_name, selected_month, selected_year) if emp_name else {"reg_h": 0, "reg_m": 0, "ot_h": 0, "ot_m": 0, "late_h": 0, "late_m": 0, "out_h": 0, "out_m": 0}
 
 # ==========================================
-# 7. MAIN FORM
+# 7. MAIN FORM 
 # ==========================================
 with st.form(key=f"salary_form_{kb}"):
     col1, col_line, col2 = st.columns([1, 0.05, 1])
@@ -418,7 +418,8 @@ with st.form(key=f"salary_form_{kb}"):
             with p_h_col:
                 present_hrs_input = st.number_input("Present Hrs", value=att_data["reg_h"], step=1)
             with p_m_col:
-                present_mins_input = st.number_input("Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1)
+                # Label updated to "Present Mins"
+                present_mins_input = st.number_input("Present Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1)
             
             if is_new_employee:
                 opening_pl = st.number_input("Opening PL Balance", value=0, step=1)
