@@ -34,6 +34,15 @@ st.markdown("""
         opacity: 1 !important; 
         visibility: visible !important; 
     }
+    
+    /* VERTICAL LINE CSS */
+    div[data-testid="column"]:has(#left-column-marker) {
+        border-right: 2px solid rgba(128, 128, 128, 0.4);
+        padding-right: 25px;
+    }
+    div[data-testid="column"]:has(#left-column-marker) + div[data-testid="column"] {
+        padding-left: 25px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,10 +59,9 @@ if 'flash_msg' not in st.session_state:
 st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
 st.divider()
 
-# Show Flash Message if exists
 if st.session_state['flash_msg']:
     st.success(st.session_state['flash_msg'])
-    st.session_state['flash_msg'] = None # Clear it after showing
+    st.session_state['flash_msg'] = None
 
 # ==========================================
 # 4. Helper Functions & Configs
@@ -140,7 +148,6 @@ def fetch_attendance_data(emp_name, month_name, year):
                         
                         h, m = parse_firebase_time(row.get("Out Hours", "00:00"))
                         total_out_mins_att += (h * 60) + m
-                        
     except Exception as e:
         pass
         
@@ -163,9 +170,102 @@ def recalculate_future_pl(df, start_index):
         df.at[df.index[i], 'PL Balance'] = new_balance
     return df
 
+def generate_excel_slip(slip_data, emp_name, month_str, year_val):
+    sd = slip_data
+    slip_df = pd.DataFrame({
+        "Label": [
+            "CTC Salary", "Gratuity", "Bonus", "Actual Salary", 
+            "Working Hrs", "Pay Hrs", "PL Used", 
+            "OT Hrs", "Late Hrs", "Out Hrs", "Total Pay Hrs", 
+            "PT", "PF", "ESI", "TDS", "Loan", "Food", 
+            "PL Balance", "Pay Salary", "OT Salary", "In Hand Salary", "Bank Salary", "Diff"
+        ],
+        "Value": [
+            sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], 
+            sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], 
+            sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], 
+            sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", 
+            sd['advance'], sd['food'], sd['pl_balance'], 
+            sd['pay_salary_val'], sd['ot_sal'], sd['in_hand_salary'], sd['bank_salary_val'], sd['difference']
+        ]
+    })
+    
+    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [f"{emp_name}"]})
+    slip_df = pd.concat([header_row, slip_df], ignore_index=True)
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
+        workbook = writer.book
+        worksheet = writer.sheets['Salary_Slip']
+        
+        base_header_left = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_header_center = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
+        base_label_left = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_val_text = {'align': 'center', 'valign': 'vcenter'}
+        
+        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+        base_val_curr_tds = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'} 
+        
+        base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
+        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
+        
+        base_pay_label_left = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+        
+        base_ot_label_left = {'bold': True, 'bg_color': '#F4B084', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_ot_val_center = {'bold': True, 'bg_color': '#F4B084', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+        
+        base_diff_pos_red = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0'}
+        base_diff_neg_green = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0'}
+        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0'}
+
+        worksheet.set_column('A:A', 22)
+        worksheet.set_column('B:B', 25)
+        
+        for i in range(len(slip_df)):
+            worksheet.set_row(i, 18)
+        
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "Loan", "Food", "Bank Salary", "Diff"]
+        total_rows = len(slip_df)
+        
+        for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
+            if row_num == 0: dict_col0 = base_header_left.copy()
+            elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col0 = base_pay_label_left.copy()
+            elif lbl == "OT Salary": dict_col0 = base_ot_label_left.copy()
+            else: dict_col0 = base_label_left.copy()
+
+            dict_col0['border'] = 1
+            if row_num == 0: dict_col0['top'] = 2
+            if row_num == total_rows - 1: dict_col0['bottom'] = 2
+            dict_col0['left'] = 2
+            worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
+
+            if row_num == 0: dict_col1 = base_header_center.copy()
+            elif lbl == "Working Hrs": dict_col1 = base_val_yellow.copy()
+            elif lbl in ["Pay Hrs", "PL Used", "Total Pay Hrs"]: dict_col1 = base_val_green.copy()
+            elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col1 = base_pay_val_center.copy()
+            elif lbl == "OT Salary": dict_col1 = base_ot_val_center.copy()
+            elif lbl == "Diff":
+                diff_val = float(val) if val != "-" else 0
+                if diff_val > 0: dict_col1 = base_diff_pos_red.copy()
+                elif diff_val < 0: dict_col1 = base_diff_neg_green.copy()
+                else: dict_col1 = base_diff_zero.copy()
+            elif lbl == "TDS" and val != "-": dict_col1 = base_val_curr_tds.copy() 
+            elif lbl in currency_labels and val != "-": dict_col1 = base_val_curr.copy()
+            else: dict_col1 = base_val_text.copy()
+
+            dict_col1['border'] = 1
+            if row_num == 0: dict_col1['top'] = 2
+            if row_num == total_rows - 1: dict_col1['bottom'] = 2
+            dict_col1['right'] = 2
+            worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
+            
+    return output.getvalue()
+
 money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "ESIC", "Advance", "Bonus", "Difference"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.0f") for col in money_cols}
-table_format_config["TDS"] = st.column_config.NumberColumn(format="₹ %,.2f") # Khali TDS ma decimal
+table_format_config["TDS"] = st.column_config.NumberColumn(format="₹ %,.2f") 
 
 pl_cols = ["Opening PL", "PL Used", "PL Balance"]
 for col in pl_cols:
@@ -305,10 +405,10 @@ att_data = fetch_attendance_data(emp_name, selected_month, selected_year) if emp
 # 7. MAIN FORM (PREVENTS DIMMING)
 # ==========================================
 with st.form(key=f"salary_form_{kb}"):
-    # 3 Column layout banavyu che, vacche ni column ma line aavse
     col1, col_line, col2 = st.columns([1, 0.05, 1])
     
     with col1:
+        st.markdown('<div id="left-column-marker"></div>', unsafe_allow_html=True)
         st.subheader("💰 Basic Details")
         c1_1, c1_2 = st.columns(2)
         with c1_1:
@@ -343,7 +443,6 @@ with st.form(key=f"salary_form_{kb}"):
             with o_m_col: ot_mins_input = st.number_input("OT Mins", value=att_data["ot_m"], min_value=0, max_value=59, step=1)
 
     with col_line:
-        # 100% Working Solid Divider Logic
         st.markdown("""
             <style>
                 .vline {
@@ -354,7 +453,7 @@ with st.form(key=f"salary_form_{kb}"):
                     border-radius: 2px;
                 }
                 @media (max-width: 768px) {
-                    .vline { display: none; } /* મોબાઈલમાં આ લાઈન ગાયબ થઇ જશે જેથી ડીઝાઇન ના બગડે */
+                    .vline { display: none; }
                 }
             </style>
             <div class="vline"></div>
@@ -375,9 +474,26 @@ with st.form(key=f"salary_form_{kb}"):
             difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
             
     st.write("")
-    _, btn_col, _ = st.columns([1, 1.5, 1])
-    with btn_col:
-        save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
+    
+    # --- BUTTON LAYOUT (SIDE BY SIDE IF SLIP EXISTS) ---
+    if st.session_state.get('calc_result') and st.session_state['calc_result']['name'] == emp_sidebar_name:
+        _, b1, b2, _ = st.columns([0.5, 1.5, 1.5, 0.5])
+        with b1:
+            save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
+        with b2:
+            res = st.session_state['calc_result']
+            excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
+            st.download_button(
+                label="📄 Download Excel Slip",
+                data=excel_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    else:
+        _, btn_col, _ = st.columns([1, 1.5, 1])
+        with btn_col:
+            save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -399,114 +515,14 @@ late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
 early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
 ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
 
-# --- 2 HOURS FREE (GRACE PERIOD) RULE ---
 total_late_out_mins = total_late_mins + total_out_mins
 deductible_mins = max(0, total_late_out_mins - 120) 
 
-# --- TOTAL PAY HRS (Final Present + OT - Extra Late/Out) ---
 total_pay_hrs_mins = (total_min + total_ot_mins) - deductible_mins
 if total_pay_hrs_mins < 0:
     total_pay_hrs_mins = 0
     
 total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
-
-# ==========================================
-# 8. Save Data & Excel Generation Helper
-# ==========================================
-def generate_excel_slip(slip_data, emp_name, month_str, year_val):
-    sd = slip_data
-    
-    slip_df = pd.DataFrame({
-        "Label": [
-            "CTC Salary", "Gratuity", "Bonus", "Actual Salary", 
-            "Working Hrs", "Pay Hrs", "PL Used", 
-            "OT Hrs", "Late Hrs", "Out Hrs", "Total Pay Hrs", 
-            "PT", "PF", "ESI", "TDS", "Loan", "Food", 
-            "PL Balance", "Pay Salary", "OT Salary", "In Hand Salary", "Bank Salary", "Diff"
-        ],
-        "Value": [
-            sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'], 
-            sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], 
-            sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], 
-            sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", 
-            sd['advance'], sd['food'], sd['pl_balance'], 
-            sd['pay_salary_val'], sd['ot_sal'], sd['in_hand_salary'], sd['bank_salary_val'], sd['difference']
-        ]
-    })
-    
-    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [f"{emp_name}"]})
-    slip_df = pd.concat([header_row, slip_df], ignore_index=True)
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
-        workbook = writer.book
-        worksheet = writer.sheets['Salary_Slip']
-        
-        base_header_left = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_header_center = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
-        
-        base_label_left = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_val_text = {'align': 'center', 'valign': 'vcenter'}
-        
-        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
-        base_val_curr_tds = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'} 
-        
-        base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
-        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
-        
-        base_pay_label_left = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
-        
-        base_ot_label_left = {'bold': True, 'bg_color': '#F4B084', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
-        base_ot_val_center = {'bold': True, 'bg_color': '#F4B084', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
-        
-        base_diff_pos_red = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0'}
-        base_diff_neg_green = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0'}
-        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0'}
-
-        worksheet.set_column('A:A', 22)
-        worksheet.set_column('B:B', 25)
-        
-        for i in range(len(slip_df)):
-            worksheet.set_row(i, 18)
-        
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "Loan", "Food", "Bank Salary", "Diff"]
-        total_rows = len(slip_df)
-        
-        for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
-            if row_num == 0: dict_col0 = base_header_left.copy()
-            elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col0 = base_pay_label_left.copy()
-            elif lbl == "OT Salary": dict_col0 = base_ot_label_left.copy()
-            else: dict_col0 = base_label_left.copy()
-
-            dict_col0['border'] = 1
-            if row_num == 0: dict_col0['top'] = 2
-            if row_num == total_rows - 1: dict_col0['bottom'] = 2
-            dict_col0['left'] = 2
-            worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
-
-            if row_num == 0: dict_col1 = base_header_center.copy()
-            elif lbl == "Working Hrs": dict_col1 = base_val_yellow.copy()
-            elif lbl in ["Pay Hrs", "PL Used", "Total Pay Hrs"]: dict_col1 = base_val_green.copy()
-            elif lbl in ["Pay Salary", "In Hand Salary"]: dict_col1 = base_pay_val_center.copy()
-            elif lbl == "OT Salary": dict_col1 = base_ot_val_center.copy()
-            elif lbl == "Diff":
-                diff_val = float(val) if val != "-" else 0
-                if diff_val > 0: dict_col1 = base_diff_pos_red.copy()
-                elif diff_val < 0: dict_col1 = base_diff_neg_green.copy()
-                else: dict_col1 = base_diff_zero.copy()
-            elif lbl == "TDS" and val != "-": dict_col1 = base_val_curr_tds.copy() 
-            elif lbl in currency_labels and val != "-": dict_col1 = base_val_curr.copy()
-            else: dict_col1 = base_val_text.copy()
-
-            dict_col1['border'] = 1
-            if row_num == 0: dict_col1['top'] = 2
-            if row_num == total_rows - 1: dict_col1['bottom'] = 2
-            dict_col1['right'] = 2
-            worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
-            
-    return output.getvalue()
 
 # ==========================================
 # 9. Execution Logic
@@ -518,7 +534,6 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # --- SALARY CALCULATION ---
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
         in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
         
@@ -585,26 +600,6 @@ if save_clicked:
         st.session_state['form_key'] += 1
         st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {int(in_hand_salary):,} | Bank Salary: ₹ {int(bank_salary_val):,} | OT Salary: ₹ {int(ot_salary):,} | PL Balance: {final_pl_balance}"
         st.rerun()
-
-# ==========================================
-# SLIP DOWNLOAD BUTTON (AFTER SAVE)
-# ==========================================
-if st.session_state.get('calc_result'):
-    res = st.session_state['calc_result']
-    if res['name'] == emp_sidebar_name:
-        excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
-        
-        _, btn_col, _ = st.columns([1, 1.5, 1])
-        with btn_col:
-            st.download_button(
-                label="📄 Download Excel Slip",
-                data=excel_data,
-                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-    else:
-        st.session_state['calc_result'] = None
 
 # ==========================================
 # 10. Search Section
