@@ -34,6 +34,15 @@ st.markdown("""
         opacity: 1 !important; 
         visibility: visible !important; 
     }
+    
+    /* VERTICAL LINE CSS (બંને કોલમ વચ્ચેની ઉભી લાઈન) */
+    div[data-testid="column"]:has(#left-column-marker) {
+        border-right: 2px solid rgba(128, 128, 128, 0.4);
+        padding-right: 25px;
+    }
+    div[data-testid="column"]:has(#left-column-marker) + div[data-testid="column"] {
+        padding-left: 25px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -308,6 +317,7 @@ with st.form(key=f"salary_form_{kb}"):
     col1, col2 = st.columns(2)
     
     with col1:
+        st.markdown('<div id="left-column-marker"></div>', unsafe_allow_html=True) # Line mate marker
         st.subheader("💰 Basic Details")
         c1_1, c1_2 = st.columns(2)
         with c1_1:
