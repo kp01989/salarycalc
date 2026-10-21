@@ -237,8 +237,8 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     if submit:
         if not formatted_name:
             st.error("Please enter an Employee Name above!")
-        elif formatted_name == "Admin":
-            st.error("You cannot add an entry for 'Admin'. Please type a valid name!")
+        elif formatted_name == "Administrator":
+            st.error("You cannot add an entry for 'Administrator'. Please type a valid name!")
         elif out_time < in_time:
             st.error("Out Time cannot be before In Time!")
         else:
@@ -323,7 +323,7 @@ else:
         
         df_display = df_display.fillna("") 
 
-        if formatted_name != "Admin":
+        if formatted_name != "Administrator":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
 
         # Table na columns no kram (Employee Name pehla)
