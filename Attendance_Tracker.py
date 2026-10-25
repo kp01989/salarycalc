@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 import io
 import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 
 # ==========================================
-# 1. FIREBASE CLOUD DATABASE URL (Data કાયમ સેવ રહેશે)
+# 1. FIREBASE CLOUD DATABASE URL
 # ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 
@@ -108,7 +108,6 @@ def calculate_times(in_time, out_time, day_str):
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 def load_data(sheet_name):
-    # Employee Name aagal aavi gayu
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     try:
@@ -216,10 +215,26 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
         if all_emps:
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
+    # --- AUTO-DATE CALCULATION LOGIC ---
+    default_date = date.today()
+    if formatted_name and formatted_name != "Administrator":
+        # Current month ma data check karse
+        df_month_check = load_data(st.session_state.filter_month)
+        if not df_month_check.empty:
+             df_emp = df_month_check[df_month_check["Employee Name"] == formatted_name]
+             if not df_emp.empty:
+                  # RealDate column create kari jethi date sort thai sake
+                  df_emp = df_emp.copy()
+                  df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
+                  latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
+                  latest_date = latest_date_row['RealDate'].date()
+                  # Next day set kare che
+                  default_date = latest_date + timedelta(days=1)
+
     with st.form("entry_form"):
         c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
         with c1:
-            entry_date = st.date_input("Date", date.today(), format="DD/MM/YYYY")
+            entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
             
         dynamic_key_in = f"in_{st.session_state.form_reset_counter}"
         dynamic_key_out = f"out_{st.session_state.form_reset_counter}"
