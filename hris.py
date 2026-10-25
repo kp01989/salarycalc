@@ -5,6 +5,7 @@ import os
 import io
 from datetime import datetime
 import time as tm
+import streamlit.components.v1 as components # <-- AHIYA NAVU IMPORT ADD KARYU CHE
 
 # ==========================================
 # 1. Page Setup
@@ -15,6 +16,41 @@ month_dict = {m: i+1 for i, m in enumerate(month_order)}
 
 # TARI ATTENDANCE TRACKER NI FIREBASE LINK
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
+
+# ==========================================
+# CUSTOM JAVASCRIPT: "ENTER" NE "TAB" TARIKE KAM KARAVVA
+# ==========================================
+components.html(
+    """
+    <script>
+    const doc = window.parent.document;
+    if (!doc.getElementById('custom-enter-tab')) {
+        let script = doc.createElement('script');
+        script.id = 'custom-enter-tab';
+        script.innerHTML = `
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    let active = document.activeElement;
+                    // Jo input field ma hoy to j Enter ne Tab banavse
+                    if (active && active.tagName === 'INPUT') {
+                        e.preventDefault(); 
+                        
+                        let focusable = Array.from(document.querySelectorAll('input:not([disabled]), button:not([disabled])'));
+                        let index = focusable.indexOf(active);
+                        
+                        if (index > -1 && index < focusable.length - 1) {
+                            focusable[index + 1].focus();
+                        }
+                    }
+                }
+            });
+        `;
+        doc.head.appendChild(script);
+    }
+    </script>
+    """,
+    height=0, width=0
+)
 
 # ==========================================
 # 2. Custom CSS
@@ -418,7 +454,6 @@ with st.form(key=f"salary_form_{kb}"):
             with p_h_col:
                 present_hrs_input = st.number_input("Present Hrs", value=att_data["reg_h"], step=1)
             with p_m_col:
-                # Label updated to "Present Mins"
                 present_mins_input = st.number_input("Present Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1)
             
             if is_new_employee:
