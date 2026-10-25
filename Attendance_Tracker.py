@@ -6,6 +6,7 @@ import io
 import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
+import streamlit.components.v1 as components  # <-- AHIYA NAVU IMPORT CHE
 
 # ==========================================
 # 1. FIREBASE CLOUD DATABASE URL
@@ -179,6 +180,43 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
 
+# ==========================================
+# CUSTOM JAVASCRIPT: "ENTER" NE "TAB" TARIKE KAM KARAVVA
+# ==========================================
+components.html(
+    """
+    <script>
+    const doc = window.parent.document;
+    if (!doc.getElementById('custom-enter-tab')) {
+        let script = doc.createElement('script');
+        script.id = 'custom-enter-tab';
+        script.innerHTML = `
+            document.addEventListener('keydown', function(e) {
+                // Jo Enter dabavyu hoy ane cursor Input box ma hoy
+                if (e.key === 'Enter') {
+                    let active = document.activeElement;
+                    if (active && active.tagName === 'INPUT') {
+                        e.preventDefault(); // Page refresh ke direct submit thavu atkaave
+                        
+                        // Badha Inputs ane Save Button nu list banave
+                        let focusable = Array.from(document.querySelectorAll('input:not([disabled]), button:not([disabled])'));
+                        let index = focusable.indexOf(active);
+                        
+                        // Cursor ne exact next box ma dhakeli de
+                        if (index > -1 && index < focusable.length - 1) {
+                            focusable[index + 1].focus();
+                        }
+                    }
+                }
+            });
+        `;
+        doc.head.appendChild(script);
+    }
+    </script>
+    """,
+    height=0, width=0
+)
+
 st.markdown("""
     <style>
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
@@ -218,17 +256,14 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
     # --- AUTO-DATE CALCULATION LOGIC ---
     default_date = date.today()
     if formatted_name and formatted_name != "Administrator":
-        # Current month ma data check karse
         df_month_check = load_data(st.session_state.filter_month)
         if not df_month_check.empty:
              df_emp = df_month_check[df_month_check["Employee Name"] == formatted_name]
              if not df_emp.empty:
-                  # RealDate column create kari jethi date sort thai sake
                   df_emp = df_emp.copy()
                   df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
                   latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
                   latest_date = latest_date_row['RealDate'].date()
-                  # Next day set kare che
                   default_date = latest_date + timedelta(days=1)
 
     with st.form("entry_form"):
@@ -341,7 +376,6 @@ else:
         if formatted_name != "Administrator":
             df_display = df_display[df_display["Employee Name"] == formatted_name]
 
-        # Table na columns no kram (Employee Name pehla)
         final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
         for c in final_display_columns:
              if c not in df_display.columns:
@@ -380,7 +414,6 @@ else:
                 total_out_mins += h * 60 + m
         out_hours, out_mins = divmod(total_out_mins, 60)
 
-        # --- DISPLAY SUMMARY INSIDE PROPER CONTAINER ---
         st.markdown('<div class="summary-container">', unsafe_allow_html=True)
         st.subheader("📊 Summary")
         m1, m2, m3, m4 = st.columns(4)
@@ -403,17 +436,14 @@ else:
             selected_sheet = st.session_state.filter_month
 
         with col_s2:
-            # --- Excel Formatting & Download Logic ---
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                 
-                # DataFrame ne row 3 thi write karvu
                 df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
                 worksheet = writer.sheets[export_sheet_name]
                 
-                # Styles Banavya
                 center_align = Alignment(horizontal='center', vertical='center')
                 thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                 
@@ -426,7 +456,6 @@ else:
                 header_font = Font(bold=True)
                 total_font = Font(bold=True, size=12)
                 
-                # Top Row (Employee Name formatting)
                 worksheet.merge_cells('A1:B1')
                 worksheet.merge_cells('C1:D1')
                 
@@ -446,7 +475,6 @@ else:
                     for c in r:
                         c.border = thin_border
                         
-                # Format Headers (Row 3)
                 for col_idx in range(1, 9):
                     cell = worksheet.cell(row=3, column=col_idx)
                     cell.fill = gray_fill
@@ -454,7 +482,6 @@ else:
                     cell.alignment = center_align
                     cell.border = thin_border
                 
-                # Format Data Rows
                 day_col_idx = 2 
                 max_data_row = 3 + len(df_export)
                 
@@ -469,7 +496,6 @@ else:
                             cell.fill = red_fill
                             cell.font = white_bold_font
                             
-                # Total Row Setup
                 total_row_idx = max_data_row + 2
                 worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
                 
