@@ -650,4 +650,361 @@ with st.form(key=f"salary_form_{kb}"):
         with c1_1:
             ctc_salary = st.number_input("CTC Salary (₹)", value=float(form_data["CTC"]), format="%.0f")
             
-            p_h_col, p_m_col = st.
+            p_h_col, p_m_col = st.columns(2)
+            with p_h_col:
+                present_hrs_input = st.number_input("Present Hrs", value=att_data["reg_h"], step=1)
+            with p_m_col:
+                present_mins_input = st.number_input("Present Mins", value=att_data["reg_m"], min_value=0, max_value=59, step=1)
+            
+            if is_new_employee:
+                opening_pl = st.number_input("Opening PL Balance", value=0, step=1)
+            else:
+                st.text_input("Opening PL Balance (Auto)", value=str(int(opening_pl)), disabled=True)
+
+            used_pl = st.number_input("PL Used", value=int(form_data["PL_Used"]), step=1)
+
+        with c1_2:
+            work_hrs = st.number_input("Working Hrs", value=float(form_data["Working_Hrs"]), format="%.0f")
+            
+            l_h_col, l_m_col = st.columns(2)
+            with l_h_col: late_hrs_input = st.number_input("Late Hrs", value=att_data["late_h"], step=1)
+            with l_m_col: late_mins_input = st.number_input("Late Mins", value=att_data["late_m"], min_value=0, max_value=59, step=1)
+            
+            e_h_col, e_m_col = st.columns(2)
+            with e_h_col: out_hrs_input = st.number_input("Out Hrs", value=att_data["out_h"], step=1)
+            with e_m_col: out_mins_input = st.number_input("Out Mins", value=att_data["out_m"], min_value=0, max_value=59, step=1)
+            
+            o_h_col, o_m_col = st.columns(2)
+            with o_h_col: ot_hrs_input = st.number_input("OT Hrs", value=att_data["ot_h"], step=1)
+            with o_m_col: ot_mins_input = st.number_input("OT Mins", value=att_data["ot_m"], min_value=0, max_value=59, step=1)
+
+    with col_line:
+        st.markdown("""
+            <style>
+                .vline {
+                    width: 2px;
+                    background-color: rgba(255, 255, 255, 0.2);
+                    height: 420px;
+                    margin: 40px auto 0 auto;
+                    border-radius: 2px;
+                }
+                @media (max-width: 768px) {
+                    .vline { display: none; }
+                }
+            </style>
+            <div class="vline"></div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.subheader("📉 Deductions & Additions")
+        c2_1, c2_2 = st.columns(2)
+        with c2_1:
+            food = st.number_input("Food (₹)", value=float(form_data["Food"]), format="%.0f")
+            pt_tax = st.number_input("PT Tax (₹)", value=float(form_data["PT"]), format="%.0f")
+            tds = st.number_input("TDS (₹)", value=float(form_data["TDS"]), format="%.2f")
+            bonus = st.number_input("Bonus (₹)", value=float(form_data["Bonus"]), format="%.0f")
+        with c2_2:
+            gratuity = st.number_input("Gratuity (₹)", value=float(form_data["Gratuity"]), format="%.0f")
+            advance = st.number_input("Loan/Advance (₹)", value=float(form_data["Advance"]), format="%.0f")
+            esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f")
+            difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
+            
+    st.write("")
+    _, btn_col, _ = st.columns([1, 2, 1])
+    with btn_col:
+        save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
+
+# ==========================================
+# TIME CALCULATION LOGIC
+# ==========================================
+final_pl_balance = int(opening_pl) - int(used_pl)
+pl_hours_to_add = int(used_pl) * 10 
+
+total_late_mins = (late_hrs_input * 60) + late_mins_input
+total_out_mins = (out_hrs_input * 60) + out_mins_input
+total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
+
+total_pay_mins = (present_hrs_input * 60) + present_mins_input
+total_min = total_pay_mins + int(pl_hours_to_add * 60)
+
+if total_min < 0: total_min = 0
+
+calc_final_hrs = f"{total_min // 60}:{total_min % 60:02d}"
+late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
+early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
+ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
+
+total_late_out_mins = total_late_mins + total_out_mins
+deductible_mins = max(0, total_late_out_mins - 120) 
+
+total_pay_hrs_mins = (total_min + total_ot_mins) - deductible_mins
+if total_pay_hrs_mins < 0:
+    total_pay_hrs_mins = 0
+    
+total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
+
+# ==========================================
+# 8. Execution Logic
+# ==========================================
+if save_clicked:
+    if not emp_sidebar_name: 
+        st.error("Please enter Employee Name in the sidebar!")
+    else:
+        base_sal = ctc_salary - gratuity - bonus
+        hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
+        
+        total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
+        in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
+        
+        ot_salary = round((total_ot_mins / 60.0) * hr_rate) 
+        pay_salary_val = in_hand_salary - ot_salary
+        bank_salary_val = in_hand_salary + difference
+        
+        st.session_state['calc_result'] = {
+            "name": emp_name, "month": selected_month, "year": selected_year, "in_hand": in_hand_salary, "ot_sal": ot_salary, "pl": final_pl_balance,
+            "slip_data": {
+                "work_hrs_str": f"{int(work_hrs)}:00",
+                "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                "actual_salary": ctc_salary - gratuity - bonus,
+                "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
+                "pl_used": used_pl,
+                "pl_balance": final_pl_balance,
+                "ot_hrs": ot_hrs_str,
+                "late_hrs": late_hrs_str,
+                "out_hrs": early_hrs_str,
+                "pay_hrs": total_pay_hrs_str,
+                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
+                "pay_salary_val": pay_salary_val,
+                "ot_sal": ot_salary,
+                "in_hand_salary": in_hand_salary,
+                "bank_salary_val": bank_salary_val
+            }
+        }
+        
+        new_rec_dict = {
+            "Date": datetime.now().strftime("%d-%m-%Y"), "Name": emp_name, "Month": selected_month, "Year": selected_year,
+            "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}", 
+            "Late Hrs": late_hrs_str, "Out Hrs": early_hrs_str, "OT Hrs": ot_hrs_str,
+            "Final Present Hrs": calc_final_hrs, "Total Pay Hrs": total_pay_hrs_str,
+            "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
+            "OT Salary": ot_salary, "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
+            "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
+            "Advance": advance, "Bonus": bonus, "Difference": difference
+        }
+        new_rec = pd.DataFrame([new_rec_dict])
+        
+        if os.path.exists(user_file):
+            df_existing = pd.read_csv(user_file)
+            if 'Opening PL' not in df_existing.columns:
+                df_existing['Opening PL'] = 0
+            if 'In Hand Salary' not in df_existing.columns:
+                df_existing['In Hand Salary'] = 0.0
+            if 'Total Pay Hrs' not in df_existing.columns:
+                df_existing['Total Pay Hrs'] = ""
+                
+            df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == selected_month) & (df_existing['Year'] == selected_year))]
+            df_combined = pd.concat([df_existing, new_rec], ignore_index=True)
+            df_combined['Month_Num'] = df_combined['Month'].astype(str).str.strip().map(month_dict)
+            df_combined = df_combined.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
+            
+            updated_idx = df_combined.index[(df_combined['Month'] == selected_month) & (df_combined['Year'] == selected_year)].tolist()[0]
+            if updated_idx < len(df_combined) - 1:
+                df_combined = recalculate_future_pl(df_combined, updated_idx)
+            
+            df_combined = df_combined.drop(columns=['Month_Num'])
+            df_combined.to_csv(user_file, index=False)
+        else: 
+            new_rec.to_csv(user_file, index=False)
+            
+        st.session_state['form_key'] += 1
+        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {int(in_hand_salary):,} | Bank Salary: ₹ {int(bank_salary_val):,} | OT Salary: ₹ {int(ot_salary):,} | PL Balance: {final_pl_balance}"
+        st.rerun()
+
+# ==========================================
+# 9. SLIP DOWNLOAD BUTTON (OUTSIDE FORM)
+# ==========================================
+if st.session_state.get('calc_result'):
+    res = st.session_state['calc_result']
+    if res['name'] == emp_sidebar_name:
+        excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
+        pdf_data = generate_pdf_slip(res['slip_data'], res['name'], res['month'], res['year'])
+        
+        _, btn_col1, btn_col2, _ = st.columns([1, 1, 1, 1])
+        with btn_col1:
+            st.download_button(
+                label="📄 Download Excel Slip",
+                data=excel_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        with btn_col2:
+            st.download_button(
+                label="📕 Download PDF Slip",
+                data=pdf_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+
+# ==========================================
+# 10. Search Section
+# ==========================================
+st.divider()
+st.subheader("🔍 Search Records")
+with st.container(border=True):
+    s1, s2, s3 = st.columns([2, 2, 2])
+    search_m = s1.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
+    search_y = s2.number_input("Year", value=current_year, key="sy", label_visibility="collapsed")
+    
+    if s3.button("🔍 Search", use_container_width=True):
+        if not emp_sidebar_name:
+            st.warning("⚠️ Please enter Employee Name in the sidebar first!")
+        else:
+            s_file = get_user_file(emp_sidebar_name)
+            if s_file and os.path.exists(s_file):
+                df_s = pd.read_csv(s_file)
+                df_s = clean_legacy_columns(df_s)
+                    
+                res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
+                if not res.empty:
+                    res.index = range(1, len(res) + 1)
+                    st.dataframe(res, use_container_width=True, column_config=table_format_config)
+                else: 
+                    st.warning(f"No record found for {search_m} {search_y}.")
+            else: 
+                st.error("No data found for this employee.")
+
+# ==========================================
+# 11. History & Download Old Slips
+# ==========================================
+if emp_sidebar_name:
+    st.divider()
+    user_file = get_user_file(emp_sidebar_name)
+    if os.path.exists(user_file):
+        st.subheader(f"📂 History: {emp_sidebar_name}")
+        h_df = pd.read_csv(user_file).fillna(0)
+        h_df = clean_legacy_columns(h_df)
+
+        if 'Month' in h_df.columns:
+            h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
+            if 'Year' in h_df.columns:
+                h_df = h_df.sort_values(['Year', 'Sort_M']).drop(columns=['Sort_M']).reset_index(drop=True)
+            else:
+                h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
+
+        cols = list(h_df.columns)
+        if 'Opening PL' in cols and 'PL Used' in cols and 'PL Balance' in cols:
+            if 'Total Pay Hrs' in cols and 'Final Present Hrs' in cols:
+                if cols.index('Total Pay Hrs') != cols.index('Final Present Hrs') + 1:
+                    cols.insert(cols.index('Final Present Hrs') + 1, cols.pop(cols.index('Total Pay Hrs')))
+            cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
+            h_df = h_df[cols]
+
+        def highlight_salary_columns(col):
+            if col.name == 'Net Salary':
+                return ['background-color: #4a1c1c; color: #ff9999; font-weight: bold'] * len(col)
+            elif col.name == 'In Hand Salary':
+                return ['background-color: #1c4a22; color: #99ff99; font-weight: bold'] * len(col)
+            return [''] * len(col)
+
+        styled_h_df = h_df.style.apply(highlight_salary_columns, axis=0)
+
+        edited_df = st.data_editor(
+            styled_h_df, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            key=f"editor_{emp_sidebar_name.lower().replace(' ', '_')}",
+            column_config=table_format_config
+        )
+        
+        if not h_df.equals(edited_df):
+            edited_df.to_csv(user_file, index=False)
+            st.toast("✅ Record auto-updated successfully!") 
+            st.rerun()
+
+        st.write("")
+        with st.container(border=True):
+            st.markdown("#### 📥 Download Slip from History")
+            h1, h2, h3 = st.columns([2, 1, 1])
+            with h1:
+                options = []
+                for idx, r in h_df.iterrows():
+                    options.append(f"{str(r.get('Month', '')).strip()} - {int(r.get('Year', current_year))}")
+                
+                unique_options = list(dict.fromkeys(options))
+                selected_opt = st.selectbox("Select Month & Year:", unique_options, key="hist_dl_sel")
+            
+            with h2:
+                st.write("") 
+                st.write("")
+                if selected_opt:
+                    sel_m, sel_y = selected_opt.split(" - ")
+                    row = h_df[(h_df['Month'].astype(str).str.strip() == sel_m) & (h_df['Year'] == int(sel_y))].iloc[-1]
+                    
+                    ot_val = str(row.get("OT Hrs", "0:00")).strip()
+                    late_val = str(row.get("Late Hrs", "0:00")).strip()
+                    early_val = str(row.get("Out Hrs", "0:00")).strip()
+                    pay_str = str(row.get("Total Pay Hrs", row.get("Final Present Hrs", "0:00"))).strip() 
+                    present_str = str(row.get("Present Hrs", "0:00")).strip()
+                        
+                    actual_salary_hist = row.get("CTC", 0) - row.get("Bonus", 0) - row.get("Gratuity", 0)
+                    
+                    net_sal_hist = float(row.get("Net Salary", 0)) 
+                    in_hand_hist = float(row.get("In Hand Salary", 0))
+                    diff_hist = float(row.get("Difference", 0))
+                    
+                    if in_hand_hist == 0:
+                        pay_salary_hist = round(net_sal_hist - diff_hist - float(row.get("OT Salary", 0)))
+                        in_hand_hist = pay_salary_hist + float(row.get("OT Salary", 0))
+                    else:
+                        pay_salary_hist = in_hand_hist - float(row.get("OT Salary", 0))
+                    
+                    hist_slip_data = {
+                        "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
+                        "ctc": row.get("CTC", 0),
+                        "bonus": row.get("Bonus", 0),
+                        "gratuity": row.get("Gratuity", 0),
+                        "actual_salary": actual_salary_hist,
+                        "present_hrs": present_str,
+                        "pl_used": row.get("PL Used", 0),
+                        "pl_balance": row.get("PL Balance", 0),
+                        "ot_hrs": ot_val,
+                        "late_hrs": late_val,
+                        "out_hrs": early_val,
+                        "pay_hrs": pay_str,
+                        "pt": row.get("PT", 0),
+                        "tds": row.get("TDS", 0),
+                        "esic": row.get("ESIC", 0),
+                        "advance": row.get("Advance", 0),
+                        "food": row.get("Food", 0),
+                        "difference": diff_hist,
+                        "pay_salary_val": pay_salary_hist,
+                        "ot_sal": float(row.get("OT Salary", 0)),
+                        "in_hand_salary": in_hand_hist,
+                        "bank_salary_val": round(net_sal_hist)
+                    }
+                    
+                    excel_data_hist = generate_excel_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
+                    
+                    st.download_button(
+                        label=f"📄 Excel",
+                        data=excel_data_hist,
+                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="hist_dl_btn_excel"
+                    )
+            with h3:
+                st.write("") 
+                st.write("")
+                if selected_opt:
+                    pdf_data_hist = generate_pdf_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
+                    st.download_button(
+                        label=f"📕 PDF",
+                        data=pdf_data_hist,
+                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="hist_dl_btn_pdf"
+                    )
