@@ -302,11 +302,11 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     return output.getvalue()
 
 
-# === NEW PRO PDF GENERATOR ===
+# === PDF GENERATOR ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
-    # Dummy data for new fields (Future form fields can replace these)
+    # Dummy data for new fields
     emp_code = "KPP0023"
     department = "Bhaghubhai Office - Polish Assorting"
     designation = "Data Analyst"
@@ -325,7 +325,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     ea = 0.00
     ma = 0.00
     target_salary = 4029.00
-    gross_salary = sd['actual_salary'] + da + hra + ca + ea + ma + target_salary # Dummy logic
+    gross_salary = sd['actual_salary'] + da + hra + ca + ea + ma + target_salary 
     
     pf_fund = 0.00
     esi_cont = 0.00
@@ -355,7 +355,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
             urllib.request.urlretrieve(logo_url, logo_path)
         pdf.image(logo_path, x=10, y=10, w=30)
     except:
-        # Placeholder jo logo na male
         pdf.set_xy(10, 10)
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(30, 15, "LAXMI", border=1, align='C')
@@ -373,7 +372,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     
     pdf.set_xy(170, 10)
     pdf.set_font("Arial", 'I', 8)
-    pdf.cell(30, 15, "SIGHTHOLDER", border=0, align='C') # Dummy right logo
+    pdf.cell(30, 15, "SIGHTHOLDER", border=0, align='C') 
     pdf.ln(5)
     
     # Draw outer box for Header
@@ -389,7 +388,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.cell(95, 6, f"Department : {department}", border='L', align='L')
     pdf.cell(95, 6, f"Designation : {designation}", border='R', align='L', ln=1)
     
-    # Draw bottom border for department line
     x, y = pdf.get_x(), pdf.get_y()
     pdf.line(10, y, 200, y)
     
@@ -397,19 +395,16 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.cell(60, 6, f"Date of Birth : {dob}", border=0)
     pdf.cell(70, 6, f"PAN : {pan_no}", border='R', ln=1)
     
-    # Draw bottom border for joining date line
     x, y = pdf.get_x(), pdf.get_y()
     pdf.line(10, y, 200, y)
     
-    # 3. MAIN TABLE (4 Columns)
-    # Widths: C1=40, C2=55, C3=55, C4=40
+    # 3. MAIN TABLE 
     pdf.set_font("Arial", 'B', 8)
     pdf.cell(40, 6, "Section : Pricing", border='LRT')
     pdf.cell(55, 6, "Earning", border='LRT')
     pdf.cell(55, 6, "Deduction", border='LRT')
     pdf.cell(40, 6, "", border='LRT', ln=1)
     
-    # Cell heights
     row_h = 7
     pdf.set_font("Arial", '', 8)
     
@@ -453,7 +448,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     draw_row("Week Off", week_off, 
              "C.A.", f"{ca:,.2f}", 
              "T.D.S", f"{sd['tds']:,.2f}", 
-             "UAN", uAN_no if 'uAN_no' in locals() else "-")
+             "UAN", uan_no)
     # R5
     draw_row("Days Absent", days_absent, 
              "E.A.", f"{ea:,.2f}", 
@@ -463,7 +458,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     draw_row("PL", str(sd['pl_used']), 
              "M.A.", f"{ma:,.2f}", 
              "Other/Adv./Loan", f"{sd['advance']:,.2f}", 
-             "Bank Name", "SBI") # Short bank name to fit
+             "Bank Name", "SBI") 
     # R7
     draw_row("Month Days", month_days, 
              "Target Salary", f"{target_salary:,.2f}", 
@@ -478,9 +473,9 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
              
     # R9 (Footer row for bonus and disclaimer)
     pdf.set_font("Arial", '', 8)
-    pdf.cell(40, row_h, "", border=1) # Empty C1
-    pdf.cell(55, row_h, "", border=1) # Empty C2
-    pdf.cell(55, row_h, "", border=1) # Empty C3
+    pdf.cell(40, row_h, "", border=1) 
+    pdf.cell(55, row_h, "", border=1) 
+    pdf.cell(55, row_h, "", border=1) 
     
     # C4 Split
     pdf.cell(20, row_h, "Adv agst Bonus", border=1)
@@ -495,8 +490,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.multi_cell(40, 4, "This is computer generated slip hence signature is not required.", border=1, align='C')
     pdf.set_text_color(0, 0, 0)
     
-    # Outer Table Border correction if needed
-    
     # 4. FOOTER DETAILS
     pdf.set_y(curr_y + 10)
     pdf.set_font("Arial", 'B', 7)
@@ -506,6 +499,17 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.cell(190, 4, "DA - Dearness Allowance, HRA - House Rent Allowance, CA - Conveyance Allowance, EA - Education Allowance, WA - Washing Allowance, TDS - Tax Deducted At Source", border=0, align='L')
     
     return pdf.output(dest='S').encode('latin1')
+
+# ==========================================
+# TABLE FORMAT CONFIGURATION (Fix for History Error)
+# ==========================================
+money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "ESIC", "Advance", "Bonus", "Difference"]
+table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.0f") for col in money_cols}
+table_format_config["TDS"] = st.column_config.NumberColumn(format="₹ %,.2f") 
+
+pl_cols = ["Opening PL", "PL Used", "PL Balance"]
+for col in pl_cols:
+    table_format_config[col] = st.column_config.NumberColumn(format="%d")
 
 # ==========================================
 # 5. Sidebar Profile & Logic Setup
