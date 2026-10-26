@@ -5,7 +5,8 @@ import os
 import io
 from datetime import datetime
 import time as tm
-import streamlit.components.v1 as components # <-- AHIYA NAVU IMPORT ADD KARYU CHE
+import streamlit.components.v1 as components 
+from fpdf import FPDF # <-- PDF MATE NAVI LIBRARY ADD KARI CHE
 
 # ==========================================
 # 1. Page Setup
@@ -31,7 +32,6 @@ components.html(
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     let active = document.activeElement;
-                    // Jo input field ma hoy to j Enter ne Tab banavse
                     if (active && active.tagName === 'INPUT') {
                         e.preventDefault(); 
                         
@@ -298,6 +298,89 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
             
     return output.getvalue()
+
+# ==========================================
+# PDF GENERATION LOGIC
+# ==========================================
+def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
+    sd = slip_data
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Company Name / Header
+    pdf.set_font("Arial", 'B', 20)
+    pdf.cell(190, 10, txt="Salary Slip", ln=True, align='C')
+    pdf.set_font("Arial", 'I', 12)
+    pdf.cell(190, 8, txt=f"{month_str} {year_val}", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Employee Details
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(40, 8, txt="Employee Name: ", border=0)
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(150, 8, txt=f"{emp_name}", border=0, ln=True)
+    pdf.ln(5)
+    
+    # Table Header
+    pdf.set_font("Arial", 'B', 11)
+    pdf.set_fill_color(200, 200, 200)
+    pdf.cell(95, 8, "Earnings & Hours", border=1, fill=True, align='C')
+    pdf.cell(95, 8, "Deductions & Summary", border=1, fill=True, align='C', ln=True)
+    
+    # Table Content
+    pdf.set_font("Arial", '', 10)
+    
+    left_col = [
+        ("CTC Salary", f"Rs. {sd['ctc']:,.0f}"),
+        ("Actual Salary", f"Rs. {sd['actual_salary']:,.0f}"),
+        ("Working Hrs", sd['work_hrs_str']),
+        ("Pay Hrs", sd['present_hrs']),
+        ("OT Hrs", sd['ot_hrs']),
+        ("Late Hrs", sd['late_hrs']),
+        ("Out Hrs", sd['out_hrs']),
+        ("Total Pay Hrs", sd['pay_hrs']),
+        ("Pay Salary", f"Rs. {sd['pay_salary_val']:,.0f}"),
+        ("OT Salary", f"Rs. {sd['ot_sal']:,.0f}")
+    ]
+    
+    right_col = [
+        ("PL Used", f"{sd['pl_used']}"),
+        ("PL Balance", f"{sd['pl_balance']}"),
+        ("Gratuity", f"Rs. {sd['gratuity']:,.0f}"),
+        ("Bonus", f"Rs. {sd['bonus']:,.0f}"),
+        ("PT", f"Rs. {sd['pt']:,.0f}"),
+        ("TDS", f"Rs. {sd['tds']:,.2f}"),
+        ("Loan/Advance", f"Rs. {sd['advance']:,.0f}"),
+        ("Food", f"Rs. {sd['food']:,.0f}"),
+        ("Difference", f"Rs. {sd['difference']:,.0f}"),
+        ("", "")
+    ]
+    
+    for i in range(len(left_col)):
+        # Left Side
+        pdf.cell(50, 7, left_col[i][0], border=1)
+        pdf.cell(45, 7, left_col[i][1], border=1, align='R')
+        # Right Side
+        pdf.cell(50, 7, right_col[i][0], border=1)
+        pdf.cell(45, 7, right_col[i][1], border=1, align='R', ln=True)
+        
+    # Net Pay Row (Bold)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.set_fill_color(220, 255, 220) # Light Green
+    pdf.cell(50, 10, "In Hand Salary", border=1, fill=True)
+    pdf.cell(45, 10, f"Rs. {sd['in_hand_salary']:,.0f}", border=1, fill=True, align='R')
+    pdf.cell(50, 10, "Bank Salary", border=1, fill=True)
+    pdf.cell(45, 10, f"Rs. {sd['bank_salary_val']:,.0f}", border=1, fill=True, align='R', ln=True)
+    
+    # Signature Area
+    pdf.ln(20)
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(95, 10, "__________________________", ln=0, align='C')
+    pdf.cell(95, 10, "__________________________", ln=1, align='C')
+    pdf.cell(95, 5, "Employee Signature", ln=0, align='C')
+    pdf.cell(95, 5, "Employer Signature", ln=1, align='C')
+    
+    return pdf.output(dest='S').encode('latin1')
 
 money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "ESIC", "Advance", "Bonus", "Difference"]
 table_format_config = {col: st.column_config.NumberColumn(format="₹ %,.0f") for col in money_cols}
@@ -627,14 +710,24 @@ if st.session_state.get('calc_result'):
     res = st.session_state['calc_result']
     if res['name'] == emp_sidebar_name:
         excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
+        pdf_data = generate_pdf_slip(res['slip_data'], res['name'], res['month'], res['year']) # Generate PDF data
         
-        _, btn_col, _ = st.columns([1, 2, 1])
-        with btn_col:
+        # EXCEL ANE PDF BANNE BUTTON SATHA MOOKYA
+        _, btn_col1, btn_col2, _ = st.columns([1, 1, 1, 1])
+        with btn_col1:
             st.download_button(
                 label="📄 Download Excel Slip",
                 data=excel_data,
                 file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        with btn_col2:
+            st.download_button(
+                label="📕 Download PDF Slip",
+                data=pdf_data,
+                file_name=f"{res['name']}_Salary_Slip_{res['month']}_{res['year']}.pdf",
+                mime="application/pdf",
                 use_container_width=True
             )
 
@@ -717,7 +810,7 @@ if emp_sidebar_name:
         st.write("")
         with st.container(border=True):
             st.markdown("#### 📥 Download Slip from History")
-            h1, h2 = st.columns([2, 1])
+            h1, h2, h3 = st.columns([2, 1, 1])
             with h1:
                 options = []
                 for idx, r in h_df.iterrows():
@@ -779,10 +872,23 @@ if emp_sidebar_name:
                     excel_data_hist = generate_excel_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
                     
                     st.download_button(
-                        label=f"📄 Download Slip ({sel_m} {sel_y})",
+                        label=f"📄 Excel",
                         data=excel_data_hist,
                         file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
-                        key="hist_dl_btn"
+                        key="hist_dl_btn_excel"
+                    )
+            with h3:
+                st.write("") 
+                st.write("")
+                if selected_opt:
+                    pdf_data_hist = generate_pdf_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
+                    st.download_button(
+                        label=f"📕 PDF",
+                        data=pdf_data_hist,
+                        file_name=f"{row.get('Name', '')}_Salary_Slip_{sel_m}_{sel_y}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="hist_dl_btn_pdf"
                     )
