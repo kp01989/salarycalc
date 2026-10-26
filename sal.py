@@ -303,6 +303,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
 
 
 # === PDF GENERATOR ===
+# === PDF GENERATOR ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     sd = slip_data
     
@@ -332,6 +333,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     lw_fund = 0.00
     total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lw_fund
     
+    # Sr No format fix karyu
     sr_no = f"{year_val}{month_str}-12345"
     pf_no = "-"
     uan_no = "-"
@@ -370,10 +372,19 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.set_x(45)
     pdf.cell(120, 5, "(Minimum Wages Act. Rule 25-2)", ln=1, align='C')
     
-    pdf.set_xy(170, 10)
-    pdf.set_font("Arial", 'I', 8)
-    pdf.cell(30, 15, "SIGHTHOLDER", border=0, align='C') 
-    pdf.ln(5)
+    # --- SIGHTHOLDER FIX ---
+    pdf.set_xy(165, 10)
+    pdf.set_font("Arial", '', 10)
+    # Circle with S (Approximate logo)
+    pdf.cell(35, 6, "(S)", border=0, align='C', ln=1)
+    pdf.set_x(165)
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(35, 4, "SIGHTHOLDER", border=0, align='C', ln=1)
+    pdf.set_x(165)
+    pdf.set_font("Arial", '', 4) # Ekdam jheena akshar
+    pdf.cell(35, 3, "OF THE DE BEERS GROUP OF COMPANIES", border=0, align='C', ln=1)
+    
+    pdf.ln(2)
     
     # Draw outer box for Header
     pdf.rect(10, 9, 190, 18)
@@ -406,7 +417,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.cell(40, 6, "", border='LRT', ln=1)
     
     row_h = 7
-    pdf.set_font("Arial", '', 8)
     
     def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False):
         if is_bold:
@@ -423,10 +433,17 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
         # Col 3
         pdf.cell(35, row_h, c3_lbl, border=1)
         pdf.cell(20, row_h, c3_val, border=1, align='R')
-        # Col 4
+        
+        # Col 4 - SR NO ALIGNMENT FIX
         if c4_lbl != "MERGE_DISCLAIMER":
             pdf.cell(20, row_h, c4_lbl, border=1)
-            pdf.cell(20, row_h, c4_val, border=1, align='R')
+            # Jo 'Sr No' hase to font chota karse ane Right ni jagya e Center ma rakhse jethi bahar na jay
+            if c4_lbl == "Sr No":
+                pdf.set_font("Arial", '', 7.5) 
+                pdf.cell(20, row_h, c4_val, border=1, align='C')
+                if not is_bold: pdf.set_font("Arial", '', 8) # Reset
+            else:
+                pdf.cell(20, row_h, c4_val, border=1, align='R')
         pdf.ln()
 
     # R1
@@ -499,7 +516,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.cell(190, 4, "DA - Dearness Allowance, HRA - House Rent Allowance, CA - Conveyance Allowance, EA - Education Allowance, WA - Washing Allowance, TDS - Tax Deducted At Source", border=0, align='L')
     
     return pdf.output(dest='S').encode('latin1')
-
 # ==========================================
 # TABLE FORMAT CONFIGURATION (Fix for History Error)
 # ==========================================
