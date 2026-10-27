@@ -4,6 +4,7 @@ import requests
 import os
 import io
 import json 
+import calendar 
 from datetime import datetime
 import time as tm
 import streamlit.components.v1 as components 
@@ -21,7 +22,7 @@ FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 PROFILE_FILE = "employee_profiles.json" 
 
 # ==========================================
-# CUSTOM JAVASCRIPT: "ENTER" NE "TAB" TARIKE KAM KARAVVA
+# CUSTOM JAVASCRIPT
 # ==========================================
 components.html(
     """
@@ -230,7 +231,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             "CTC Salary", "Gratuity", "Bonus", "Actual Salary", 
             "Working Hrs", "Pay Hrs", "PL Used", 
             "OT Hrs", "Late Hrs", "Out Hrs", "Total Pay Hrs", 
-            "PT", "PF", "ESI", "TDS", "Loan", "Food", 
+            "PT", "PF", "ESI", "TDS", "Loan", "Food", "LWP", 
             "PL Balance", "Pay Salary", "OT Salary", "In Hand Salary", "Bank Salary", "Diff"
         ],
         "Value": [
@@ -238,7 +239,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'], 
             sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'], 
             sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-", 
-            sd['advance'], sd['food'], sd['pl_balance'], 
+            sd['advance'], sd['food'], sd.get('lwp_val', 0.0), sd['pl_balance'], 
             sd['pay_salary_val'], sd['ot_sal'], sd['in_hand_salary'], sd['bank_salary_val'], sd['difference']
         ]
     })
@@ -279,7 +280,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
         for i in range(len(slip_df)):
             worksheet.set_row(i, 18)
         
-        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "Loan", "Food", "Bank Salary", "Diff"]
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "Loan", "Food", "LWP", "Bank Salary", "Diff"]
         total_rows = len(slip_df)
         
         for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
@@ -317,7 +318,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     return output.getvalue()
 
 
-# === PDF GENERATOR (LANDSCAPE MODE WITH DYNAMIC PROFILE) ===
+# === PDF GENERATOR (LANDSCAPE) ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     sd = slip_data
     if profile is None: profile = {}
@@ -334,24 +335,50 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     bank_name = profile.get("bank_name", "-")
     bank_ac = profile.get("bank_ac", "-")
     
-    days_absent = "0"
-    paid_holiday = "2"
-    week_off = "4"
-    month_days = "30"
+    # --- 1. DYNAMIC DAYS CALCULATION ---
+    month_num = month_dict.get(month_str, 1)
+    month_days_val = calendar.monthrange(int(year_val), month_num)[1]
     
+    sundays = 0
+    for week in calendar.monthcalendar(int(year_val), month_num):
+        if week[6] != 0: 
+            sundays += 1
+            
+    paid_holiday_val = 0 # As requested, fixed to 0 for now
+    
+    working_days_val = month_days_val - sundays - paid_holiday_val
+    
+    # 2. DYNAMIC PRESENT DAYS (Present Hrs / 10)
+    try:
+        h = int(sd['present_hrs'].split(':')[0])
+        m = int(sd['present_hrs'].split(':')[1])
+        total_present_hrs = h + (m / 60.0)
+        days_present_val = total_present_hrs / 10.0
+        days_present_str = f"{days_present_val:g}"
+    except:
+        days_present_val = 0.0
+        days_present_str = "0"
+        
+    days_absent_val = max(0, working_days_val - int(days_present_val))
+    
+    # 3. AUTO SALARY CALCULATION
+    basic_salary = sd['ctc'] * 0.60
     da = 0.00
-    hra = 0.00 
+    hra = max(0.00, sd['actual_salary'] - basic_salary) 
     ca = 0.00
     ea = 0.00
     ma = 0.00
     
-    # Target Salary kadhi ne OT Salary directly add karyu Gross ma
-    gross_salary = sd['actual_salary'] + da + hra + ca + ea + ma + sd['ot_sal']
+    gross_salary = sd['actual_salary'] + sd['ot_sal'] 
     
     pf_fund = 0.00
     esi_cont = 0.00
-    lw_fund = 0.00
-    total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lw_fund
+    
+    # --- NEW: LWP CALCULATION ---
+    # Retrieve LWP deduction value calculated in main form
+    lwp_fund = sd.get('lwp_val', 0.0)
+    
+    total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
     
     sr_no = f"{year_val}{month_str}-12345"
     adv_bonus = 0.00
@@ -432,7 +459,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     
     row_h = 7.5 
     
-    def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False):
+    def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False, c3_subtext=None):
         if is_bold:
             pdf.set_font("Arial", 'B', 10)
         else:
@@ -444,7 +471,18 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         pdf.cell(55, row_h, c2_lbl, border=1)
         pdf.cell(30, row_h, c2_val, border=1, align='R')
         
-        pdf.cell(55, row_h, c3_lbl, border=1)
+        # LWP with Subtext Logic
+        curr_x = pdf.get_x()
+        curr_y = pdf.get_y()
+        pdf.cell(55, row_h, "", border=1) 
+        pdf.set_xy(curr_x, curr_y + 1)
+        pdf.cell(55, 3, c3_lbl, border=0, align='L')
+        if c3_subtext:
+            pdf.set_xy(curr_x, curr_y + 4)
+            pdf.set_font("Arial", '', 6) 
+            pdf.cell(55, 3, c3_subtext, border=0, align='L')
+            if not is_bold: pdf.set_font("Arial", '', 9) 
+        pdf.set_xy(curr_x + 55, curr_y)
         pdf.cell(30, row_h, c3_val, border=1, align='R')
         
         if c4_lbl != "MERGE_DISCLAIMER":
@@ -461,33 +499,39 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
         pdf.ln()
 
-    draw_row("Working Days", str(int(sd['work_hrs_str'].split(':')[0])//8 if ':' in sd['work_hrs_str'] else 24), 
-             "Basic Salary", f"{sd['ctc']:,.2f}", 
+    draw_row("Working Days", str(working_days_val), 
+             "Basic Salary", f"{basic_salary:,.2f}", 
              "Provident Fund", f"{pf_fund:,.2f}", 
              "Sr No", sr_no)
-    draw_row("Days Present", str(int(sd['present_hrs'].split(':')[0])//8 if ':' in sd['present_hrs'] else 24), 
+             
+    # DAYS PRESENT -> PRESENT DAYS
+    draw_row("Present Days", days_present_str, 
              "D.A.", f"{da:,.2f}", 
              "E.S.I Contribution", f"{esi_cont:,.2f}", 
              "Month", f"{month_str}-{year_val}")
-    draw_row("Paid Holiday", paid_holiday, 
+             
+    draw_row("Paid Holiday", str(paid_holiday_val), 
              "HRA", f"{hra:,.2f}", 
              "Professional Tax", f"{sd['pt']:,.2f}", 
              "P.F. No.", pf_no)
-    draw_row("Week Off", week_off, 
+             
+    draw_row("Week Off", str(sundays), 
              "C.A.", f"{ca:,.2f}", 
              "T.D.S", f"{sd['tds']:,.2f}", 
              "UAN", uan_no)
-    draw_row("Days Absent", days_absent, 
+             
+    # L.W.Fund -> LWP with subtext
+    draw_row("Days Absent", str(days_absent_val), 
              "E.A.", f"{ea:,.2f}", 
-             "L.W.Fund", f"{lw_fund:,.2f}", 
-             "E.S.I. No.", esi_no)
+             "LWP", f"{lwp_fund:,.2f}", 
+             "E.S.I. No.", esi_no, c3_subtext="Leave Without Pay")
+             
     draw_row("PL", str(sd['pl_used']), 
              "M.A.", f"{ma:,.2f}", 
              "Other/Adv./Loan", f"{sd['advance']:,.2f}", 
              "Bank Name", bank_name) 
              
-    # AHIYA TARGET SALARY NI JAGYA E OT SALARY AAVI GAYU CHE
-    draw_row("Month Days", month_days, 
+    draw_row("Month Days", str(month_days_val), 
              "OT Salary", f"{sd['ot_sal']:,.2f}", 
              "Food Charge", f"{sd['food']:,.2f}", 
              "Bank A/c. No.", bank_ac)
@@ -544,9 +588,6 @@ with st.sidebar:
     all_profiles = load_profiles()
     emp_profile_data = all_profiles.get(emp_sidebar_name, {}) 
     
-    # ========================================================
-    # ADMIN vs NORMAL USER PROFILE LOGIC
-    # ========================================================
     if emp_sidebar_name == "Administrator":
         st.error("👑 **Admin Mode Active**")
         with st.expander("📝 Manage Employee Profiles", expanded=True):
@@ -671,9 +712,6 @@ with st.sidebar:
         except Exception:
             pass
 
-# ==========================================
-# ADMIN BLOCK: Stop rendering the rest of the page if Admin
-# ==========================================
 if emp_sidebar_name == "Administrator":
     st.info("👑 **Administrator Mode Active.** Please use the sidebar on the left to manage employee master profiles.")
     st.stop()
@@ -864,6 +902,9 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
+        # --- NEW: LWP Calculation ---
+        lwp_val = round((total_late_out_mins / 60.0) * hr_rate)
+        
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
         in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
         
@@ -884,7 +925,9 @@ if save_clicked:
                 "late_hrs": late_hrs_str,
                 "out_hrs": early_hrs_str,
                 "pay_hrs": total_pay_hrs_str,
-                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, "difference": difference,
+                "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, 
+                "lwp_val": lwp_val, # Added LWP value to payload
+                "difference": difference,
                 "pay_salary_val": pay_salary_val,
                 "ot_sal": ot_salary,
                 "in_hand_salary": in_hand_salary,
@@ -928,11 +971,11 @@ if save_clicked:
             new_rec.to_csv(user_file, index=False)
             
         st.session_state['form_key'] += 1
-        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | In Hand Salary: ₹ {int(in_hand_salary):,} | Bank Salary: ₹ {int(bank_salary_val):,} | OT Salary: ₹ {int(ot_salary):,} | PL Balance: {final_pl_balance}"
+        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | LWP Deduction: ₹ {int(lwp_val):,} | In Hand Salary: ₹ {int(in_hand_salary):,}"
         st.rerun()
 
 # ==========================================
-# 9. SLIP DOWNLOAD BUTTON (OUTSIDE FORM)
+# 9. SLIP DOWNLOAD BUTTON
 # ==========================================
 if st.session_state.get('calc_result'):
     res = st.session_state['calc_result']
@@ -1072,6 +1115,8 @@ if emp_sidebar_name:
                         in_hand_hist = pay_salary_hist + float(row.get("OT Salary", 0))
                     else:
                         pay_salary_hist = in_hand_hist - float(row.get("OT Salary", 0))
+                        
+                    lwp_hist_val = 0.0 # Standard history doesn't store this yet, can be updated later if needed
                     
                     hist_slip_data = {
                         "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
@@ -1091,6 +1136,7 @@ if emp_sidebar_name:
                         "esic": row.get("ESIC", 0),
                         "advance": row.get("Advance", 0),
                         "food": row.get("Food", 0),
+                        "lwp_val": lwp_hist_val,
                         "difference": diff_hist,
                         "pay_salary_val": pay_salary_hist,
                         "ot_sal": float(row.get("OT Salary", 0)),
