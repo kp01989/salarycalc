@@ -539,6 +539,7 @@ with st.sidebar:
     
     user_file = get_user_file(emp_sidebar_name)
     all_profiles = load_profiles()
+    emp_profile_data = all_profiles.get(emp_sidebar_name, {}) # Fetch profile for main form logic
     
     # ========================================================
     # ADMIN vs NORMAL USER PROFILE LOGIC
@@ -549,29 +550,32 @@ with st.sidebar:
             target_emp = st.text_input("Enter Employee Name to Edit:", placeholder="e.g. Manoj...").title()
             
             if target_emp:
-                emp_profile_data = all_profiles.get(target_emp, {})
+                target_profile_data = all_profiles.get(target_emp, {})
                 with st.form("admin_profile_form"):
-                    p_code = st.text_input("Emp Code", value=emp_profile_data.get("emp_code", ""))
-                    p_dept = st.text_input("Department", value=emp_profile_data.get("department", ""))
-                    p_desig = st.text_input("Designation", value=emp_profile_data.get("designation", ""))
+                    col_s1, col_s2 = st.columns(2)
+                    with col_s1: p_code = st.text_input("Emp Code", value=target_profile_data.get("emp_code", ""))
+                    with col_s2: p_salary = st.number_input("Fixed CTC (₹)", value=float(target_profile_data.get("base_salary", 0.0)), step=500.0)
+                    
+                    p_dept = st.text_input("Department", value=target_profile_data.get("department", ""))
+                    p_desig = st.text_input("Designation", value=target_profile_data.get("designation", ""))
                     
                     col_d1, col_d2 = st.columns(2)
-                    with col_d1: p_doj = st.text_input("Date of Joining", value=emp_profile_data.get("doj", ""))
-                    with col_d2: p_dob = st.text_input("Date of Birth", value=emp_profile_data.get("dob", ""))
+                    with col_d1: p_doj = st.text_input("Date of Joining", value=target_profile_data.get("doj", ""))
+                    with col_d2: p_dob = st.text_input("Date of Birth", value=target_profile_data.get("dob", ""))
                     
-                    p_pan = st.text_input("PAN No", value=emp_profile_data.get("pan_no", ""))
-                    p_uan = st.text_input("UAN", value=emp_profile_data.get("uan", ""))
+                    p_pan = st.text_input("PAN No", value=target_profile_data.get("pan_no", ""))
+                    p_uan = st.text_input("UAN", value=target_profile_data.get("uan", ""))
                     
                     col_b1, col_b2 = st.columns(2)
-                    with col_b1: p_pf = st.text_input("PF No", value=emp_profile_data.get("pf_no", ""))
-                    with col_b2: p_esi = st.text_input("ESI No", value=emp_profile_data.get("esi_no", ""))
+                    with col_b1: p_pf = st.text_input("PF No", value=target_profile_data.get("pf_no", ""))
+                    with col_b2: p_esi = st.text_input("ESI No", value=target_profile_data.get("esi_no", ""))
                     
-                    p_bank = st.text_input("Bank Name", value=emp_profile_data.get("bank_name", ""))
-                    p_ac = st.text_input("Bank A/c No", value=emp_profile_data.get("bank_ac", ""))
+                    p_bank = st.text_input("Bank Name", value=target_profile_data.get("bank_name", ""))
+                    p_ac = st.text_input("Bank A/c No", value=target_profile_data.get("bank_ac", ""))
                     
                     if st.form_submit_button("💾 Save Profile", type="primary", use_container_width=True):
                         all_profiles[target_emp] = {
-                            "emp_code": p_code, "department": p_dept, "designation": p_desig,
+                            "emp_code": p_code, "base_salary": p_salary, "department": p_dept, "designation": p_desig,
                             "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
                             "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
                         }
@@ -581,10 +585,12 @@ with st.sidebar:
 
     elif emp_sidebar_name:
         # NORMAL USER VIEW
-        emp_profile_data = all_profiles.get(emp_sidebar_name, {})
         with st.expander("📝 My Profile Details", expanded=False):
             with st.form("own_profile_form"):
-                p_code = st.text_input("Emp Code", value=emp_profile_data.get("emp_code", ""))
+                col_s1, col_s2 = st.columns(2)
+                with col_s1: p_code = st.text_input("Emp Code", value=emp_profile_data.get("emp_code", ""))
+                with col_s2: p_salary = st.number_input("Fixed CTC (₹)", value=float(emp_profile_data.get("base_salary", 0.0)), step=500.0)
+                
                 p_dept = st.text_input("Department", value=emp_profile_data.get("department", ""))
                 p_desig = st.text_input("Designation", value=emp_profile_data.get("designation", ""))
                 
@@ -604,7 +610,7 @@ with st.sidebar:
                 
                 if st.form_submit_button("💾 Update My Profile", type="primary", use_container_width=True):
                     all_profiles[emp_sidebar_name] = {
-                        "emp_code": p_code, "department": p_dept, "designation": p_desig,
+                        "emp_code": p_code, "base_salary": p_salary, "department": p_dept, "designation": p_desig,
                         "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
                         "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
                     }
@@ -708,8 +714,9 @@ with st.container(border=True):
     with col_emp:
         emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
 
-# Fetching Data Logic
-form_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0}
+# Fetching Data Logic - Pulling Base Salary from Profile Default!
+prof_ctc = float(emp_profile_data.get("base_salary", 0.0))
+form_data = {"CTC": prof_ctc, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0}
 opening_pl = 0
 is_editing_past = False
 
@@ -733,7 +740,8 @@ if not is_new_employee and not df_hist_sorted.empty:
         opening_pl = int(float(row.get("Opening PL", 0)))
     else:
         last_row = df_hist_sorted.iloc[-1]
-        form_data["CTC"] = float(last_row.get("CTC", 0.0))
+        # Use Profile CTC if available, otherwise old month CTC
+        form_data["CTC"] = prof_ctc if prof_ctc > 0 else float(last_row.get("CTC", 0.0))
         form_data["Working_Hrs"] = float(last_row.get("Working Hrs", 0.0))
         form_data["PT"] = float(last_row.get("PT", 200.0))
         form_data["TDS"] = float(last_row.get("TDS", 0.0))
@@ -933,7 +941,6 @@ if st.session_state.get('calc_result'):
     if res['name'] == emp_sidebar_name:
         excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
         
-        # Pass real profile data to PDF
         emp_profile_data_pdf = all_profiles.get(res['name'], {})
         pdf_data = generate_pdf_slip(res['slip_data'], res['name'], res['month'], res['year'], emp_profile_data_pdf)
         
