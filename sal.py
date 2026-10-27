@@ -344,8 +344,9 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     ca = 0.00
     ea = 0.00
     ma = 0.00
-    target_salary = 0.00
-    gross_salary = sd['actual_salary'] + da + hra + ca + ea + ma + target_salary 
+    
+    # Target Salary kadhi ne OT Salary directly add karyu Gross ma
+    gross_salary = sd['actual_salary'] + da + hra + ca + ea + ma + sd['ot_sal']
     
     pf_fund = 0.00
     esi_cont = 0.00
@@ -484,8 +485,10 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
              "M.A.", f"{ma:,.2f}", 
              "Other/Adv./Loan", f"{sd['advance']:,.2f}", 
              "Bank Name", bank_name) 
+             
+    # AHIYA TARGET SALARY NI JAGYA E OT SALARY AAVI GAYU CHE
     draw_row("Month Days", month_days, 
-             "Target Salary", f"{target_salary:,.2f}", 
+             "OT Salary", f"{sd['ot_sal']:,.2f}", 
              "Food Charge", f"{sd['food']:,.2f}", 
              "Bank A/c. No.", bank_ac)
     
@@ -539,7 +542,7 @@ with st.sidebar:
     
     user_file = get_user_file(emp_sidebar_name)
     all_profiles = load_profiles()
-    emp_profile_data = all_profiles.get(emp_sidebar_name, {}) # Fetch profile for main form logic
+    emp_profile_data = all_profiles.get(emp_sidebar_name, {}) 
     
     # ========================================================
     # ADMIN vs NORMAL USER PROFILE LOGIC
@@ -584,7 +587,6 @@ with st.sidebar:
                         st.rerun()
 
     elif emp_sidebar_name:
-        # NORMAL USER VIEW
         with st.expander("📝 My Profile Details", expanded=False):
             with st.form("own_profile_form"):
                 col_s1, col_s2 = st.columns(2)
@@ -618,7 +620,6 @@ with st.sidebar:
                     st.session_state['flash_msg'] = f"✅ Your profile has been updated successfully!"
                     st.rerun()
 
-        # Delete Data Button for Normal User
         if user_file and os.path.exists(user_file):
             st.write("")
             if st.button("🗑️ Delete All Data", type="secondary", use_container_width=True, help="Permanently delete all your data"):
@@ -632,7 +633,6 @@ with st.sidebar:
                     
     st.divider()
 
-    # (Loading Last Data logic remains same)
     last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     is_new_employee = True
@@ -714,7 +714,6 @@ with st.container(border=True):
     with col_emp:
         emp_name = st.text_input("Full Name", value=emp_sidebar_name, disabled=True)
 
-# Fetching Data Logic - Pulling Base Salary from Profile Default!
 prof_ctc = float(emp_profile_data.get("base_salary", 0.0))
 form_data = {"CTC": prof_ctc, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0}
 opening_pl = 0
@@ -740,7 +739,6 @@ if not is_new_employee and not df_hist_sorted.empty:
         opening_pl = int(float(row.get("Opening PL", 0)))
     else:
         last_row = df_hist_sorted.iloc[-1]
-        # Use Profile CTC if available, otherwise old month CTC
         form_data["CTC"] = prof_ctc if prof_ctc > 0 else float(last_row.get("CTC", 0.0))
         form_data["Working_Hrs"] = float(last_row.get("Working Hrs", 0.0))
         form_data["PT"] = float(last_row.get("PT", 200.0))
