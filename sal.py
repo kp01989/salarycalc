@@ -154,6 +154,9 @@ def clean_legacy_columns(df):
         df['In Hand Salary'] = 0.0
     if 'Total Pay Hrs' not in df.columns:
         df['Total Pay Hrs'] = ""
+    # Add LWP if missing for older records
+    if 'LWP' not in df.columns:
+        df['LWP'] = 0.0
         
     df = df.loc[:, ~df.columns.duplicated()]
     return df
@@ -344,11 +347,11 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         if week[6] != 0: 
             sundays += 1
             
-    paid_holiday_val = 0 # As requested, fixed to 0 for now
+    paid_holiday_val = 0 
     
     working_days_val = month_days_val - sundays - paid_holiday_val
     
-    # 2. DYNAMIC PRESENT DAYS (Present Hrs / 10)
+    # 2. DYNAMIC PRESENT DAYS
     try:
         h = int(sd['present_hrs'].split(':')[0])
         m = int(sd['present_hrs'].split(':')[1])
@@ -363,19 +366,20 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     
     # 3. AUTO SALARY CALCULATION
     basic_salary = sd['ctc'] * 0.60
+    
+    # Atyare HRA, DA vagere 0.00 che
     da = 0.00
-    hra = max(0.00, sd['actual_salary'] - basic_salary) 
+    hra = 0.00 
     ca = 0.00
     ea = 0.00
     ma = 0.00
     
-    gross_salary = sd['actual_salary'] + sd['ot_sal'] 
+    gross_salary = basic_salary + da + hra + ca + ea + ma + sd['ot_sal'] 
     
     pf_fund = 0.00
     esi_cont = 0.00
     
-    # --- NEW: LWP CALCULATION ---
-    # Retrieve LWP deduction value calculated in main form
+    # LWP CALCULATION GET
     lwp_fund = sd.get('lwp_val', 0.0)
     
     total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
@@ -476,10 +480,10 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         curr_y = pdf.get_y()
         pdf.cell(55, row_h, "", border=1) 
         pdf.set_xy(curr_x, curr_y + 1)
-        pdf.cell(55, 3, c3_lbl, border=0, align='L')
+        pdf.cell(55, 3.5, c3_lbl, border=0, align='L')
         if c3_subtext:
-            pdf.set_xy(curr_x, curr_y + 4)
-            pdf.set_font("Arial", '', 6) 
+            pdf.set_xy(curr_x, curr_y + 4.5)
+            pdf.set_font("Arial", '', 4.5) # Ekdam jeena akshar (size 4.5)
             pdf.cell(55, 3, c3_subtext, border=0, align='L')
             if not is_bold: pdf.set_font("Arial", '', 9) 
         pdf.set_xy(curr_x + 55, curr_y)
@@ -504,7 +508,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
              "Provident Fund", f"{pf_fund:,.2f}", 
              "Sr No", sr_no)
              
-    # DAYS PRESENT -> PRESENT DAYS
     draw_row("Present Days", days_present_str, 
              "D.A.", f"{da:,.2f}", 
              "E.S.I Contribution", f"{esi_cont:,.2f}", 
@@ -520,11 +523,10 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
              "T.D.S", f"{sd['tds']:,.2f}", 
              "UAN", uan_no)
              
-    # L.W.Fund -> LWP with subtext
     draw_row("Days Absent", str(days_absent_val), 
              "E.A.", f"{ea:,.2f}", 
              "LWP", f"{lwp_fund:,.2f}", 
-             "E.S.I. No.", esi_no, c3_subtext="Leave Without Pay")
+             "E.S.I. No.", esi_no, c3_subtext="(Leave Without Pay)")
              
     draw_row("PL", str(sd['pl_used']), 
              "M.A.", f"{ma:,.2f}", 
@@ -926,7 +928,7 @@ if save_clicked:
                 "out_hrs": early_hrs_str,
                 "pay_hrs": total_pay_hrs_str,
                 "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food, 
-                "lwp_val": lwp_val, # Added LWP value to payload
+                "lwp_val": lwp_val, 
                 "difference": difference,
                 "pay_salary_val": pay_salary_val,
                 "ot_sal": ot_salary,
@@ -943,7 +945,7 @@ if save_clicked:
             "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "OT Salary": ot_salary, "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
-            "Advance": advance, "Bonus": bonus, "Difference": difference
+            "Advance": advance, "LWP": lwp_val, "Bonus": bonus, "Difference": difference
         }
         new_rec = pd.DataFrame([new_rec_dict])
         
@@ -955,6 +957,8 @@ if save_clicked:
                 df_existing['In Hand Salary'] = 0.0
             if 'Total Pay Hrs' not in df_existing.columns:
                 df_existing['Total Pay Hrs'] = ""
+            if 'LWP' not in df_existing.columns:
+                df_existing['LWP'] = 0.0
                 
             df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == selected_month) & (df_existing['Year'] == selected_year))]
             df_combined = pd.concat([df_existing, new_rec], ignore_index=True)
@@ -1116,7 +1120,7 @@ if emp_sidebar_name:
                     else:
                         pay_salary_hist = in_hand_hist - float(row.get("OT Salary", 0))
                         
-                    lwp_hist_val = 0.0 # Standard history doesn't store this yet, can be updated later if needed
+                    lwp_hist_val = float(row.get("LWP", 0.0))
                     
                     hist_slip_data = {
                         "work_hrs_str": f"{int(row.get('Working Hrs', 0))}:00",
