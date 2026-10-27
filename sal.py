@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import os
 import io
+import json 
 from datetime import datetime
 import time as tm
 import streamlit.components.v1 as components 
@@ -17,6 +18,7 @@ month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'O
 month_dict = {m: i+1 for i, m in enumerate(month_order)}
 
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
+PROFILE_FILE = "employee_profiles.json" 
 
 # ==========================================
 # CUSTOM JAVASCRIPT: "ENTER" NE "TAB" TARIKE KAM KARAVVA
@@ -101,6 +103,19 @@ if st.session_state['flash_msg']:
 # ==========================================
 # 4. Helper Functions
 # ==========================================
+def load_profiles():
+    if os.path.exists(PROFILE_FILE):
+        try:
+            with open(PROFILE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_profiles(profiles):
+    with open(PROFILE_FILE, "w") as f:
+        json.dump(profiles, f, indent=4)
+
 def get_user_file(name):
     if not name: return None
     return f"{name.strip().replace(' ', '_')}_salary.csv"
@@ -302,17 +317,22 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
     return output.getvalue()
 
 
-# === PDF GENERATOR (LANDSCAPE MODE) ===
-def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
+# === PDF GENERATOR (LANDSCAPE MODE WITH DYNAMIC PROFILE) ===
+def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     sd = slip_data
+    if profile is None: profile = {}
     
-    # Dummy data for new fields
-    emp_code = "KPP0023"
-    department = "Bhaghubhai Office - Polish Assorting"
-    designation = "Data Analyst"
-    doj = "22/12/2025"
-    dob = "29/07/1989"
-    pan_no = "CFOPP1244J"
+    emp_code = profile.get("emp_code", "-")
+    department = profile.get("department", "-")
+    designation = profile.get("designation", "-")
+    doj = profile.get("doj", "-")
+    dob = profile.get("dob", "-")
+    pan_no = profile.get("pan_no", "-")
+    pf_no = profile.get("pf_no", "-")
+    uan_no = profile.get("uan", "-")
+    esi_no = profile.get("esi_no", "-")
+    bank_name = profile.get("bank_name", "-")
+    bank_ac = profile.get("bank_ac", "-")
     
     days_absent = "0"
     paid_holiday = "2"
@@ -320,11 +340,11 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     month_days = "30"
     
     da = 0.00
-    hra = 6600.00
-    ca = 2000.00
+    hra = 0.00 
+    ca = 0.00
     ea = 0.00
     ma = 0.00
-    target_salary = 4029.00
+    target_salary = 0.00
     gross_salary = sd['actual_salary'] + da + hra + ca + ea + ma + target_salary 
     
     pf_fund = 0.00
@@ -333,21 +353,14 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lw_fund
     
     sr_no = f"{year_val}{month_str}-12345"
-    pf_no = "-"
-    uan_no = "-"
-    esi_no = "-"
-    bank_name = "State Bank of India"
-    bank_ac = "32826390970"
     adv_bonus = 0.00
 
-    # Orientation changed to 'L' (Landscape)
     pdf = FPDF(orientation='L', unit='mm', format='A4')
     pdf.add_page()
     
-    # Margins & Base Setup (A4 Landscape Width = 297mm. Usable = 277mm)
     pdf.set_margins(10, 10, 10)
     
-    # 1. HEADER LOGO & COMPANY NAME
+    # 1. HEADER
     logo_url = "https://www.laxmidiamond.com/images/logo.png" 
     logo_path = "temp_logo.png"
     
@@ -371,7 +384,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.set_x(45)
     pdf.cell(192, 5, "(Minimum Wages Act. Rule 25-2)", ln=1, align='C')
     
-    # SIGHTHOLDER FIX for Landscape
     pdf.set_xy(237, 10)
     pdf.set_font("Arial", '', 10)
     pdf.cell(40, 5, "(S)", border=0, align='C', ln=1)
@@ -384,7 +396,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     
     pdf.ln(2)
     
-    # Draw outer box for Header (width 277)
     pdf.rect(10, 9, 277, 18)
     
     # 2. EMPLOYEE DETAILS SECTION
@@ -392,7 +403,11 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.set_xy(10, y_start)
     
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(277, 7, f"Employee's Name : {emp_name.upper()} ({emp_code})", border=1, ln=1)
+    
+    emp_display = f"Employee's Name : {emp_name.upper()}"
+    if emp_code != "-": emp_display += f" ({emp_code})"
+    
+    pdf.cell(277, 7, emp_display, border=1, ln=1)
     
     pdf.cell(138.5, 7, f"Department : {department}", border='L', align='L')
     pdf.cell(138.5, 7, f"Designation : {designation}", border='R', align='L', ln=1)
@@ -414,7 +429,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.cell(85, 7, "Deduction", border='LRT')
     pdf.cell(57, 7, "", border='LRT', ln=1)
     
-    row_h = 7.5 # Taller rows for landscape
+    row_h = 7.5 
     
     def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False):
         if is_bold:
@@ -422,81 +437,72 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
         else:
             pdf.set_font("Arial", '', 9)
             
-        # Col 1 (Total 50)
         pdf.cell(32, row_h, c1_lbl, border=1)
         pdf.cell(18, row_h, c1_val, border=1, align='R')
-        # Col 2 (Total 85)
+        
         pdf.cell(55, row_h, c2_lbl, border=1)
         pdf.cell(30, row_h, c2_val, border=1, align='R')
-        # Col 3 (Total 85)
+        
         pdf.cell(55, row_h, c3_lbl, border=1)
         pdf.cell(30, row_h, c3_val, border=1, align='R')
         
-        # Col 4 (Total 57)
         if c4_lbl != "MERGE_DISCLAIMER":
             pdf.cell(27, row_h, c4_lbl, border=1)
             if c4_lbl == "Sr No":
                 pdf.set_font("Arial", '', 8.5) 
                 pdf.cell(30, row_h, c4_val, border=1, align='C')
                 if not is_bold: pdf.set_font("Arial", '', 9) 
+            elif c4_lbl in ["Bank Name", "Bank A/c. No."]:
+                pdf.set_font("Arial", '', 8) 
+                pdf.cell(30, row_h, c4_val, border=1, align='R')
+                if not is_bold: pdf.set_font("Arial", '', 9) 
             else:
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
         pdf.ln()
 
-    # R1
     draw_row("Working Days", str(int(sd['work_hrs_str'].split(':')[0])//8 if ':' in sd['work_hrs_str'] else 24), 
              "Basic Salary", f"{sd['ctc']:,.2f}", 
              "Provident Fund", f"{pf_fund:,.2f}", 
              "Sr No", sr_no)
-    # R2
     draw_row("Days Present", str(int(sd['present_hrs'].split(':')[0])//8 if ':' in sd['present_hrs'] else 24), 
              "D.A.", f"{da:,.2f}", 
              "E.S.I Contribution", f"{esi_cont:,.2f}", 
              "Month", f"{month_str}-{year_val}")
-    # R3
     draw_row("Paid Holiday", paid_holiday, 
              "HRA", f"{hra:,.2f}", 
              "Professional Tax", f"{sd['pt']:,.2f}", 
              "P.F. No.", pf_no)
-    # R4
     draw_row("Week Off", week_off, 
              "C.A.", f"{ca:,.2f}", 
              "T.D.S", f"{sd['tds']:,.2f}", 
              "UAN", uan_no)
-    # R5
     draw_row("Days Absent", days_absent, 
              "E.A.", f"{ea:,.2f}", 
              "L.W.Fund", f"{lw_fund:,.2f}", 
              "E.S.I. No.", esi_no)
-    # R6
     draw_row("PL", str(sd['pl_used']), 
              "M.A.", f"{ma:,.2f}", 
              "Other/Adv./Loan", f"{sd['advance']:,.2f}", 
-             "Bank Name", "SBI") 
-    # R7
+             "Bank Name", bank_name) 
     draw_row("Month Days", month_days, 
              "Target Salary", f"{target_salary:,.2f}", 
              "Food Charge", f"{sd['food']:,.2f}", 
              "Bank A/c. No.", bank_ac)
     
-    # R8 (Bold Totals Row)
     draw_row("Actual Salary", f"{sd['actual_salary']:,.2f}", 
              "Gross Salary", f"{gross_salary:,.2f}", 
              "Total Deduction", f"{total_deduct:,.2f}", 
              "Net Salary", f"{sd['in_hand_salary']:,.2f}", is_bold=True)
              
-    # R9 (Footer row for bonus and disclaimer)
     pdf.set_font("Arial", '', 9)
     pdf.cell(50, row_h, "", border=1) 
     pdf.cell(85, row_h, "", border=1) 
     pdf.cell(85, row_h, "", border=1) 
     
-    # C4 Split
     pdf.cell(27, row_h, "Adv agst Bonus", border=1)
     pdf.cell(30, row_h, f"{adv_bonus:,.2f}", border=1, align='R')
     pdf.ln()
 
-    # Disclaimer Box at Bottom Right (Shifted to X=230 for Landscape)
     curr_y = pdf.get_y()
     pdf.set_xy(230, curr_y)
     pdf.set_font("Arial", 'I', 7.5)
@@ -504,7 +510,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val):
     pdf.multi_cell(57, 4.5, "This is computer generated slip hence signature is not required.", border=1, align='C')
     pdf.set_text_color(0, 0, 0)
     
-    # 4. FOOTER DETAILS
     pdf.set_y(curr_y + 12)
     pdf.set_font("Arial", 'B', 8)
     pdf.cell(277, 5, "Company's Details : P.F Code : GJ/SRT/30549      E.S.I.C Code : 39000207770000910    PAN : AABCL1815G    TAN : SRTL00591D", border=0, align='L')
@@ -533,20 +538,95 @@ with st.sidebar:
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed").title()
     
     user_file = get_user_file(emp_sidebar_name)
+    all_profiles = load_profiles()
     
-    if emp_sidebar_name and user_file and os.path.exists(user_file):
-        st.write("")
-        if st.button("🗑️ Delete All Data", type="secondary", use_container_width=True, help="Permanently delete all data for this employee"):
-            try:
-                os.remove(user_file)
-                st.session_state['calc_result'] = None 
-                st.session_state['flash_msg'] = f"✅ All data for {emp_sidebar_name} has been deleted!"
-                st.rerun()
-            except Exception as e:
-                st.error("Error deleting file.")
+    # ========================================================
+    # ADMIN vs NORMAL USER PROFILE LOGIC
+    # ========================================================
+    if emp_sidebar_name == "Administrator":
+        st.error("👑 **Admin Mode Active**")
+        with st.expander("📝 Manage Employee Profiles", expanded=True):
+            target_emp = st.text_input("Enter Employee Name to Edit:", placeholder="e.g. Manoj...").title()
+            
+            if target_emp:
+                emp_profile_data = all_profiles.get(target_emp, {})
+                with st.form("admin_profile_form"):
+                    p_code = st.text_input("Emp Code", value=emp_profile_data.get("emp_code", ""))
+                    p_dept = st.text_input("Department", value=emp_profile_data.get("department", ""))
+                    p_desig = st.text_input("Designation", value=emp_profile_data.get("designation", ""))
+                    
+                    col_d1, col_d2 = st.columns(2)
+                    with col_d1: p_doj = st.text_input("Date of Joining", value=emp_profile_data.get("doj", ""))
+                    with col_d2: p_dob = st.text_input("Date of Birth", value=emp_profile_data.get("dob", ""))
+                    
+                    p_pan = st.text_input("PAN No", value=emp_profile_data.get("pan_no", ""))
+                    p_uan = st.text_input("UAN", value=emp_profile_data.get("uan", ""))
+                    
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1: p_pf = st.text_input("PF No", value=emp_profile_data.get("pf_no", ""))
+                    with col_b2: p_esi = st.text_input("ESI No", value=emp_profile_data.get("esi_no", ""))
+                    
+                    p_bank = st.text_input("Bank Name", value=emp_profile_data.get("bank_name", ""))
+                    p_ac = st.text_input("Bank A/c No", value=emp_profile_data.get("bank_ac", ""))
+                    
+                    if st.form_submit_button("💾 Save Profile", type="primary", use_container_width=True):
+                        all_profiles[target_emp] = {
+                            "emp_code": p_code, "department": p_dept, "designation": p_desig,
+                            "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
+                            "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
+                        }
+                        save_profiles(all_profiles)
+                        st.session_state['flash_msg'] = f"✅ Profile for {target_emp} saved successfully!"
+                        st.rerun()
+
+    elif emp_sidebar_name:
+        # NORMAL USER VIEW
+        emp_profile_data = all_profiles.get(emp_sidebar_name, {})
+        with st.expander("📝 My Profile Details", expanded=False):
+            with st.form("own_profile_form"):
+                p_code = st.text_input("Emp Code", value=emp_profile_data.get("emp_code", ""))
+                p_dept = st.text_input("Department", value=emp_profile_data.get("department", ""))
+                p_desig = st.text_input("Designation", value=emp_profile_data.get("designation", ""))
                 
+                col_d1, col_d2 = st.columns(2)
+                with col_d1: p_doj = st.text_input("Date of Joining", value=emp_profile_data.get("doj", ""))
+                with col_d2: p_dob = st.text_input("Date of Birth", value=emp_profile_data.get("dob", ""))
+                
+                p_pan = st.text_input("PAN No", value=emp_profile_data.get("pan_no", ""))
+                p_uan = st.text_input("UAN", value=emp_profile_data.get("uan", ""))
+                
+                col_b1, col_b2 = st.columns(2)
+                with col_b1: p_pf = st.text_input("PF No", value=emp_profile_data.get("pf_no", ""))
+                with col_b2: p_esi = st.text_input("ESI No", value=emp_profile_data.get("esi_no", ""))
+                
+                p_bank = st.text_input("Bank Name", value=emp_profile_data.get("bank_name", ""))
+                p_ac = st.text_input("Bank A/c No", value=emp_profile_data.get("bank_ac", ""))
+                
+                if st.form_submit_button("💾 Update My Profile", type="primary", use_container_width=True):
+                    all_profiles[emp_sidebar_name] = {
+                        "emp_code": p_code, "department": p_dept, "designation": p_desig,
+                        "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
+                        "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
+                    }
+                    save_profiles(all_profiles)
+                    st.session_state['flash_msg'] = f"✅ Your profile has been updated successfully!"
+                    st.rerun()
+
+        # Delete Data Button for Normal User
+        if user_file and os.path.exists(user_file):
+            st.write("")
+            if st.button("🗑️ Delete All Data", type="secondary", use_container_width=True, help="Permanently delete all your data"):
+                try:
+                    os.remove(user_file)
+                    st.session_state['calc_result'] = None 
+                    st.session_state['flash_msg'] = f"✅ All data for {emp_sidebar_name} has been deleted!"
+                    st.rerun()
+                except Exception:
+                    st.error("Error deleting file.")
+                    
     st.divider()
 
+    # (Loading Last Data logic remains same)
     last_data = {"CTC": 0.0, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0, "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0, "TDS": 0.0, "ESIC": 0.0}
     
     is_new_employee = True
@@ -584,6 +664,13 @@ with st.sidebar:
                                 pass
         except Exception:
             pass
+
+# ==========================================
+# ADMIN BLOCK: Stop rendering the rest of the page if Admin
+# ==========================================
+if emp_sidebar_name == "Administrator":
+    st.info("👑 **Administrator Mode Active.** Please use the sidebar on the left to manage employee master profiles.")
+    st.stop()
 
 # ==========================================
 # 6. MONTH/YEAR
@@ -845,7 +932,10 @@ if st.session_state.get('calc_result'):
     res = st.session_state['calc_result']
     if res['name'] == emp_sidebar_name:
         excel_data = generate_excel_slip(res['slip_data'], res['name'], res['month'], res['year'])
-        pdf_data = generate_pdf_slip(res['slip_data'], res['name'], res['month'], res['year'])
+        
+        # Pass real profile data to PDF
+        emp_profile_data_pdf = all_profiles.get(res['name'], {})
+        pdf_data = generate_pdf_slip(res['slip_data'], res['name'], res['month'], res['year'], emp_profile_data_pdf)
         
         _, btn_col1, btn_col2, _ = st.columns([1, 1, 1, 1])
         with btn_col1:
@@ -1017,7 +1107,8 @@ if emp_sidebar_name:
                 st.write("") 
                 st.write("")
                 if selected_opt:
-                    pdf_data_hist = generate_pdf_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y)
+                    emp_profile_data_hist = all_profiles.get(row.get("Name", ""), {})
+                    pdf_data_hist = generate_pdf_slip(hist_slip_data, row.get("Name", ""), sel_m, sel_y, emp_profile_data_hist)
                     st.download_button(
                         label=f"📕 PDF",
                         data=pdf_data_hist,
