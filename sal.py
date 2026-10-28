@@ -18,8 +18,8 @@ st.set_page_config(page_title="Salary Management System", layout="wide")
 month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 month_dict = {m: i+1 for i, m in enumerate(month_order)}
 
+# FIREBASE DATABASE URL (Permanent Cloud Storage)
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
-PROFILE_FILE = "employee_profiles.json" 
 
 # ==========================================
 # CUSTOM JAVASCRIPT
@@ -94,32 +94,55 @@ if 'form_key' not in st.session_state:
 if 'flash_msg' not in st.session_state:
     st.session_state['flash_msg'] = None
 
-st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
-st.divider()
-
-if st.session_state['flash_msg']:
-    st.success(st.session_state['flash_msg'])
-    st.session_state['flash_msg'] = None
-
 # ==========================================
-# 4. Helper Functions
+# 4. Firebase Cloud Database Functions
 # ==========================================
+def get_emp_key(name):
+    # Firebase keys cannot contain certain special characters
+    if not name: return "Unknown"
+    return name.replace(".", "").replace("#", "").replace("$", "").replace("[", "").replace("]", "").strip()
+
 def load_profiles():
-    if os.path.exists(PROFILE_FILE):
-        try:
-            with open(PROFILE_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return {}
+    try:
+        res = requests.get(f"{FIREBASE_URL}/profiles.json")
+        if res.status_code == 200 and res.json():
+            return res.json()
+    except Exception:
+        pass
     return {}
 
 def save_profiles(profiles):
-    with open(PROFILE_FILE, "w") as f:
-        json.dump(profiles, f, indent=4)
+    try:
+        requests.put(f"{FIREBASE_URL}/profiles.json", json=profiles)
+    except Exception as e:
+        st.error(f"Failed to save to cloud: {e}")
 
-def get_user_file(name):
-    if not name: return None
-    return f"{name.strip().replace(' ', '_')}_salary.csv"
+def load_salary_history(emp_name):
+    if not emp_name: return pd.DataFrame()
+    emp_key = get_emp_key(emp_name)
+    try:
+        res = requests.get(f"{FIREBASE_URL}/salary_history/{emp_key}.json")
+        if res.status_code == 200 and res.json():
+            return pd.DataFrame(res.json())
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+def save_salary_history(emp_name, df):
+    emp_key = get_emp_key(emp_name)
+    try:
+        # Convert df to json records correctly handling data types
+        records = json.loads(df.to_json(orient='records'))
+        requests.put(f"{FIREBASE_URL}/salary_history/{emp_key}.json", json=records)
+    except Exception as e:
+        st.error(f"Error saving history to cloud: {e}")
+
+def delete_salary_history(emp_name):
+    emp_key = get_emp_key(emp_name)
+    try:
+        requests.delete(f"{FIREBASE_URL}/salary_history/{emp_key}.json")
+    except Exception as e:
+        st.error(f"Error deleting history: {e}")
 
 def format_mins_to_hrs(val):
     try:
@@ -130,6 +153,7 @@ def format_mins_to_hrs(val):
         return str(val)
 
 def clean_legacy_columns(df):
+    if df.empty: return df
     if 'Std Hrs' in df.columns:
         if 'Working Hrs' in df.columns:
             df['Working Hrs'] = df['Working Hrs'].fillna(df['Std Hrs'])
@@ -154,7 +178,6 @@ def clean_legacy_columns(df):
         df['In Hand Salary'] = 0.0
     if 'Total Pay Hrs' not in df.columns:
         df['Total Pay Hrs'] = ""
-    # Add LWP if missing for older records
     if 'LWP' not in df.columns:
         df['LWP'] = 0.0
         
@@ -320,7 +343,6 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             
     return output.getvalue()
 
-
 # === PDF GENERATOR (LANDSCAPE) ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     sd = slip_data
@@ -348,7 +370,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
             sundays += 1
             
     paid_holiday_val = 0 
-    
     working_days_val = month_days_val - sundays - paid_holiday_val
     
     # 2. DYNAMIC PRESENT DAYS
@@ -367,7 +388,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     # 3. AUTO SALARY CALCULATION
     basic_salary = sd['ctc'] * 0.60
     
-    # Atyare HRA, DA vagere 0.00 che
     da = 0.00
     hra = 0.00 
     ca = 0.00
@@ -379,7 +399,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     pf_fund = 0.00
     esi_cont = 0.00
     
-    # LWP CALCULATION GET
     lwp_fund = sd.get('lwp_val', 0.0)
     
     total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
@@ -483,7 +502,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         pdf.cell(55, 3.5, c3_lbl, border=0, align='L')
         if c3_subtext:
             pdf.set_xy(curr_x, curr_y + 4.5)
-            pdf.set_font("Arial", '', 4.5) # Ekdam jeena akshar (size 4.5)
+            pdf.set_font("Arial", '', 4.5) 
             pdf.cell(55, 3, c3_subtext, border=0, align='L')
             if not is_bold: pdf.set_font("Arial", '', 9) 
         pdf.set_xy(curr_x + 55, curr_y)
@@ -586,48 +605,17 @@ with st.sidebar:
     st.header("👤 Profile")
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed").title()
     
-    user_file = get_user_file(emp_sidebar_name)
     all_profiles = load_profiles()
     emp_profile_data = all_profiles.get(emp_sidebar_name, {}) 
     
+    df_hist_sidebar = load_salary_history(emp_sidebar_name)
+    has_history = not df_hist_sidebar.empty
+    
+    # ========================================================
+    # ADMIN PROFILE LOGIC
+    # ========================================================
     if emp_sidebar_name == "Administrator":
-        st.error("👑 **Admin Mode Active**")
-        with st.expander("📝 Manage Employee Profiles", expanded=True):
-            target_emp = st.text_input("Enter Employee Name to Edit:", placeholder="e.g. Manoj...").title()
-            
-            if target_emp:
-                target_profile_data = all_profiles.get(target_emp, {})
-                with st.form("admin_profile_form"):
-                    col_s1, col_s2 = st.columns(2)
-                    with col_s1: p_code = st.text_input("Emp Code", value=target_profile_data.get("emp_code", ""))
-                    with col_s2: p_salary = st.number_input("Fixed CTC (₹)", value=float(target_profile_data.get("base_salary", 0.0)), step=500.0)
-                    
-                    p_dept = st.text_input("Department", value=target_profile_data.get("department", ""))
-                    p_desig = st.text_input("Designation", value=target_profile_data.get("designation", ""))
-                    
-                    col_d1, col_d2 = st.columns(2)
-                    with col_d1: p_doj = st.text_input("Date of Joining", value=target_profile_data.get("doj", ""))
-                    with col_d2: p_dob = st.text_input("Date of Birth", value=target_profile_data.get("dob", ""))
-                    
-                    p_pan = st.text_input("PAN No", value=target_profile_data.get("pan_no", ""))
-                    p_uan = st.text_input("UAN", value=target_profile_data.get("uan", ""))
-                    
-                    col_b1, col_b2 = st.columns(2)
-                    with col_b1: p_pf = st.text_input("PF No", value=target_profile_data.get("pf_no", ""))
-                    with col_b2: p_esi = st.text_input("ESI No", value=target_profile_data.get("esi_no", ""))
-                    
-                    p_bank = st.text_input("Bank Name", value=target_profile_data.get("bank_name", ""))
-                    p_ac = st.text_input("Bank A/c No", value=target_profile_data.get("bank_ac", ""))
-                    
-                    if st.form_submit_button("💾 Save Profile", type="primary", use_container_width=True):
-                        all_profiles[target_emp] = {
-                            "emp_code": p_code, "base_salary": p_salary, "department": p_dept, "designation": p_desig,
-                            "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
-                            "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
-                        }
-                        save_profiles(all_profiles)
-                        st.session_state['flash_msg'] = f"✅ Profile for {target_emp} saved successfully!"
-                        st.rerun()
+        pass 
 
     elif emp_sidebar_name:
         with st.expander("📝 My Profile Details", expanded=False):
@@ -660,19 +648,16 @@ with st.sidebar:
                         "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
                     }
                     save_profiles(all_profiles)
-                    st.session_state['flash_msg'] = f"✅ Your profile has been updated successfully!"
+                    st.session_state['flash_msg'] = f"✅ Your profile has been updated in Cloud!"
                     st.rerun()
 
-        if user_file and os.path.exists(user_file):
+        if has_history:
             st.write("")
-            if st.button("🗑️ Delete All Data", type="secondary", use_container_width=True, help="Permanently delete all your data"):
-                try:
-                    os.remove(user_file)
-                    st.session_state['calc_result'] = None 
-                    st.session_state['flash_msg'] = f"✅ All data for {emp_sidebar_name} has been deleted!"
-                    st.rerun()
-                except Exception:
-                    st.error("Error deleting file.")
+            if st.button("🗑️ Delete All Data", type="secondary", use_container_width=True, help="Permanently delete all your cloud data"):
+                delete_salary_history(emp_sidebar_name)
+                st.session_state['calc_result'] = None 
+                st.session_state['flash_msg'] = f"✅ All cloud data for {emp_sidebar_name} has been deleted!"
+                st.rerun()
                     
     st.divider()
 
@@ -683,14 +668,11 @@ with st.sidebar:
     last_saved_month = None
     df_hist_sorted = pd.DataFrame() 
 
-    if user_file and os.path.exists(user_file):
+    if has_history:
         try:
-            df_hist = pd.read_csv(user_file)
-            df_hist = clean_legacy_columns(df_hist)
-                
+            df_hist = clean_legacy_columns(df_hist_sidebar)
             if not df_hist.empty:
                 is_new_employee = False
-                
                 df_hist['Month_Num'] = df_hist['Month'].astype(str).str.strip().map(month_dict)
                 df_hist_sorted = df_hist.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
                 last_row_chronological = df_hist_sorted.iloc[-1]
@@ -714,14 +696,84 @@ with st.sidebar:
         except Exception:
             pass
 
+# ==========================================
+# ADMIN DASHBOARD 
+# ==========================================
 if emp_sidebar_name == "Administrator":
-    st.info("👑 **Administrator Mode Active.** Please use the sidebar on the left to manage employee master profiles.")
+    st.markdown("<h1 style='text-align: center;'>👑 Admin Dashboard</h1>", unsafe_allow_html=True)
+    st.divider()
+    
+    st.subheader("👥 All Employee Master Profiles (Cloud Data)")
+    if all_profiles:
+        df_profs = pd.DataFrame.from_dict(all_profiles, orient='index').reset_index()
+        df_profs = df_profs.rename(columns={
+            'index': 'Employee Name', 'emp_code': 'Emp Code', 'base_salary': 'Fixed CTC',
+            'department': 'Department', 'designation': 'Designation', 'doj': 'DOJ',
+            'dob': 'DOB', 'pan_no': 'PAN No', 'pf_no': 'PF No', 'uan': 'UAN',
+            'esi_no': 'ESI No', 'bank_name': 'Bank Name', 'bank_ac': 'Bank A/c No'
+        })
+        st.dataframe(df_profs, use_container_width=True)
+        
+        csv = df_profs.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Download Profile Data (CSV)",
+            data=csv,
+            file_name="employee_master_data.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("⚠️ No employee profiles found in Cloud Database.")
+        
+    st.divider()
+    st.subheader("📝 Manage Profiles")
+    with st.container(border=True):
+        target_emp = st.text_input("Enter Employee Name to Edit:", placeholder="e.g. Manoj...").title()
+        
+        if target_emp:
+            target_profile_data = all_profiles.get(target_emp, {})
+            with st.form("admin_profile_form"):
+                col_s1, col_s2 = st.columns(2)
+                with col_s1: p_code = st.text_input("Emp Code", value=target_profile_data.get("emp_code", ""))
+                with col_s2: p_salary = st.number_input("Fixed CTC (₹)", value=float(target_profile_data.get("base_salary", 0.0)), step=500.0)
+                
+                p_dept = st.text_input("Department", value=target_profile_data.get("department", ""))
+                p_desig = st.text_input("Designation", value=target_profile_data.get("designation", ""))
+                
+                col_d1, col_d2 = st.columns(2)
+                with col_d1: p_doj = st.text_input("Date of Joining", value=target_profile_data.get("doj", ""))
+                with col_d2: p_dob = st.text_input("Date of Birth", value=target_profile_data.get("dob", ""))
+                
+                p_pan = st.text_input("PAN No", value=target_profile_data.get("pan_no", ""))
+                p_uan = st.text_input("UAN", value=target_profile_data.get("uan", ""))
+                
+                col_b1, col_b2 = st.columns(2)
+                with col_b1: p_pf = st.text_input("PF No", value=target_profile_data.get("pf_no", ""))
+                with col_b2: p_esi = st.text_input("ESI No", value=target_profile_data.get("esi_no", ""))
+                
+                p_bank = st.text_input("Bank Name", value=target_profile_data.get("bank_name", ""))
+                p_ac = st.text_input("Bank A/c No", value=target_profile_data.get("bank_ac", ""))
+                
+                if st.form_submit_button("💾 Save Profile to Cloud", type="primary", use_container_width=True):
+                    all_profiles[target_emp] = {
+                        "emp_code": p_code, "base_salary": p_salary, "department": p_dept, "designation": p_desig,
+                        "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
+                        "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
+                    }
+                    save_profiles(all_profiles)
+                    st.session_state['flash_msg'] = f"✅ Cloud Profile for {target_emp} saved successfully!"
+                    st.rerun()
+
     st.stop()
 
 # ==========================================
 # 6. MONTH/YEAR
 # ==========================================
 kb = f"{st.session_state['form_key']}_{emp_sidebar_name.strip()}"
+
+st.markdown("<h1 style='text-align: center;'>💎 Salary & Leave Management</h1>", unsafe_allow_html=True)
+if st.session_state['flash_msg']:
+    st.success(st.session_state['flash_msg'])
+    st.session_state['flash_msg'] = None
 
 now = datetime.now()
 current_month_name = now.strftime("%b") 
@@ -863,7 +915,7 @@ with st.form(key=f"salary_form_{kb}"):
     st.write("")
     _, btn_col, _ = st.columns([1, 2, 1])
     with btn_col:
-        save_clicked = st.form_submit_button("Calculate & Save Data", type="primary", use_container_width=True)
+        save_clicked = st.form_submit_button("Calculate & Save to Cloud", type="primary", use_container_width=True)
 
 # ==========================================
 # TIME CALCULATION LOGIC
@@ -895,7 +947,7 @@ if total_pay_hrs_mins < 0:
 total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
 
 # ==========================================
-# 8. Execution Logic
+# 8. Execution Logic (Saving to Cloud)
 # ==========================================
 if save_clicked:
     if not emp_sidebar_name: 
@@ -904,7 +956,6 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # --- NEW: LWP Calculation ---
         lwp_val = round((total_late_out_mins / 60.0) * hr_rate)
         
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
@@ -949,17 +1000,9 @@ if save_clicked:
         }
         new_rec = pd.DataFrame([new_rec_dict])
         
-        if os.path.exists(user_file):
-            df_existing = pd.read_csv(user_file)
-            if 'Opening PL' not in df_existing.columns:
-                df_existing['Opening PL'] = 0
-            if 'In Hand Salary' not in df_existing.columns:
-                df_existing['In Hand Salary'] = 0.0
-            if 'Total Pay Hrs' not in df_existing.columns:
-                df_existing['Total Pay Hrs'] = ""
-            if 'LWP' not in df_existing.columns:
-                df_existing['LWP'] = 0.0
-                
+        df_existing = load_salary_history(emp_name)
+        if not df_existing.empty:
+            df_existing = clean_legacy_columns(df_existing)
             df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == selected_month) & (df_existing['Year'] == selected_year))]
             df_combined = pd.concat([df_existing, new_rec], ignore_index=True)
             df_combined['Month_Num'] = df_combined['Month'].astype(str).str.strip().map(month_dict)
@@ -970,12 +1013,12 @@ if save_clicked:
                 df_combined = recalculate_future_pl(df_combined, updated_idx)
             
             df_combined = df_combined.drop(columns=['Month_Num'])
-            df_combined.to_csv(user_file, index=False)
+            save_salary_history(emp_name, df_combined)
         else: 
-            new_rec.to_csv(user_file, index=False)
+            save_salary_history(emp_name, new_rec)
             
         st.session_state['form_key'] += 1
-        st.session_state['flash_msg'] = f"✅ Data Saved! Name: {emp_name} | LWP Deduction: ₹ {int(lwp_val):,} | In Hand Salary: ₹ {int(in_hand_salary):,}"
+        st.session_state['flash_msg'] = f"✅ Data Saved to Cloud! Name: {emp_name} | LWP Deduction: ₹ {int(lwp_val):,} | In Hand Salary: ₹ {int(in_hand_salary):,}"
         st.rerun()
 
 # ==========================================
@@ -1011,7 +1054,7 @@ if st.session_state.get('calc_result'):
 # 10. Search Section
 # ==========================================
 st.divider()
-st.subheader("🔍 Search Records")
+st.subheader("🔍 Search Cloud Records")
 with st.container(border=True):
     s1, s2, s3 = st.columns([2, 2, 2])
     search_m = s1.selectbox("Month", list(month_dict.keys()), key="sm", label_visibility="collapsed")
@@ -1021,30 +1064,27 @@ with st.container(border=True):
         if not emp_sidebar_name:
             st.warning("⚠️ Please enter Employee Name in the sidebar first!")
         else:
-            s_file = get_user_file(emp_sidebar_name)
-            if s_file and os.path.exists(s_file):
-                df_s = pd.read_csv(s_file)
+            df_s = load_salary_history(emp_sidebar_name)
+            if not df_s.empty:
                 df_s = clean_legacy_columns(df_s)
-                    
                 res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
                 if not res.empty:
                     res.index = range(1, len(res) + 1)
                     st.dataframe(res, use_container_width=True, column_config=table_format_config)
                 else: 
-                    st.warning(f"No record found for {search_m} {search_y}.")
+                    st.warning(f"No record found for {search_m} {search_y} in Cloud.")
             else: 
-                st.error("No data found for this employee.")
+                st.error("No data found for this employee in Cloud.")
 
 # ==========================================
 # 11. History & Download Old Slips
 # ==========================================
 if emp_sidebar_name:
     st.divider()
-    user_file = get_user_file(emp_sidebar_name)
-    if os.path.exists(user_file):
-        st.subheader(f"📂 History: {emp_sidebar_name}")
-        h_df = pd.read_csv(user_file).fillna(0)
-        h_df = clean_legacy_columns(h_df)
+    df_hist_cloud = load_salary_history(emp_sidebar_name)
+    if not df_hist_cloud.empty:
+        st.subheader(f"📂 Cloud History: {emp_sidebar_name}")
+        h_df = clean_legacy_columns(df_hist_cloud)
 
         if 'Month' in h_df.columns:
             h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(month_dict)
@@ -1079,8 +1119,8 @@ if emp_sidebar_name:
         )
         
         if not h_df.equals(edited_df):
-            edited_df.to_csv(user_file, index=False)
-            st.toast("✅ Record auto-updated successfully!") 
+            save_salary_history(emp_sidebar_name, edited_df)
+            st.toast("✅ Cloud Record auto-updated successfully!") 
             st.rerun()
 
         st.write("")
