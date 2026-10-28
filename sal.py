@@ -341,7 +341,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             
     return output.getvalue()
 
-# === PDF GENERATOR (LANDSCAPE) ===
+# === PDF GENERATOR (LANDSCAPE WITH EXACT BOX FIX) ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     sd = slip_data
     if profile is None: profile = {}
@@ -358,19 +358,17 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     bank_name = profile.get("bank_name", "-")
     bank_ac = profile.get("bank_ac", "-")
     
-    # --- 1. DYNAMIC DAYS CALCULATION ---
+    # 1. DYNAMIC DAYS
     month_num = month_dict.get(month_str, 1)
     month_days_val = calendar.monthrange(int(year_val), month_num)[1]
     
     sundays = 0
     for week in calendar.monthcalendar(int(year_val), month_num):
-        if week[6] != 0: 
-            sundays += 1
+        if week[6] != 0: sundays += 1
             
     paid_holiday_val = 0 
     working_days_val = month_days_val - sundays - paid_holiday_val
     
-    # 2. DYNAMIC PRESENT DAYS
     try:
         h = int(sd['present_hrs'].split(':')[0])
         m = int(sd['present_hrs'].split(':')[1])
@@ -383,23 +381,27 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         
     days_absent_val = max(0, working_days_val - int(days_present_val))
     
-    # 3. AUTO SALARY CALCULATION
+    # 2. AUTO SALARY CALCULATION & MATH BALANCE
     basic_salary = sd['ctc'] * 0.60
-    
+    ca = sd['ctc'] * 0.40 # Balance remaining 40% here so Gross aligns properly
     da = 0.00
     hra = 0.00 
-    ca = 0.00
     ea = 0.00
     ma = 0.00
     
-    gross_salary = basic_salary + da + hra + ca + ea + ma + sd['ot_sal'] 
+    gross_salary = sd['ctc'] + sd['ot_sal'] 
     
     pf_fund = 0.00
     esi_cont = 0.00
-    
     lwp_fund = sd.get('lwp_val', 0.0)
     
-    total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
+    # Calculate exact deduction missing (for Absent days) to make Math PERFECT
+    expected_deduct = gross_salary - sd['in_hand_salary']
+    known_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
+    absent_ded_val = max(0, expected_deduct - known_deduct)
+    
+    total_adv_absent = sd['advance'] + absent_ded_val
+    total_deduct = known_deduct + absent_ded_val
     
     sr_no = f"{year_val}{month_str}-12345"
     adv_bonus = 0.00
@@ -481,65 +483,69 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     row_h = 7.5 
     
     def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False, c3_subtext=None):
+        curr_y = pdf.get_y() # Capture actual Y to prevent overlap
+        
         if is_bold:
             pdf.set_font("Arial", 'B', 10)
         else:
             pdf.set_font("Arial", '', 9)
             
+        # Col 1
         pdf.cell(32, row_h, c1_lbl, border=1)
         pdf.cell(18, row_h, c1_val, border=1, align='R')
         
+        # Col 2
         pdf.cell(55, row_h, c2_lbl, border=1)
         pdf.cell(30, row_h, c2_val, border=1, align='R')
         
-        # LWP with Subtext Logic
-        curr_x = pdf.get_x()
-        curr_y = pdf.get_y()
+        # Col 3 (LWP Subtext Fix)
+        c3_x = pdf.get_x()
         pdf.cell(55, row_h, "", border=1) 
-        pdf.set_xy(curr_x, curr_y + 1)
+        pdf.set_xy(c3_x, curr_y + 1)
         pdf.cell(55, 3.5, c3_lbl, border=0, align='L')
         if c3_subtext:
-            pdf.set_xy(curr_x, curr_y + 4.5)
+            pdf.set_xy(c3_x, curr_y + 4.5)
             pdf.set_font("Arial", '', 4.5) 
             pdf.cell(55, 3, c3_subtext, border=0, align='L')
             if not is_bold: pdf.set_font("Arial", '', 9) 
-        pdf.set_xy(curr_x + 55, curr_y)
+        pdf.set_xy(c3_x + 55, curr_y)
         pdf.cell(30, row_h, c3_val, border=1, align='R')
         
+        # Col 4
         if c4_lbl != "MERGE_DISCLAIMER":
+            c4_lbl_x = pdf.get_x()
             pdf.cell(27, row_h, c4_lbl, border=1)
+            c4_val_x = pdf.get_x()
             
             if c4_lbl == "Sr No":
                 pdf.set_font("Arial", '', 8.5) 
                 pdf.cell(30, row_h, c4_val, border=1, align='C')
                 if not is_bold: pdf.set_font("Arial", '', 9) 
-            
-            # --- BANK NAME WRAP FIX ---
-            elif c4_lbl == "Bank Name":
-                name_curr_x = pdf.get_x()
-                name_curr_y = pdf.get_y()
-                pdf.cell(30, row_h, "", border=1) # Border draw
                 
+            elif c4_lbl == "Bank Name":
                 name_str = str(c4_val).strip()
+                pdf.cell(30, row_h, "", border=1) 
                 if len(name_str) > 13:
                     pdf.set_font("Arial", '', 5.5) 
-                    pdf.set_xy(name_curr_x, name_curr_y + 1.5)
-                    pdf.multi_cell(30, 2.5, name_str, border=0, align='R')
+                    pdf.set_xy(c4_val_x, curr_y + 1.5)
+                    pdf.multi_cell(30, 2.5, name_str, border=0, align='C')
                 else:
-                    pdf.set_font("Arial", '', 8)
-                    pdf.set_xy(name_curr_x, name_curr_y)
+                    pdf.set_font("Arial", '', 8) 
+                    pdf.set_xy(c4_val_x, curr_y)
                     pdf.cell(30, row_h, name_str, border=0, align='R')
-                
-                pdf.set_xy(name_curr_x + 30, name_curr_y) # Reset x, y
                 if not is_bold: pdf.set_font("Arial", '', 9) 
                 
             elif c4_lbl == "Bank A/c. No.":
                 pdf.set_font("Arial", '', 8) 
+                pdf.set_xy(c4_val_x, curr_y)
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
                 if not is_bold: pdf.set_font("Arial", '', 9) 
             else:
+                pdf.set_xy(c4_val_x, curr_y)
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
-        pdf.ln()
+                
+        # CRUCIAL: Manually shift Y to next row to completely block overlap bug
+        pdf.set_xy(10, curr_y + row_h)
 
     draw_row("Working Days", str(working_days_val), 
              "Basic Salary", f"{basic_salary:,.2f}", 
@@ -568,7 +574,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
              
     draw_row("PL", str(sd['pl_used']), 
              "M.A.", f"{ma:,.2f}", 
-             "Other/Adv./Loan", f"{sd['advance']:,.2f}", 
+             "Other/Adv./Absent", f"{total_adv_absent:,.2f}", 
              "Bank Name", bank_name) 
              
     draw_row("Month Days", str(month_days_val), 
@@ -630,9 +636,6 @@ with st.sidebar:
     df_hist_sidebar = load_salary_history(emp_sidebar_name)
     has_history = not df_hist_sidebar.empty
     
-    # ========================================================
-    # ADMIN PROFILE LOGIC
-    # ========================================================
     if emp_sidebar_name == "Administrator":
         pass 
 
@@ -975,7 +978,7 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # --- FIXED: LWP Calculation applies Grace Period directly ---
+        # 120 Mins Grace Period is properly adjusted here!
         lwp_val = round((deductible_mins / 60.0) * hr_rate)
         
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
