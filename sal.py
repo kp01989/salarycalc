@@ -18,8 +18,8 @@ st.set_page_config(page_title="Salary Management System", layout="wide")
 month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 month_dict = {m: i+1 for i, m in enumerate(month_order)}
 
-# FIREBASE DATABASE URL (Permanent Cloud Storage)
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
+PROFILE_FILE = "employee_profiles.json" 
 
 # ==========================================
 # CUSTOM JAVASCRIPT
@@ -98,7 +98,6 @@ if 'flash_msg' not in st.session_state:
 # 4. Firebase Cloud Database Functions
 # ==========================================
 def get_emp_key(name):
-    # Firebase keys cannot contain certain special characters
     if not name: return "Unknown"
     return name.replace(".", "").replace("#", "").replace("$", "").replace("[", "").replace("]", "").strip()
 
@@ -131,7 +130,6 @@ def load_salary_history(emp_name):
 def save_salary_history(emp_name, df):
     emp_key = get_emp_key(emp_name)
     try:
-        # Convert df to json records correctly handling data types
         records = json.loads(df.to_json(orient='records'))
         requests.put(f"{FIREBASE_URL}/salary_history/{emp_key}.json", json=records)
     except Exception as e:
@@ -510,11 +508,32 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         
         if c4_lbl != "MERGE_DISCLAIMER":
             pdf.cell(27, row_h, c4_lbl, border=1)
+            
             if c4_lbl == "Sr No":
                 pdf.set_font("Arial", '', 8.5) 
                 pdf.cell(30, row_h, c4_val, border=1, align='C')
                 if not is_bold: pdf.set_font("Arial", '', 9) 
-            elif c4_lbl in ["Bank Name", "Bank A/c. No."]:
+            
+            # --- BANK NAME WRAP FIX ---
+            elif c4_lbl == "Bank Name":
+                name_curr_x = pdf.get_x()
+                name_curr_y = pdf.get_y()
+                pdf.cell(30, row_h, "", border=1) # Border draw
+                
+                name_str = str(c4_val).strip()
+                if len(name_str) > 13:
+                    pdf.set_font("Arial", '', 5.5) 
+                    pdf.set_xy(name_curr_x, name_curr_y + 1.5)
+                    pdf.multi_cell(30, 2.5, name_str, border=0, align='R')
+                else:
+                    pdf.set_font("Arial", '', 8)
+                    pdf.set_xy(name_curr_x, name_curr_y)
+                    pdf.cell(30, row_h, name_str, border=0, align='R')
+                
+                pdf.set_xy(name_curr_x + 30, name_curr_y) # Reset x, y
+                if not is_bold: pdf.set_font("Arial", '', 9) 
+                
+            elif c4_lbl == "Bank A/c. No.":
                 pdf.set_font("Arial", '', 8) 
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
                 if not is_bold: pdf.set_font("Arial", '', 9) 
@@ -956,7 +975,8 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        lwp_val = round((total_late_out_mins / 60.0) * hr_rate)
+        # --- FIXED: LWP Calculation applies Grace Period directly ---
+        lwp_val = round((deductible_mins / 60.0) * hr_rate)
         
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
         in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
