@@ -341,7 +341,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             
     return output.getvalue()
 
-# === PDF GENERATOR (LANDSCAPE WITH EXACT ZERO FIELDS) ===
+# === PDF GENERATOR (LANDSCAPE WITH EXACT BOX FIX) ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     sd = slip_data
     if profile is None: profile = {}
@@ -383,20 +383,23 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     
     # 2. AUTO SALARY CALCULATION & MATH BALANCE
     basic_salary = sd['ctc'] * 0.60
-    ca = 0.00 # Requested as 0.00
     da = 0.00
     hra = 0.00 
+    ca = 0.00
     ea = 0.00
     ma = 0.00
     
-    gross_salary = basic_salary + da + hra + ca + ea + ma + sd['ot_sal'] 
+    # --- FIXED: Gross Salary = Actual Salary + OT Salary ---
+    gross_salary = sd['actual_salary'] + sd['ot_sal'] 
     
     pf_fund = 0.00
     esi_cont = 0.00
     lwp_fund = sd.get('lwp_val', 0.0)
     
-    # Restored to standard advance (no absent padding)
     total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
+    
+    # --- FIXED: Net Salary = Gross Salary - Total Deduction ---
+    net_salary = gross_salary - total_deduct
     
     sr_no = f"{year_val}{month_str}-12345"
     adv_bonus = 0.00
@@ -478,7 +481,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     row_h = 7.5 
     
     def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False, c3_subtext=None):
-        curr_y = pdf.get_y() 
+        curr_y = pdf.get_y() # Capture actual Y to prevent overlap
         
         if is_bold:
             pdf.set_font("Arial", 'B', 10)
@@ -539,6 +542,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
                 pdf.set_xy(c4_val_x, curr_y)
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
                 
+        # CRUCIAL: Manually shift Y to next row to completely block overlap bug
         pdf.set_xy(10, curr_y + row_h)
 
     draw_row("Working Days", str(working_days_val), 
@@ -579,7 +583,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     draw_row("Actual Salary", f"{sd['actual_salary']:,.2f}", 
              "Gross Salary", f"{gross_salary:,.2f}", 
              "Total Deduction", f"{total_deduct:,.2f}", 
-             "Net Salary", f"{sd['in_hand_salary']:,.2f}", is_bold=True)
+             "Net Salary", f"{net_salary:,.2f}", is_bold=True)
              
     pdf.set_font("Arial", '', 9)
     pdf.cell(50, row_h, "", border=1) 
