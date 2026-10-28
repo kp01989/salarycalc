@@ -341,7 +341,7 @@ def generate_excel_slip(slip_data, emp_name, month_str, year_val):
             
     return output.getvalue()
 
-# === PDF GENERATOR (LANDSCAPE WITH EXACT BOX FIX) ===
+# === PDF GENERATOR (LANDSCAPE WITH EXACT ZERO FIELDS) ===
 def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     sd = slip_data
     if profile is None: profile = {}
@@ -383,25 +383,20 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     
     # 2. AUTO SALARY CALCULATION & MATH BALANCE
     basic_salary = sd['ctc'] * 0.60
-    ca = sd['ctc'] * 0.40 # Balance remaining 40% here so Gross aligns properly
+    ca = 0.00 # Requested as 0.00
     da = 0.00
     hra = 0.00 
     ea = 0.00
     ma = 0.00
     
-    gross_salary = sd['ctc'] + sd['ot_sal'] 
+    gross_salary = basic_salary + da + hra + ca + ea + ma + sd['ot_sal'] 
     
     pf_fund = 0.00
     esi_cont = 0.00
     lwp_fund = sd.get('lwp_val', 0.0)
     
-    # Calculate exact deduction missing (for Absent days) to make Math PERFECT
-    expected_deduct = gross_salary - sd['in_hand_salary']
-    known_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
-    absent_ded_val = max(0, expected_deduct - known_deduct)
-    
-    total_adv_absent = sd['advance'] + absent_ded_val
-    total_deduct = known_deduct + absent_ded_val
+    # Restored to standard advance (no absent padding)
+    total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
     
     sr_no = f"{year_val}{month_str}-12345"
     adv_bonus = 0.00
@@ -483,7 +478,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     row_h = 7.5 
     
     def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False, c3_subtext=None):
-        curr_y = pdf.get_y() # Capture actual Y to prevent overlap
+        curr_y = pdf.get_y() 
         
         if is_bold:
             pdf.set_font("Arial", 'B', 10)
@@ -544,7 +539,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
                 pdf.set_xy(c4_val_x, curr_y)
                 pdf.cell(30, row_h, c4_val, border=1, align='R')
                 
-        # CRUCIAL: Manually shift Y to next row to completely block overlap bug
         pdf.set_xy(10, curr_y + row_h)
 
     draw_row("Working Days", str(working_days_val), 
@@ -574,7 +568,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
              
     draw_row("PL", str(sd['pl_used']), 
              "M.A.", f"{ma:,.2f}", 
-             "Other/Adv./Absent", f"{total_adv_absent:,.2f}", 
+             "Other/Adv./Loan", f"{sd['advance']:,.2f}", 
              "Bank Name", bank_name) 
              
     draw_row("Month Days", str(month_days_val), 
@@ -978,7 +972,6 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # 120 Mins Grace Period is properly adjusted here!
         lwp_val = round((deductible_mins / 60.0) * hr_rate)
         
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
