@@ -972,7 +972,6 @@ if save_clicked:
         base_sal = ctc_salary - gratuity - bonus
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         
-        # 120 Mins Grace Period calculation
         lwp_val = round((deductible_mins / 60.0) * hr_rate)
         
         total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
@@ -1035,7 +1034,9 @@ if save_clicked:
             save_salary_history(emp_name, new_rec)
             
         st.session_state['form_key'] += 1
-        st.session_state['flash_msg'] = f"✅ Data Saved to Cloud! Name: {emp_name} | LWP Deduction: ₹ {int(lwp_val):,} | In Hand Salary: ₹ {int(in_hand_salary):,}"
+        
+        # --- NEW: Updated Flash Message ---
+        st.session_state['flash_msg'] = f"✅ Data Saved to Cloud! Name: {emp_name} | PL Balance: {final_pl_balance} | OT Salary: ₹ {int(ot_salary):,} | LWP Deduction: ₹ {int(lwp_val):,} | In Hand Salary: ₹ {int(in_hand_salary):,}"
         st.rerun()
 
 # ==========================================
