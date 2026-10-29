@@ -969,22 +969,21 @@ if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
-        # EXACT MANUAL LOGIC REPLICATED 
-        base_sal = ctc_salary - gratuity - bonus
+        # --- FIXED: ACTUAL SALARY BASE LOGIC ---
+        actual_salary_val = ctc_salary - gratuity - bonus
+        base_sal = actual_salary_val 
         
-        # Per hour & Per minute rates
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
         min_rate = hr_rate / 60.0 if work_hrs > 0 else 0
         
-        # LWP Split into Hrs and Mins
         deduct_hrs = deductible_mins // 60
         deduct_rem_mins = deductible_mins % 60
         
         lwp_val = round((deduct_hrs * hr_rate) + (deduct_rem_mins * min_rate))
         ot_salary = round((total_ot_mins / 60.0) * hr_rate) 
         
-        # Perfect Gross and Net Math
-        gross_salary_calc = ctc_salary + ot_salary
+        # --- EXACT MATH LOGIC ---
+        gross_salary_calc = actual_salary_val + ot_salary
         total_deductions_calc = lwp_val + pt_tax + tds + esic + advance + food
         in_hand_salary = round(gross_salary_calc - total_deductions_calc)
         
@@ -996,7 +995,7 @@ if save_clicked:
             "slip_data": {
                 "work_hrs_str": f"{int(work_hrs)}:00",
                 "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
-                "actual_salary": ctc_salary,
+                "actual_salary": actual_salary_val, # FIXED HERE
                 "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
                 "pl_used": used_pl,
                 "pl_balance": final_pl_balance,
