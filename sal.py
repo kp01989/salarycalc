@@ -381,7 +381,7 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         
     days_absent_val = max(0, working_days_val - int(days_present_val))
     
-    # 2. AUTO SALARY CALCULATION & MATH BALANCE
+    # 2. AUTO SALARY CALCULATION & EXACT MATH BALANCE
     basic_salary = sd['ctc'] * 0.60
     da = 0.00
     hra = 0.00 
@@ -969,15 +969,25 @@ if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
+        # EXACT MANUAL LOGIC REPLICATED 
         base_sal = ctc_salary - gratuity - bonus
+        
+        # Per hour & Per minute rates
         hr_rate = base_sal / work_hrs if work_hrs > 0 else 0
+        min_rate = hr_rate / 60.0 if work_hrs > 0 else 0
         
-        lwp_val = round((deductible_mins / 60.0) * hr_rate)
+        # LWP Split into Hrs and Mins
+        deduct_hrs = deductible_mins // 60
+        deduct_rem_mins = deductible_mins % 60
         
-        total_earned_exact = (total_pay_hrs_mins / 60.0) * hr_rate
-        in_hand_salary = round(total_earned_exact - food - pt_tax - tds - esic - advance)
-        
+        lwp_val = round((deduct_hrs * hr_rate) + (deduct_rem_mins * min_rate))
         ot_salary = round((total_ot_mins / 60.0) * hr_rate) 
+        
+        # Perfect Gross and Net Math
+        gross_salary_calc = ctc_salary + ot_salary
+        total_deductions_calc = lwp_val + pt_tax + tds + esic + advance + food
+        in_hand_salary = round(gross_salary_calc - total_deductions_calc)
+        
         pay_salary_val = in_hand_salary - ot_salary
         bank_salary_val = in_hand_salary + difference
         
@@ -986,7 +996,7 @@ if save_clicked:
             "slip_data": {
                 "work_hrs_str": f"{int(work_hrs)}:00",
                 "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
-                "actual_salary": ctc_salary - gratuity - bonus,
+                "actual_salary": ctc_salary,
                 "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
                 "pl_used": used_pl,
                 "pl_balance": final_pl_balance,
@@ -1034,8 +1044,6 @@ if save_clicked:
             save_salary_history(emp_name, new_rec)
             
         st.session_state['form_key'] += 1
-        
-        # --- NEW: Updated Flash Message ---
         st.session_state['flash_msg'] = f"✅ Data Saved to Cloud! Name: {emp_name} | PL Balance: {final_pl_balance} | OT Salary: ₹ {int(ot_salary):,} | LWP Deduction: ₹ {int(lwp_val):,} | In Hand Salary: ₹ {int(in_hand_salary):,}"
         st.rerun()
 
