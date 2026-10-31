@@ -95,7 +95,7 @@ if 'flash_msg' not in st.session_state:
     st.session_state['flash_msg'] = None
 
 # ==========================================
-# 4. Firebase Cloud Database Functions
+# 4. Helper Functions & Firebase Config
 # ==========================================
 def get_emp_key(name):
     if not name: return "Unknown"
@@ -150,6 +150,24 @@ def format_mins_to_hrs(val):
     except:
         return str(val)
 
+def reorder_columns(df):
+    """Ensure dataframe columns are ordered exactly as requested."""
+    if df.empty: return df
+    
+    desired_cols = [
+        "Date", "Name", "Month", "Year", "CTC", "Working Hrs", "Present Hrs",
+        "Late Hrs", "Out Hrs", "OT Hrs", "Final Present Hrs", "Total Pay Hrs",
+        "Opening PL", "PL Used", "PL Balance", "OT Salary", "Net Salary",
+        "In Hand Salary", "Food", "Gratuity", "PT", "TDS", "ESIC",
+        "Advance", "Bonus", "Difference"
+    ]
+    
+    existing_cols = [col for col in desired_cols if col in df.columns]
+    remaining_cols = [col for col in df.columns if col not in existing_cols]
+    
+    # Return desired columns first, then append any remaining (like LWP)
+    return df[existing_cols + remaining_cols]
+
 def clean_legacy_columns(df):
     if df.empty: return df
     if 'Std Hrs' in df.columns:
@@ -180,7 +198,7 @@ def clean_legacy_columns(df):
         df['LWP'] = 0.0
         
     df = df.loc[:, ~df.columns.duplicated()]
-    return df
+    return reorder_columns(df)
 
 def parse_firebase_time(time_str):
     if pd.isna(time_str) or str(time_str).strip() == "":
@@ -358,7 +376,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     bank_name = profile.get("bank_name", "-")
     bank_ac = profile.get("bank_ac", "-")
     
-    # 1. DYNAMIC DAYS
     month_num = month_dict.get(month_str, 1)
     month_days_val = calendar.monthrange(int(year_val), month_num)[1]
     
@@ -381,7 +398,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         
     days_absent_val = max(0, working_days_val - int(days_present_val))
     
-    # 2. AUTO SALARY CALCULATION & EXACT MATH BALANCE
     basic_salary = sd['ctc'] * 0.60
     da = 0.00
     hra = 0.00 
@@ -406,7 +422,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     
     pdf.set_margins(10, 10, 10)
     
-    # 1. HEADER
     logo_url = "https://www.laxmidiamond.com/images/logo.png" 
     logo_path = "temp_logo.png"
     
@@ -444,7 +459,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     
     pdf.rect(10, 9, 277, 18)
     
-    # 2. EMPLOYEE DETAILS SECTION
     y_start = 27
     pdf.set_xy(10, y_start)
     
@@ -468,7 +482,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
     x, y = pdf.get_x(), pdf.get_y()
     pdf.line(10, y, 287, y)
     
-    # 3. MAIN TABLE 
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(50, 7, "Section : Pricing", border='LRT')
     pdf.cell(85, 7, "Earning", border='LRT')
@@ -485,15 +498,12 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         else:
             pdf.set_font("Arial", '', 9)
             
-        # Col 1
         pdf.cell(32, row_h, c1_lbl, border=1)
         pdf.cell(18, row_h, c1_val, border=1, align='R')
         
-        # Col 2
         pdf.cell(55, row_h, c2_lbl, border=1)
         pdf.cell(30, row_h, c2_val, border=1, align='R')
         
-        # Col 3 (LWP Subtext Fix)
         c3_x = pdf.get_x()
         pdf.cell(55, row_h, "", border=1) 
         pdf.set_xy(c3_x, curr_y + 1)
@@ -506,7 +516,6 @@ def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
         pdf.set_xy(c3_x + 55, curr_y)
         pdf.cell(30, row_h, c3_val, border=1, align='R')
         
-        # Col 4
         if c4_lbl != "MERGE_DISCLAIMER":
             c4_lbl_x = pdf.get_x()
             pdf.cell(27, row_h, c4_lbl, border=1)
@@ -969,7 +978,6 @@ if save_clicked:
     if not emp_sidebar_name: 
         st.error("Please enter Employee Name in the sidebar!")
     else:
-        # --- FIXED: ACTUAL SALARY BASE LOGIC ---
         actual_salary_val = ctc_salary - gratuity - bonus
         base_sal = actual_salary_val 
         
@@ -982,9 +990,9 @@ if save_clicked:
         lwp_val = round((deduct_hrs * hr_rate) + (deduct_rem_mins * min_rate))
         ot_salary = round((total_ot_mins / 60.0) * hr_rate) 
         
-        # --- EXACT MATH LOGIC ---
         gross_salary_calc = actual_salary_val + ot_salary
         total_deductions_calc = lwp_val + pt_tax + tds + esic + advance + food
+        
         in_hand_salary = round(gross_salary_calc - total_deductions_calc)
         
         pay_salary_val = in_hand_salary - ot_salary
@@ -995,7 +1003,7 @@ if save_clicked:
             "slip_data": {
                 "work_hrs_str": f"{int(work_hrs)}:00",
                 "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
-                "actual_salary": actual_salary_val, # FIXED HERE
+                "actual_salary": actual_salary_val, 
                 "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
                 "pl_used": used_pl,
                 "pl_balance": final_pl_balance,
@@ -1021,9 +1029,11 @@ if save_clicked:
             "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
             "OT Salary": ot_salary, "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary, 
             "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic, 
-            "Advance": advance, "LWP": lwp_val, "Bonus": bonus, "Difference": difference
+            "Advance": advance, "Bonus": bonus, "Difference": difference,
+            "LWP": lwp_val # Moved to match requested order format
         }
         new_rec = pd.DataFrame([new_rec_dict])
+        new_rec = reorder_columns(new_rec)
         
         df_existing = load_salary_history(emp_name)
         if not df_existing.empty:
@@ -1038,6 +1048,7 @@ if save_clicked:
                 df_combined = recalculate_future_pl(df_combined, updated_idx)
             
             df_combined = df_combined.drop(columns=['Month_Num'])
+            df_combined = reorder_columns(df_combined)
             save_salary_history(emp_name, df_combined)
         else: 
             save_salary_history(emp_name, new_rec)
@@ -1094,6 +1105,7 @@ with st.container(border=True):
                 df_s = clean_legacy_columns(df_s)
                 res = df_s[(df_s['Month'].str.strip() == search_m) & (df_s['Year'] == search_y)]
                 if not res.empty:
+                    res = reorder_columns(res)
                     res.index = range(1, len(res) + 1)
                     st.dataframe(res, use_container_width=True, column_config=table_format_config)
                 else: 
@@ -1118,13 +1130,7 @@ if emp_sidebar_name:
             else:
                 h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
 
-        cols = list(h_df.columns)
-        if 'Opening PL' in cols and 'PL Used' in cols and 'PL Balance' in cols:
-            if 'Total Pay Hrs' in cols and 'Final Present Hrs' in cols:
-                if cols.index('Total Pay Hrs') != cols.index('Final Present Hrs') + 1:
-                    cols.insert(cols.index('Final Present Hrs') + 1, cols.pop(cols.index('Total Pay Hrs')))
-            cols.insert(cols.index('PL Used'), cols.pop(cols.index('Opening PL')))
-            h_df = h_df[cols]
+        h_df = reorder_columns(h_df)
 
         def highlight_salary_columns(col):
             if col.name == 'Net Salary':
