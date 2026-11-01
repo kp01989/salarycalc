@@ -62,7 +62,6 @@ def get_all_employees():
     except Exception:
         return []
 
-# --- ADVANCED HOLIDAY FUNCTIONS ---
 def load_holidays_data():
     try:
         res = requests.get(f"{FIREBASE_URL}/holidays_list.json")
@@ -79,7 +78,6 @@ def save_holidays_data(data):
         pass
 
 def get_flat_holiday_dates():
-    """Converts From-To date ranges into a flat dictionary of single dates for fast attendance checking"""
     hol_data = load_holidays_data()
     flat_dict = {}
     for hid, hinfo in hol_data.items():
@@ -219,7 +217,6 @@ def time_to_float(time_str):
     except:
         return 0.0
 
-# --- Session States ---
 current_month_str = get_sheet_name(date.today())
 
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
@@ -237,9 +234,6 @@ def on_top_name_change():
 
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
 
-# ==========================================
-# CUSTOM JAVASCRIPT
-# ==========================================
 components.html(
     """
     <script>
@@ -275,12 +269,21 @@ st.markdown("""
         .stDownloadButton button { margin-top: 27px; }
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
         div[data-testid="InputInstructions"] { display: none !important; }
+        
+        /* TABS FONT SIZE FIX */
+        .stTabs [data-baseweb="tab"] {
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+        }
+        .stTabs [data-baseweb="tab"] p {
+            font-size: 22px !important;
+            font-weight: bold !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("📅 Advanced Attendance Tracker")
 
-# --- Flash Message ---
 msg_placeholder = st.empty()
 has_msg = False
 if st.session_state.flash_msg:
@@ -290,14 +293,8 @@ if st.session_state.flash_msg:
 
 formatted_name = st.session_state.top_emp_input.strip().title()
 
-# ==========================================
-# TABS SETUP
-# ==========================================
 tab1, tab2, tab3, tab4 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History"])
 
-# ==========================================
-# TAB 1: ADD ATTENDANCE
-# ==========================================
 with tab1:
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
     st.divider()
@@ -480,9 +477,6 @@ with tab1:
             except Exception as e:
                 st.error(f"Error reading file: {e}")
 
-# ==========================================
-# TAB 2: DAILY ROSTER (BULK DAY ENTRY)
-# ==========================================
 with tab2:
     st.subheader("👥 Daily Roster (Mark all employees for a day)")
     roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
@@ -553,9 +547,6 @@ with tab2:
                     st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
                     st.rerun()
 
-# ==========================================
-# TAB 3: HOLIDAY CALENDAR (RANGE, EDIT, DELETE & ADMIN ONLY)
-# ==========================================
 with tab3:
     st.subheader("🌴 Holiday Calendar")
     hol_data = load_holidays_data()
@@ -658,9 +649,6 @@ with tab3:
         else:
             st.write("No holidays declared yet.")
 
-# ==========================================
-# TAB 4: DASHBOARD & HISTORY
-# ==========================================
 with tab4:
     if not formatted_name or formatted_name == "Administrator":
         st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
@@ -1030,7 +1018,6 @@ with tab4:
                             st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
                             st.rerun()
 
-# --- 3 Second Timer to clear message ---
 if has_msg:
     tm.sleep(3)
     msg_placeholder.empty()
