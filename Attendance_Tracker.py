@@ -557,12 +557,11 @@ with tab2:
 # TAB 3: HOLIDAY CALENDAR (RANGE, EDIT, DELETE & ADMIN ONLY)
 # ==========================================
 with tab3:
-    if formatted_name != "Administrator":
-        st.error("🔒 Only Administrator has access to manage holidays.")
-        st.info("👆 Please type 'Administrator' in the Employee Name box to unlock this tab.")
-    else:
-        st.subheader("🌴 Manage Public Holidays (From - To)")
-        hol_data = load_holidays_data()
+    st.subheader("🌴 Holiday Calendar")
+    hol_data = load_holidays_data()
+    
+    if formatted_name == "Administrator":
+        st.info("🔓 You have Administrator access to manage holidays.")
         
         with st.form("add_holiday_form"):
             hc1, hc2, hc3, hc4 = st.columns([1.5, 1.5, 2, 1])
@@ -584,7 +583,7 @@ with tab3:
                 st.error("⚠️ Please enter a Reason!")
             else:
                 days_count = (t_date - f_date).days + 1
-                unique_id = str(uuid.uuid4())[:8] # Generate short unique ID
+                unique_id = str(uuid.uuid4())[:8] 
                 
                 hol_data[unique_id] = {
                     "from": f_date.strftime("%d/%m/%Y"),
@@ -639,6 +638,25 @@ with tab3:
                                 st.session_state[f"edit_mode_{hid}"] = False
                                 st.session_state.flash_msg = "✅ Holiday updated!"
                                 st.rerun()
+    else:
+        st.info("🔒 Only Administrator can add, edit or delete holidays.")
+        if hol_data:
+            st.write("### 📅 Upcoming / Declared Holidays")
+            hol_list = []
+            for hid, hinfo in hol_data.items():
+                hol_list.append({
+                    "Reason": hinfo['reason'],
+                    "From Date": hinfo['from'],
+                    "To Date": hinfo['to'],
+                    "Total Days": hinfo['days']
+                })
+            df_hol = pd.DataFrame(hol_list)
+            df_hol['SortDate'] = pd.to_datetime(df_hol['From Date'], format='%d/%m/%Y', errors='coerce')
+            df_hol = df_hol.sort_values('SortDate').drop(columns=['SortDate']).reset_index(drop=True)
+            df_hol.index = range(1, len(df_hol) + 1)
+            st.dataframe(df_hol, use_container_width=True)
+        else:
+            st.write("No holidays declared yet.")
 
 # ==========================================
 # TAB 4: DASHBOARD & HISTORY
