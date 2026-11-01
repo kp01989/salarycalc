@@ -274,7 +274,6 @@ with tab1:
         with col_input1:
             st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
         
-        # Reload name to catch immediate state change
         formatted_name = st.session_state.top_emp_input.strip().title()
 
         if formatted_name == "Administrator":
@@ -363,6 +362,26 @@ with tab1:
         1. File must have columns: `Employee Name`, `Date` (DD/MM/YYYY), `In Time` (HH:MM), `Out Time` (HH:MM), `Status` (Optional).
         2. Missing times will default to 08:00 and 18:00. Missing Status defaults to Regular.
         """)
+        
+        # --- NEW TEMPLATE DOWNLOAD FEATURE ---
+        template_df = pd.DataFrame({
+            "Employee Name": ["Manoj Kumar", "Ramesh Patel", "Suresh Desai"],
+            "Date": ["01/11/2026", "02/11/2026", "03/11/2026"],
+            "In Time": ["08:00", "09:15", ""],
+            "Out Time": ["18:00", "18:00", ""],
+            "Status": ["Regular", "Half-Day", "PL"]
+        })
+        csv_template = template_df.to_csv(index=False).encode('utf-8')
+        
+        st.download_button(
+            label="📥 Download CSV Template",
+            data=csv_template,
+            file_name="Attendance_Template.csv",
+            mime="text/csv",
+        )
+        st.write("")
+        # -------------------------------------
+
         uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
         
         if uploaded_file is not None:
@@ -417,7 +436,7 @@ with tab1:
                                     df_db = pd.concat([df_db, pd.DataFrame(new_rows)], ignore_index=True)
                                     save_data(df_db, sheet_n)
                                     
-                            except Exception as e:
+                            except Exception:
                                 pass
                                 
                         st.session_state.flash_msg = f"✅ Successfully uploaded {success_count} records!"
