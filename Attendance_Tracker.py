@@ -6,7 +6,7 @@ import io
 import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
-import streamlit.components.v1 as components  # <-- AHIYA NAVU IMPORT CHE
+import streamlit.components.v1 as components 
 
 # ==========================================
 # 1. FIREBASE CLOUD DATABASE URL
@@ -176,6 +176,8 @@ if 'flash_msg' not in st.session_state:
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
     if val:
+        st.session_state.filter_month = "All Months" # <-- FIXED: Shows all data for the user
+    else:
         st.session_state.filter_month = current_month_str
 
 st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
@@ -192,17 +194,12 @@ components.html(
         script.id = 'custom-enter-tab';
         script.innerHTML = `
             document.addEventListener('keydown', function(e) {
-                // Jo Enter dabavyu hoy ane cursor Input box ma hoy
                 if (e.key === 'Enter') {
                     let active = document.activeElement;
                     if (active && active.tagName === 'INPUT') {
-                        e.preventDefault(); // Page refresh ke direct submit thavu atkaave
-                        
-                        // Badha Inputs ane Save Button nu list banave
+                        e.preventDefault(); 
                         let focusable = Array.from(document.querySelectorAll('input:not([disabled]), button:not([disabled])'));
                         let index = focusable.indexOf(active);
-                        
-                        // Cursor ne exact next box ma dhakeli de
                         if (index > -1 && index < focusable.length - 1) {
                             focusable[index + 1].focus();
                         }
@@ -231,7 +228,6 @@ st.markdown("""
             border-radius: 12px;
             border: 1px solid #303d4f;
         }
-        /* Hide the "Press Enter to submit form" text */
         div[data-testid="InputInstructions"] {
             display: none !important;
         }
@@ -671,3 +667,4 @@ else:
 if has_msg:
     tm.sleep(3)
     msg_placeholder.empty()
+```<FollowUp></FollowUp><ElicitationsGroup></ElicitationsGroup>
