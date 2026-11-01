@@ -30,7 +30,6 @@ def get_all_sheet_names():
     except Exception:
         pass
     
-    # FALLBACK: If Firebase shallow query blocks root access, manually generate last 12 months
     fallback_sheets = []
     d = date.today()
     for _ in range(12):
@@ -72,18 +71,26 @@ def parse_time(time_val):
         except ValueError:
             return datetime.strptime("00:00", "%H:%M")
 
-def calculate_times(in_time, out_time, day_str):
+def calculate_times(in_time, out_time, day_str, status="Regular"):
+    if status in ["PL", "LWP", "Absent"]:
+        return "00:00", "00:00", "00:00", "00:00"
+
     t1 = parse_time(in_time)
     t2 = parse_time(out_time)
     std_in = datetime.strptime(STANDARD_IN, "%H:%M")
     std_out = datetime.strptime(STANDARD_OUT, "%H:%M")
     
     if t2 < t1:
-        return "", "", "", ""
+        return "00:00", "00:00", "00:00", "00:00"
         
     total_worked_mins = (t2 - t1).seconds // 60
     
-    if day_str == "Sun":
+    if status == "Half-Day":
+        reg_mins = total_worked_mins
+        ot_mins = 0
+        late_mins = 0
+        out_early_mins = 0
+    elif day_str == "Sun":
         reg_mins = 0
         ot_mins = total_worked_mins 
         late_mins = 0
@@ -106,8 +113,7 @@ def calculate_times(in_time, out_time, day_str):
         out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
     
     def mins_to_str(m):
-        if m <= 0:
-            return ""
+        if m <= 0: return "00:00"
         h, m = divmod(int(m), 60)
         return f"{h:02d}:{m:02d}"
         
@@ -119,7 +125,7 @@ def calculate_times(in_time, out_time, day_str):
     return total_hrs, late_hrs, out_hrs, ot_hrs
 
 def load_data(sheet_name):
-    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
+    columns = ["Employee Name", "Date", "Day", "Status", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     try:
         response = requests.get(url)
@@ -133,17 +139,22 @@ def load_data(sheet_name):
             for col in columns:
                 if col not in df.columns:
                     df[col] = ""
+                    if col == "Status": df[col] = "Regular"
+                    if col in ["Late Hours", "Out Hours", "Total Hours", "OT Hours"]: df[col] = "00:00"
+                    if col in ["In Time"]: df[col] = "08:00"
+                    if col in ["Out Time"]: df[col] = "18:00"
                     
             for idx, row in df.iterrows():
                 in_t = str(row.get("In Time", "08:00"))
                 out_t = str(row.get("Out Time", "18:00"))
                 day_s = str(row.get("Day", "Mon"))
+                status = str(row.get("Status", "Regular"))
                 
                 if pd.isna(row.get("In Time")) or in_t.lower() == 'nan':
                     continue
                     
                 try:
-                    tot, late, out_e, ot = calculate_times(in_t, out_t, day_s)
+                    tot, late, out_e, ot = calculate_times(in_t, out_t, day_s, status)
                     df.at[idx, "Total Hours"] = tot
                     df.at[idx, "Late Hours"] = late
                     df.at[idx, "Out Hours"] = out_e
@@ -165,23 +176,24 @@ def save_data(df, sheet_name):
     except Exception:
         pass
 
+def time_to_float(time_str):
+    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
+    try:
+        parts = str(time_str).split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        return h + (m / 60.0)
+    except:
+        return 0.0
+
 # --- Session States ---
 current_month_str = get_sheet_name(date.today())
 
-if 'last_edited' not in st.session_state:
-    st.session_state.last_edited = None
-
-if 'filter_month' not in st.session_state:
-    st.session_state.filter_month = current_month_str
-
-if 'top_emp_input' not in st.session_state:
-    st.session_state.top_emp_input = ""
-    
-if 'form_reset_counter' not in st.session_state:
-    st.session_state.form_reset_counter = 0
-
-if 'flash_msg' not in st.session_state:
-    st.session_state.flash_msg = ""
+if 'last_edited' not in st.session_state: st.session_state.last_edited = None
+if 'filter_month' not in st.session_state: st.session_state.filter_month = current_month_str
+if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
+if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
+if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
 
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
@@ -190,10 +202,10 @@ def on_top_name_change():
     else:
         st.session_state.filter_month = current_month_str
 
-st.set_page_config(page_title="Attendance Tracker", layout="wide", page_icon="📅")
+st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
 
 # ==========================================
-# CUSTOM JAVASCRIPT: "ENTER" NE "TAB" TARIKE KAM KARAVVA
+# CUSTOM JAVASCRIPT
 # ==========================================
 components.html(
     """
@@ -226,111 +238,14 @@ components.html(
 
 st.markdown("""
     <style>
-        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] {
-            max-width: 320px;
-        }
-        .stDownloadButton button {
-            margin-top: 27px;
-        }
-        [data-testid="stMetric"] {
-            background-color: #1e2530;
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid #303d4f;
-        }
-        div[data-testid="InputInstructions"] {
-            display: none !important;
-        }
+        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
+        .stDownloadButton button { margin-top: 27px; }
+        [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
+        div[data-testid="InputInstructions"] { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📅 Daily Attendance Tracker")
-
-with st.expander("➕ Add New Entry / Search", expanded=True):
-    col_input1, col_input2 = st.columns([1.5, 2.5])
-    
-    with col_input1:
-        st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
-    
-    formatted_name = st.session_state.top_emp_input.strip().title()
-
-    if formatted_name == "Administrator":
-        all_emps = get_all_employees()
-        if all_emps:
-            st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
-
-    # --- AUTO-DATE CALCULATION LOGIC (Case Insensitive) ---
-    default_date = date.today()
-    if formatted_name and formatted_name != "Administrator":
-        df_month_check = load_data(st.session_state.filter_month)
-        if not df_month_check.empty:
-             df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
-             if not df_emp.empty:
-                  df_emp = df_emp.copy()
-                  df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
-                  latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
-                  latest_date = latest_date_row['RealDate'].date()
-                  default_date = latest_date + timedelta(days=1)
-
-    with st.form("entry_form"):
-        c1, c2, c3, c4 = st.columns([1.2, 1.2, 1.2, 2])
-        with c1:
-            entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
-            
-        dynamic_key_in = f"in_{st.session_state.form_reset_counter}"
-        dynamic_key_out = f"out_{st.session_state.form_reset_counter}"
-        
-        with c2:
-            in_time = st.time_input("In Time", value=time(8, 0), key=dynamic_key_in)
-        with c3:
-            out_time = st.time_input("Out Time", value=time(18, 0), key=dynamic_key_out)
-            
-        with c4:
-            st.write("")
-            st.write("")
-            submit = st.form_submit_button("Save Entry", type="primary")
-
-    if submit:
-        if not formatted_name:
-            st.error("Please enter an Employee Name above!")
-        elif formatted_name == "Administrator":
-            st.error("You cannot add an entry for 'Administrator'. Please type a valid name!")
-        elif out_time < in_time:
-            st.error("Out Time cannot be before In Time!")
-        else:
-            target_sheet = get_sheet_name(entry_date)
-            df_month = load_data(target_sheet)
-            
-            day_str = entry_date.strftime("%a")
-            date_str = entry_date.strftime("%d/%m/%Y")
-            
-            # Case insensitive duplicate check
-            is_duplicate = not df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()) & (df_month["Date"] == date_str)].empty
-            
-            if is_duplicate:
-                st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
-            else:
-                total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time, out_time, day_str)
-                new_entry = pd.DataFrame({
-                    "Employee Name": [formatted_name],
-                    "Date": [date_str],
-                    "Day": [day_str],
-                    "In Time": [in_time.strftime("%H:%M")],
-                    "Out Time": [out_time.strftime("%H:%M")],
-                    "Late Hours": [late_hrs],
-                    "Out Hours": [out_hrs],
-                    "Total Hours": [total_hrs],
-                    "OT Hours": [ot_hrs]
-                })
-                df_month = pd.concat([df_month, new_entry], ignore_index=True)
-                save_data(df_month, target_sheet) 
-                
-                st.session_state.filter_month = target_sheet
-                st.session_state.last_edited = f"{formatted_name}_{date_str}"
-                st.session_state.form_reset_counter += 1
-                
-                st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
-                st.rerun() 
+st.title("📅 Advanced Attendance Tracker")
 
 # --- Flash Message ---
 msg_placeholder = st.empty()
@@ -340,341 +255,600 @@ if st.session_state.flash_msg:
     has_msg = True
     st.session_state.flash_msg = "" 
 
-st.divider()
+formatted_name = st.session_state.top_emp_input.strip().title()
 
-if not formatted_name:
-    st.info("👆 Please enter a name in the box above to view or add data.")
-else:
-    all_sheets_raw = get_all_sheet_names()
-    if current_month_str not in all_sheets_raw:
-        all_sheets_raw.insert(0, current_month_str)
-    
-    available_sheets = ["All Months"] + all_sheets_raw
+# ==========================================
+# TABS SETUP
+# ==========================================
+tab1, tab2, tab3 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "📊 Dashboard & History"])
 
-    if selected_sheet := st.session_state.get('filter_month', current_month_str):
-        pass
-    selected_sheet = st.session_state.filter_month
+# ==========================================
+# TAB 1: ADD ATTENDANCE (Option Buttons for Entry Type)
+# ==========================================
+with tab1:
+    entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
+    st.divider()
 
-    if selected_sheet == "All Months":
-        df_list = []
-        for sht in get_all_sheet_names():
-            df_temp = load_data(sht)
-            if not df_temp.empty:
-                df_temp["_Original_Sheet"] = sht
-                df_temp["_Original_Index"] = df_temp.index
-                df_list.append(df_temp)
-        if df_list:
-            df_display = pd.concat(df_list, ignore_index=True)
-        else:
-            df_display = pd.DataFrame()
-    else:
-        df_display = load_data(selected_sheet)
-        if not df_display.empty:
-            df_display["_Original_Sheet"] = selected_sheet
-            df_display["_Original_Index"] = df_display.index
-
-    if not df_display.empty:
-        df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
-        df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
-        df_display = df_display.reset_index(drop=True)
+    if entry_mode == "✏️ Manual Entry":
+        col_input1, col_input2 = st.columns([1.5, 2.5])
+        with col_input1:
+            st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
         
-        df_display = df_display.fillna("") 
+        # Reload name to catch immediate state change
+        formatted_name = st.session_state.top_emp_input.strip().title()
 
-        if formatted_name != "Administrator":
-            # Case insensitive display filtering
+        if formatted_name == "Administrator":
+            all_emps = get_all_employees()
+            if all_emps: st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
+
+        default_date = date.today()
+        if formatted_name and formatted_name != "Administrator":
+            df_month_check = load_data(st.session_state.filter_month)
+            if not df_month_check.empty:
+                 df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
+                 if not df_emp.empty:
+                      df_emp = df_emp.copy()
+                      df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
+                      latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
+                      latest_date = latest_date_row['RealDate'].date()
+                      default_date = latest_date + timedelta(days=1)
+
+        with st.form("entry_form"):
+            c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.5])
+            with c1:
+                entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
+            with c2:
+                entry_status = st.selectbox("Status", ["Regular", "Half-Day", "PL", "LWP", "Absent"])
+            with c3:
+                in_time = st.time_input("In Time", value=time(8, 0), key=f"in_{st.session_state.form_reset_counter}")
+            with c4:
+                out_time = st.time_input("Out Time", value=time(18, 0), key=f"out_{st.session_state.form_reset_counter}")
+                
+            with c5:
+                st.write("")
+                st.write("")
+                submit = st.form_submit_button("Save Entry", type="primary", use_container_width=True)
+
+        if submit:
+            if not formatted_name:
+                st.error("Please enter an Employee Name above!")
+            elif formatted_name == "Administrator":
+                st.error("You cannot add an entry for 'Administrator'. Please type a valid name!")
+            elif out_time < in_time and entry_status not in ["PL", "LWP", "Absent"]:
+                st.error("Out Time cannot be before In Time!")
+            else:
+                target_sheet = get_sheet_name(entry_date)
+                df_month = load_data(target_sheet)
+                day_str = entry_date.strftime("%a")
+                date_str = entry_date.strftime("%d/%m/%Y")
+                
+                is_duplicate = not df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()) & (df_month["Date"] == date_str)].empty
+                
+                if is_duplicate:
+                    st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
+                else:
+                    total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time.strftime("%H:%M"), out_time.strftime("%H:%M"), day_str, entry_status)
+                    
+                    if entry_status in ["PL", "LWP", "Absent"]:
+                        in_t_str, out_t_str = "00:00", "00:00"
+                    else:
+                        in_t_str, out_t_str = in_time.strftime("%H:%M"), out_time.strftime("%H:%M")
+
+                    new_entry = pd.DataFrame({
+                        "Employee Name": [formatted_name],
+                        "Date": [date_str],
+                        "Day": [day_str],
+                        "Status": [entry_status],
+                        "In Time": [in_t_str],
+                        "Out Time": [out_t_str],
+                        "Late Hours": [late_hrs],
+                        "Out Hours": [out_hrs],
+                        "Total Hours": [total_hrs],
+                        "OT Hours": [ot_hrs]
+                    })
+                    df_month = pd.concat([df_month, new_entry], ignore_index=True)
+                    save_data(df_month, target_sheet) 
+                    
+                    st.session_state.filter_month = target_sheet
+                    st.session_state.last_edited = f"{formatted_name}_{date_str}"
+                    st.session_state.form_reset_counter += 1
+                    
+                    st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
+                    st.rerun()
+
+    elif entry_mode == "📂 Bulk Upload (Excel/CSV)":
+        st.subheader("📂 Upload Monthly Excel/CSV")
+        st.markdown("""
+        **Instructions:**
+        1. File must have columns: `Employee Name`, `Date` (DD/MM/YYYY), `In Time` (HH:MM), `Out Time` (HH:MM), `Status` (Optional).
+        2. Missing times will default to 08:00 and 18:00. Missing Status defaults to Regular.
+        """)
+        uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+        
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    df_upload = pd.read_csv(uploaded_file)
+                else:
+                    df_upload = pd.read_excel(uploaded_file)
+                    
+                required_cols = ["Employee Name", "Date", "In Time", "Out Time"]
+                if not all(c in df_upload.columns for c in required_cols):
+                    st.error(f"Missing required columns! Required: {required_cols}")
+                else:
+                    st.write("Preview of Uploaded Data:")
+                    st.dataframe(df_upload.head(3), use_container_width=True)
+                    
+                    if st.button("🚀 Process & Upload Bulk Data", type="primary"):
+                        success_count = 0
+                        grouped = df_upload.groupby('Date')
+                        
+                        for date_val, group in grouped:
+                            try:
+                                d_obj = pd.to_datetime(date_val, format='%d/%m/%Y', errors='coerce').date()
+                                if pd.isna(d_obj): continue
+                                
+                                sheet_n = get_sheet_name(d_obj)
+                                day_s = d_obj.strftime("%a")
+                                date_s = d_obj.strftime("%d/%m/%Y")
+                                
+                                df_db = load_data(sheet_n)
+                                new_rows = []
+                                
+                                for _, r in group.iterrows():
+                                    ename = str(r['Employee Name']).strip().title()
+                                    stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
+                                    in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
+                                    out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
+                                    
+                                    # Skip duplicates
+                                    if not df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)].empty:
+                                        continue
+                                        
+                                    tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat)
+                                    new_rows.append({
+                                        "Employee Name": ename, "Date": date_s, "Day": day_s, "Status": stat,
+                                        "In Time": in_val, "Out Time": out_val, "Late Hours": late, "Out Hours": out_e,
+                                        "Total Hours": tot, "OT Hours": ot
+                                    })
+                                    success_count += 1
+                                    
+                                if new_rows:
+                                    df_db = pd.concat([df_db, pd.DataFrame(new_rows)], ignore_index=True)
+                                    save_data(df_db, sheet_n)
+                                    
+                            except Exception as e:
+                                pass
+                                
+                        st.session_state.flash_msg = f"✅ Successfully uploaded {success_count} records!"
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
+
+# ==========================================
+# TAB 2: DAILY ROSTER (BULK DAY ENTRY)
+# ==========================================
+with tab2:
+    st.subheader("👥 Daily Roster (Mark all employees for a day)")
+    roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
+    
+    all_emp_list = get_all_employees()
+    if not all_emp_list:
+        st.info("No employees found in the database. Please add at least one entry in 'Manual Entry' first.")
+    else:
+        r_sheet = get_sheet_name(roster_date)
+        df_r_month = load_data(r_sheet)
+        r_date_str = roster_date.strftime("%d/%m/%Y")
+        r_day_str = roster_date.strftime("%a")
+        
+        existing_emps_on_date = df_r_month[df_r_month["Date"] == r_date_str]["Employee Name"].tolist() if not df_r_month.empty else []
+        pending_emps = [e for e in all_emp_list if e not in existing_emps_on_date]
+        
+        if not pending_emps:
+            st.success(f"✅ All employees are already marked for {r_date_str}.")
+        else:
+            roster_df = pd.DataFrame({
+                "Employee Name": pending_emps,
+                "Status": ["Regular"] * len(pending_emps),
+                "In Time": ["08:00"] * len(pending_emps),
+                "Out Time": ["18:00"] * len(pending_emps)
+            })
+            
+            edited_roster = st.data_editor(
+                roster_df,
+                column_config={
+                    "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Half-Day", "PL", "LWP", "Absent"], required=True),
+                    "In Time": st.column_config.TimeColumn("In Time", format="HH:mm", step=60),
+                    "Out Time": st.column_config.TimeColumn("Out Time", format="HH:mm", step=60)
+                },
+                use_container_width=True,
+                hide_index=True,
+                num_rows="dynamic"
+            )
+            
+            if st.button("💾 Save Full Roster", type="primary"):
+                new_records = []
+                for _, row in edited_roster.iterrows():
+                    emp_n = row["Employee Name"]
+                    stat = row["Status"]
+                    
+                    if stat in ["PL", "LWP", "Absent"]:
+                        in_t, out_t = "00:00", "00:00"
+                    else:
+                        try:
+                            in_t = row["In Time"].strftime("%H:%M") if isinstance(row["In Time"], time) else str(row["In Time"])
+                            out_t = row["Out Time"].strftime("%H:%M") if isinstance(row["Out Time"], time) else str(row["Out Time"])
+                        except:
+                            in_t, out_t = "08:00", "18:00"
+                    
+                    tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat)
+                    new_records.append({
+                        "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str, "Status": stat,
+                        "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
+                        "Total Hours": tot, "OT Hours": ot
+                    })
+                
+                if new_records:
+                    df_new_roster = pd.DataFrame(new_records)
+                    df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
+                    save_data(df_r_month, r_sheet)
+                    st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
+                    st.rerun()
+
+# ==========================================
+# TAB 3: DASHBOARD & HISTORY
+# ==========================================
+with tab3:
+    if not formatted_name or formatted_name == "Administrator":
+        st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
+    else:
+        all_sheets_raw = get_all_sheet_names()
+        if current_month_str not in all_sheets_raw:
+            all_sheets_raw.insert(0, current_month_str)
+        
+        available_sheets = ["All Months"] + all_sheets_raw
+
+        if selected_sheet := st.session_state.get('filter_month', current_month_str):
+            pass
+        selected_sheet = st.session_state.filter_month
+
+        if selected_sheet == "All Months":
+            df_list = []
+            for sht in get_all_sheet_names():
+                df_temp = load_data(sht)
+                if not df_temp.empty:
+                    df_temp["_Original_Sheet"] = sht
+                    df_temp["_Original_Index"] = df_temp.index
+                    df_list.append(df_temp)
+            if df_list:
+                df_display = pd.concat(df_list, ignore_index=True)
+            else:
+                df_display = pd.DataFrame()
+        else:
+            df_display = load_data(selected_sheet)
+            if not df_display.empty:
+                df_display["_Original_Sheet"] = selected_sheet
+                df_display["_Original_Index"] = df_display.index
+
+        if not df_display.empty:
+            df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
+            df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
+            df_display = df_display.reset_index(drop=True)
+            df_display = df_display.fillna("") 
+
             df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
 
-        final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
-        for c in final_display_columns:
-             if c not in df_display.columns:
-                 df_display[c] = ""
-        df_display = df_display[final_display_columns]
+            final_display_columns = ["Employee Name", "Date", "Day", "Status", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
+            for c in final_display_columns:
+                 if c not in df_display.columns:
+                     df_display[c] = ""
+            df_display = df_display[final_display_columns]
 
-    if df_display.empty:
-        st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
-    else:
-        # --- CALCULATE TOTALS FOR SUMMARY ---
-        total_reg_mins = 0
-        for val in df_display["Total Hours"]:
-            if pd.notna(val) and ":" in str(val):
-                h, m = map(int, str(val).split(":"))
-                total_reg_mins += h * 60 + m
-        reg_hours, reg_mins = divmod(total_reg_mins, 60)
-        
-        total_ot_mins = 0
-        for val in df_display["OT Hours"]:
-            if pd.notna(val) and ":" in str(val):
-                h, m = map(int, str(val).split(":"))
-                total_ot_mins += h * 60 + m
-        ot_hours, ot_mins = divmod(total_ot_mins, 60)
+        if df_display.empty:
+            st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
+        else:
+            # --- SUMMARY METRICS ---
+            total_reg_mins = 0
+            for val in df_display["Total Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_reg_mins += h * 60 + m
+            reg_hours, reg_mins = divmod(total_reg_mins, 60)
+            
+            total_ot_mins = 0
+            for val in df_display["OT Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_ot_mins += h * 60 + m
+            ot_hours, ot_mins = divmod(total_ot_mins, 60)
 
-        total_late_mins = 0
-        for val in df_display["Late Hours"]:
-            if pd.notna(val) and ":" in str(val):
-                h, m = map(int, str(val).split(":"))
-                total_late_mins += h * 60 + m
-        late_hours, late_mins = divmod(total_late_mins, 60)
+            total_late_mins = 0
+            for val in df_display["Late Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_late_mins += h * 60 + m
+            late_hours, late_mins = divmod(total_late_mins, 60)
 
-        total_out_mins = 0
-        for val in df_display["Out Hours"]:
-            if pd.notna(val) and ":" in str(val):
-                h, m = map(int, str(val).split(":"))
-                total_out_mins += h * 60 + m
-        out_hours, out_mins = divmod(total_out_mins, 60)
+            total_out_mins = 0
+            for val in df_display["Out Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_out_mins += h * 60 + m
+            out_hours, out_mins = divmod(total_out_mins, 60)
+            
+            pl_count = len(df_display[df_display["Status"] == "PL"])
+            absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
 
-        st.markdown('<div class="summary-container">', unsafe_allow_html=True)
-        st.subheader("📊 Summary")
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.metric(label="🕒 Total Regular Hours", value=f"{reg_hours:02d}:{reg_mins:02d}")
-        with m2:
-            st.metric(label="🔥 Total Overtime Hours", value=f"{ot_hours:02d}:{ot_mins:02d}")
-        with m3:
-            st.metric(label="⚠️ Total Late Hours", value=f"{late_hours:02d}:{late_mins:02d}")
-        with m4:
-            st.metric(label="🚪 Total Out Hours", value=f"{out_hours:02d}:{out_mins:02d}")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('<div class="summary-container">', unsafe_allow_html=True)
+            st.subheader(f"📊 Summary for {formatted_name}")
+            m1, m2, m3, m4, m5 = st.columns(5)
+            with m1: st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
+            with m2: st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
+            with m3: st.metric(label="⚠️ Total Late/Out Hrs", value=f"{late_hours+out_hours:02d}:{(late_mins+out_mins):02d}")
+            with m4: st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
+            with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # --- VISUAL CHART ---
+            st.write("")
+            st.subheader("📈 Daily Working Hours")
+            chart_data = df_display[['Date', 'Total Hours', 'OT Hours']].copy()
+            chart_data['Working Hrs'] = chart_data['Total Hours'].apply(time_to_float)
+            chart_data['Overtime Hrs'] = chart_data['OT Hours'].apply(time_to_float)
+            chart_data.set_index('Date', inplace=True)
+            
+            st.bar_chart(chart_data[['Working Hrs', 'Overtime Hrs']], use_container_width=True)
 
-        st.divider()
-        st.subheader("📋 Attendance Sheet")
+            st.divider()
+            st.subheader("📋 Attendance Sheet")
 
-        col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
-        with col_s1:
-            st.selectbox("Select Month to View", available_sheets, key="filter_month")
-            selected_sheet = st.session_state.filter_month
+            col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
+            with col_s1:
+                st.selectbox("Select Month to View", available_sheets, key="filter_month")
+                selected_sheet = st.session_state.filter_month
 
-        with col_s2:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
-                export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
-                
-                df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
-                worksheet = writer.sheets[export_sheet_name]
-                
-                center_align = Alignment(horizontal='center', vertical='center')
-                thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                
-                red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
-                gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
-                yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-                total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
-                
-                white_bold_font = Font(color="FFFFFF", bold=True)
-                header_font = Font(bold=True)
-                total_font = Font(bold=True, size=12)
-                
-                worksheet.merge_cells('A1:B1')
-                worksheet.merge_cells('C1:D1')
-                
-                a1 = worksheet['A1']
-                a1.value = "Employee Name :"
-                a1.fill = gray_fill
-                a1.font = header_font
-                a1.alignment = center_align
-                
-                c1 = worksheet['C1']
-                c1.value = formatted_name
-                c1.fill = yellow_fill_name
-                c1.font = header_font
-                c1.alignment = center_align
-                
-                for r in worksheet['A1:D1']:
-                    for c in r:
-                        c.border = thin_border
-                        
-                for col_idx in range(1, 9):
-                    cell = worksheet.cell(row=3, column=col_idx)
-                    cell.fill = gray_fill
-                    cell.font = header_font
-                    cell.alignment = center_align
-                    cell.border = thin_border
-                
-                day_col_idx = 2 
-                max_data_row = 3 + len(df_export)
-                
-                for row_idx in range(4, max_data_row + 1):
-                    day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
-                    is_sunday = (day_val == "Sun")
-                    for col_idx in range(1, 9):
-                        cell = worksheet.cell(row=row_idx, column=col_idx)
+            with col_s2:
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
+                    export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
+                    
+                    df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
+                    worksheet = writer.sheets[export_sheet_name]
+                    
+                    center_align = Alignment(horizontal='center', vertical='center')
+                    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+                    
+                    red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
+                    gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
+                    yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
+                    
+                    white_bold_font = Font(color="FFFFFF", bold=True)
+                    header_font = Font(bold=True)
+                    total_font = Font(bold=True, size=12)
+                    
+                    worksheet.merge_cells('A1:B1')
+                    worksheet.merge_cells('C1:D1')
+                    
+                    a1 = worksheet['A1']
+                    a1.value = "Employee Name :"
+                    a1.fill = gray_fill
+                    a1.font = header_font
+                    a1.alignment = center_align
+                    
+                    c1 = worksheet['C1']
+                    c1.value = formatted_name
+                    c1.fill = yellow_fill_name
+                    c1.font = header_font
+                    c1.alignment = center_align
+                    
+                    for r in worksheet['A1:D1']:
+                        for c in r:
+                            c.border = thin_border
+                            
+                    for col_idx in range(1, 10): 
+                        cell = worksheet.cell(row=3, column=col_idx)
+                        cell.fill = gray_fill
+                        cell.font = header_font
                         cell.alignment = center_align
                         cell.border = thin_border
-                        if is_sunday:
-                            cell.fill = red_fill
-                            cell.font = white_bold_font
-                            
-                total_row_idx = max_data_row + 2
-                worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
-                
-                worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
-                worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
-                worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
-                worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
-                worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
-                
-                for col_idx in range(1, 9):
-                    cell = worksheet.cell(row=total_row_idx, column=col_idx)
-                    cell.border = thin_border
-                    cell.fill = total_fill
-                    cell.font = total_font
-                    cell.alignment = center_align
-
-                empty_row_idx = max_data_row + 1
-                for row_idx in range(1, worksheet.max_row + 1):
-                    if row_idx == 2 or row_idx == empty_row_idx:
-                        worksheet.row_dimensions[row_idx].height = 6 
-                    else:
-                        worksheet.row_dimensions[row_idx].height = 18
-                
-                for col_idx in range(1, worksheet.max_column + 1):
-                    max_length = 0
-                    col_letter = get_column_letter(col_idx)
-                    for row_idx in range(3, worksheet.max_row + 1): 
-                        cell_val = worksheet.cell(row=row_idx, column=col_idx).value
-                        try:
-                            if cell_val and len(str(cell_val)) > max_length:
-                                max_length = len(str(cell_val))
-                        except:
-                            pass
-                    worksheet.column_dimensions[col_letter].width = max_length + 3
-                
-            excel_data = buffer.getvalue()
-            file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
-            
-            st.download_button(
-                label="⬇️ Download Data (Excel)",
-                data=excel_data,
-                file_name=file_name_export,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True 
-            )
-
-        def highlight_rows(row):
-            colors = [''] * len(row)
-            if row['Day'] == 'Sun':
-                colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
-            elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
-                colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
-            return colors
-        
-        st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
-
-        event = st.dataframe(
-            df_display.style.apply(highlight_rows, axis=1), 
-            use_container_width=True, 
-            hide_index=True,
-            on_select="rerun",           
-            selection_mode="multi-row",  
-            column_config={
-                "_Original_Sheet": None,
-                "_Original_Index": None   
-            }
-        )
-        
-        selected_rows = event.selection.rows
-        if len(selected_rows) > 0:
-            st.markdown("---")
-            
-            if len(selected_rows) > 1:
-                st.warning(f"⚠️ You have selected {len(selected_rows)} entries. Multiple entries can only be deleted, not edited.")
-                if st.button("🗑️ Delete Selected Entries", type="primary"):
-                    to_delete = {}
-                    for row_idx in selected_rows:
-                        sht = df_display.iloc[row_idx]["_Original_Sheet"]
-                        idx = df_display.iloc[row_idx]["_Original_Index"]
-                        if sht not in to_delete:
-                            to_delete[sht] = []
-                        to_delete[sht].append(idx)
-
-                    for sht, indices in to_delete.items():
-                        df_orig = load_data(sht)
-                        df_orig = df_orig.drop(indices) 
-                        save_data(df_orig, sht)
                     
-                    st.session_state.last_edited = None
-                    st.session_state.flash_msg = "✅ Selected entries permanently deleted!"
-                    st.rerun()
-            else:
-                selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
-                selected_sheet_orig = df_display.iloc[selected_rows[0]]["_Original_Sheet"]
-                row_data = df_display.iloc[selected_rows[0]]
-                
-                col_edit, col_delete = st.columns([3, 1])
-                
-                with col_edit:
-                    st.subheader("✏️ Edit Selected Entry")
-                    with st.form("edit_form"):
-                        e_name = st.text_input("Employee Name", value=row_data["Employee Name"])
-                        ce1, ce2, ce3 = st.columns(3)
-                        with ce1:
-                            d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
-                            e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
-                        with ce2:
-                            in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
-                            e_in = st.time_input("In Time", value=in_obj, key="e_in")
-                        with ce3:
-                            out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
-                            e_out = st.time_input("Out Time", value=out_obj, key="e_out")
-                            
-                        if st.form_submit_button("Update Entry", type="secondary"):
-                            formatted_e_name = e_name.strip().title()
-                            date_str_e = e_date.strftime("%d/%m/%Y")
-                            new_sheet = get_sheet_name(e_date)
-                            
-                            df_orig = load_data(selected_sheet_orig)
-                            
-                            if new_sheet == selected_sheet_orig:
-                                temp_check = df_orig.drop(selected_idx)
-                                # Case insensitive duplicate check for edit
-                                is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
-                            else:
-                                df_new = load_data(new_sheet)
-                                is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
+                    day_col_idx = 2 
+                    max_data_row = 3 + len(df_export)
+                    
+                    for row_idx in range(4, max_data_row + 1):
+                        day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
+                        is_sunday = (day_val == "Sun")
+                        for col_idx in range(1, 10):
+                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell.alignment = center_align
+                            cell.border = thin_border
+                            if is_sunday:
+                                cell.fill = red_fill
+                                cell.font = white_bold_font
+                                
+                    total_row_idx = max_data_row + 2
+                    worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=5)
+                    
+                    worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
+                    worksheet.cell(row=total_row_idx, column=6, value=f"{late_hours:02d}:{late_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=7, value=f"{out_hours:02d}:{out_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=8, value=f"{reg_hours:02d}:{reg_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=9, value=f"{ot_hours:02d}:{ot_mins:02d}")
+                    
+                    for col_idx in range(1, 10):
+                        cell = worksheet.cell(row=total_row_idx, column=col_idx)
+                        cell.border = thin_border
+                        cell.fill = total_fill
+                        cell.font = total_font
+                        cell.alignment = center_align
 
-                            if is_dup:
-                                st.error("⚠️ An entry for this employee on this date already exists!")
-                            else:
-                                day_str_e = e_date.strftime("%a")
-                                t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e)
-                                
-                                updated_row = pd.DataFrame({
-                                    "Employee Name": [formatted_e_name],
-                                    "Date": [date_str_e],
-                                    "Day": [day_str_e],
-                                    "In Time": [e_in.strftime("%H:%M")],
-                                    "Out Time": [e_out.strftime("%H:%M")],
-                                    "Late Hours": [l_hrs],
-                                    "Out Hours": [o_hrs],
-                                    "Total Hours": [t_hrs],
-                                    "OT Hours": [ot_hrs]
-                                })
-                                
-                                if new_sheet == selected_sheet_orig:
-                                    updated_row.index = [selected_idx]
-                                    df_orig.update(updated_row)
-                                    save_data(df_orig, selected_sheet_orig)
-                                else:
-                                    df_orig = df_orig.drop(selected_idx)
-                                    save_data(df_orig, selected_sheet_orig)
-                                    df_new = pd.concat([df_new, updated_row], ignore_index=True)
-                                    save_data(df_new, new_sheet)
-                                
-                                st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
-                                st.session_state.flash_msg = f"✅ Record for {formatted_e_name} on {date_str_e} updated successfully!"
-                                st.rerun()
+                    empty_row_idx = max_data_row + 1
+                    for row_idx in range(1, worksheet.max_row + 1):
+                        if row_idx == 2 or row_idx == empty_row_idx:
+                            worksheet.row_dimensions[row_idx].height = 6 
+                        else:
+                            worksheet.row_dimensions[row_idx].height = 18
+                    
+                    for col_idx in range(1, worksheet.max_column + 1):
+                        max_length = 0
+                        col_letter = get_column_letter(col_idx)
+                        for row_idx in range(3, worksheet.max_row + 1): 
+                            cell_val = worksheet.cell(row=row_idx, column=col_idx).value
+                            try:
+                                if cell_val and len(str(cell_val)) > max_length:
+                                    max_length = len(str(cell_val))
+                            except:
+                                pass
+                        worksheet.column_dimensions[col_letter].width = max_length + 3
+                    
+                excel_data = buffer.getvalue()
+                file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
+                
+                st.download_button(
+                    label="⬇️ Download Data (Excel)",
+                    data=excel_data,
+                    file_name=file_name_export,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True 
+                )
 
-                with col_delete:
-                    st.subheader("🗑️ Delete")
-                    st.write("Click below to permanently delete this entry:")
-                    if st.button("Delete This Entry", type="primary"):
-                        df_orig = load_data(selected_sheet_orig)
-                        df_orig = df_orig.drop(selected_idx) 
-                        save_data(df_orig, selected_sheet_orig)
+            def highlight_rows(row):
+                colors = [''] * len(row)
+                if row['Day'] == 'Sun':
+                    colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
+                elif row['Status'] in ['PL', 'LWP', 'Absent']:
+                    colors = ['background-color: #ffcc99; color: black; font-weight: bold'] * len(row)
+                elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
+                    colors = ['background-color: #ffffcc; color: black; font-weight: bold'] * len(row)
+                return colors
+            
+            st.markdown("💡 **Tip:** Select the checkbox on the left side of the table to Edit or Delete.")
+
+            event = st.dataframe(
+                df_display.style.apply(highlight_rows, axis=1), 
+                use_container_width=True, 
+                hide_index=True,
+                on_select="rerun",           
+                selection_mode="multi-row",  
+                column_config={
+                    "_Original_Sheet": None,
+                    "_Original_Index": None   
+                }
+            )
+            
+            selected_rows = event.selection.rows
+            if len(selected_rows) > 0:
+                st.markdown("---")
+                
+                if len(selected_rows) > 1:
+                    st.warning(f"⚠️ You have selected {len(selected_rows)} entries. Multiple entries can only be deleted, not edited.")
+                    if st.button("🗑️ Delete Selected Entries", type="primary"):
+                        to_delete = {}
+                        for row_idx in selected_rows:
+                            sht = df_display.iloc[row_idx]["_Original_Sheet"]
+                            idx = df_display.iloc[row_idx]["_Original_Index"]
+                            if sht not in to_delete:
+                                to_delete[sht] = []
+                            to_delete[sht].append(idx)
+
+                        for sht, indices in to_delete.items():
+                            df_orig = load_data(sht)
+                            df_orig = df_orig.drop(indices) 
+                            save_data(df_orig, sht)
                         
                         st.session_state.last_edited = None
-                        st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
+                        st.session_state.flash_msg = "✅ Selected entries permanently deleted!"
                         st.rerun()
+                else:
+                    selected_idx = df_display.iloc[selected_rows[0]]["_Original_Index"]
+                    selected_sheet_orig = df_display.iloc[selected_rows[0]]["_Original_Sheet"]
+                    row_data = df_display.iloc[selected_rows[0]]
+                    
+                    col_edit, col_delete = st.columns([3, 1])
+                    
+                    with col_edit:
+                        st.subheader("✏️ Edit Selected Entry")
+                        with st.form("edit_form_hist"):
+                            e_name = st.text_input("Employee Name", value=row_data["Employee Name"], disabled=True)
+                            ce1, ce2, ce3, ce4 = st.columns(4)
+                            with ce1:
+                                d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
+                                e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
+                            with ce2:
+                                def_status = ["Regular", "Half-Day", "PL", "LWP", "Absent"]
+                                e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
+                            with ce3:
+                                in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
+                                e_in = st.time_input("In Time", value=in_obj, key="e_in")
+                            with ce4:
+                                out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
+                                e_out = st.time_input("Out Time", value=out_obj, key="e_out")
+                                
+                            if st.form_submit_button("Update Entry", type="secondary"):
+                                formatted_e_name = e_name.strip().title()
+                                date_str_e = e_date.strftime("%d/%m/%Y")
+                                new_sheet = get_sheet_name(e_date)
+                                
+                                df_orig = load_data(selected_sheet_orig)
+                                
+                                if new_sheet == selected_sheet_orig:
+                                    temp_check = df_orig.drop(selected_idx)
+                                    is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
+                                else:
+                                    df_new = load_data(new_sheet)
+                                    is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
+
+                                if is_dup:
+                                    st.error("⚠️ An entry for this employee on this date already exists!")
+                                else:
+                                    day_str_e = e_date.strftime("%a")
+                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in.strftime("%H:%M"), e_out.strftime("%H:%M"), day_str_e, e_stat)
+                                    
+                                    if e_stat in ["PL", "LWP", "Absent"]:
+                                        in_t_str, out_t_str = "00:00", "00:00"
+                                    else:
+                                        in_t_str, out_t_str = e_in.strftime("%H:%M"), e_out.strftime("%H:%M")
+
+                                    updated_row = pd.DataFrame({
+                                        "Employee Name": [formatted_e_name],
+                                        "Date": [date_str_e],
+                                        "Day": [day_str_e],
+                                        "Status": [e_stat],
+                                        "In Time": [in_t_str],
+                                        "Out Time": [out_t_str],
+                                        "Late Hours": [l_hrs],
+                                        "Out Hours": [o_hrs],
+                                        "Total Hours": [t_hrs],
+                                        "OT Hours": [ot_hrs]
+                                    })
+                                    
+                                    if new_sheet == selected_sheet_orig:
+                                        updated_row.index = [selected_idx]
+                                        df_orig.update(updated_row)
+                                        save_data(df_orig, selected_sheet_orig)
+                                    else:
+                                        df_orig = df_orig.drop(selected_idx)
+                                        save_data(df_orig, selected_sheet_orig)
+                                        df_new = pd.concat([df_new, updated_row], ignore_index=True)
+                                        save_data(df_new, new_sheet)
+                                    
+                                    st.session_state.last_edited = f"{formatted_e_name}_{date_str_e}"
+                                    st.session_state.flash_msg = f"✅ Record for {formatted_e_name} on {date_str_e} updated successfully!"
+                                    st.rerun()
+
+                    with col_delete:
+                        st.subheader("🗑️ Delete")
+                        st.write("Click below to permanently delete this entry:")
+                        if st.button("Delete This Entry", type="primary"):
+                            df_orig = load_data(selected_sheet_orig)
+                            df_orig = df_orig.drop(selected_idx) 
+                            save_data(df_orig, selected_sheet_orig)
+                            
+                            st.session_state.last_edited = None
+                            st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
+                            st.rerun()
 
 # --- 3 Second Timer to clear message ---
 if has_msg:
