@@ -72,6 +72,7 @@ def parse_time(time_val):
             return datetime.strptime("00:00", "%H:%M")
 
 def calculate_times(in_time, out_time, day_str, status="Regular"):
+    # If employee is on leave, all times are zero
     if status in ["PL", "LWP", "Absent"]:
         return "00:00", "00:00", "00:00", "00:00"
 
@@ -85,12 +86,8 @@ def calculate_times(in_time, out_time, day_str, status="Regular"):
         
     total_worked_mins = (t2 - t1).seconds // 60
     
-    if status == "Half-Day":
-        reg_mins = total_worked_mins
-        ot_mins = 0
-        late_mins = 0
-        out_early_mins = 0
-    elif day_str == "Sun":
+    # Holiday is treated exactly like Sunday (All work is Overtime, no late mark)
+    if day_str == "Sun" or status == "Holiday":
         reg_mins = 0
         ot_mins = total_worked_mins 
         late_mins = 0
@@ -297,7 +294,8 @@ with tab1:
             with c1:
                 entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
             with c2:
-                entry_status = st.selectbox("Status", ["Regular", "Half-Day", "PL", "LWP", "Absent"])
+                # Removed Half-Day, Added Holiday
+                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"])
             with c3:
                 in_time = st.time_input("In Time", value=time(8, 0), key=f"in_{st.session_state.form_reset_counter}")
             with c4:
@@ -363,13 +361,13 @@ with tab1:
         2. Missing times will default to 08:00 and 18:00. Missing Status defaults to Regular.
         """)
         
-        # --- NEW TEMPLATE DOWNLOAD FEATURE ---
+        # --- TEMPLATE DOWNLOAD FEATURE ---
         template_df = pd.DataFrame({
             "Employee Name": ["Manoj Kumar", "Ramesh Patel", "Suresh Desai"],
             "Date": ["01/11/2026", "02/11/2026", "03/11/2026"],
             "In Time": ["08:00", "09:15", ""],
             "Out Time": ["18:00", "18:00", ""],
-            "Status": ["Regular", "Half-Day", "PL"]
+            "Status": ["Regular", "Holiday", "PL"]
         })
         csv_template = template_df.to_csv(index=False).encode('utf-8')
         
@@ -417,6 +415,11 @@ with tab1:
                                 for _, r in group.iterrows():
                                     ename = str(r['Employee Name']).strip().title()
                                     stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
+                                    
+                                    # Fallback missing status to Regular
+                                    if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]:
+                                        stat = "Regular"
+                                        
                                     in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
                                     out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
                                     
@@ -476,7 +479,7 @@ with tab2:
             edited_roster = st.data_editor(
                 roster_df,
                 column_config={
-                    "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Half-Day", "PL", "LWP", "Absent"], required=True),
+                    "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True),
                     "In Time": st.column_config.TimeColumn("In Time", format="HH:mm", step=60),
                     "Out Time": st.column_config.TimeColumn("Out Time", format="HH:mm", step=60)
                 },
@@ -642,8 +645,10 @@ with tab3:
                     gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
                     yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
                     total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
+                    holiday_fill = PatternFill(start_color='B3D9FF', end_color='B3D9FF', fill_type='solid') 
                     
                     white_bold_font = Font(color="FFFFFF", bold=True)
+                    black_bold_font = Font(color="000000", bold=True)
                     header_font = Font(bold=True)
                     total_font = Font(bold=True, size=12)
                     
@@ -674,11 +679,15 @@ with tab3:
                         cell.border = thin_border
                     
                     day_col_idx = 2 
+                    status_col_idx = 3
                     max_data_row = 3 + len(df_export)
                     
                     for row_idx in range(4, max_data_row + 1):
                         day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
+                        status_val = worksheet.cell(row=row_idx, column=status_col_idx).value
                         is_sunday = (day_val == "Sun")
+                        is_holiday = (status_val == "Holiday")
+                        
                         for col_idx in range(1, 10):
                             cell = worksheet.cell(row=row_idx, column=col_idx)
                             cell.alignment = center_align
@@ -686,6 +695,9 @@ with tab3:
                             if is_sunday:
                                 cell.fill = red_fill
                                 cell.font = white_bold_font
+                            elif is_holiday:
+                                cell.fill = holiday_fill
+                                cell.font = black_bold_font
                                 
                     total_row_idx = max_data_row + 2
                     worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=5)
@@ -737,6 +749,8 @@ with tab3:
                 colors = [''] * len(row)
                 if row['Day'] == 'Sun':
                     colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
+                elif row['Status'] == 'Holiday':
+                    colors = ['background-color: #b3d9ff; color: black; font-weight: bold'] * len(row)
                 elif row['Status'] in ['PL', 'LWP', 'Absent']:
                     colors = ['background-color: #ffcc99; color: black; font-weight: bold'] * len(row)
                 elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
@@ -796,7 +810,7 @@ with tab3:
                                 d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
                                 e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
                             with ce2:
-                                def_status = ["Regular", "Half-Day", "PL", "LWP", "Absent"]
+                                def_status = ["Regular", "Holiday", "PL", "LWP", "Absent"]
                                 e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
                             with ce3:
                                 in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
