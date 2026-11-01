@@ -667,4 +667,3 @@ else:
 if has_msg:
     tm.sleep(3)
     msg_placeholder.empty()
-```<FollowUp></FollowUp><ElicitationsGroup></ElicitationsGroup>
