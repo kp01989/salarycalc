@@ -29,7 +29,17 @@ def get_all_sheet_names():
                 return list(data.keys())
     except Exception:
         pass
-    return [get_sheet_name(date.today())]
+    
+    # FALLBACK: If Firebase shallow query blocks root access, manually generate last 12 months
+    fallback_sheets = []
+    d = date.today()
+    for _ in range(12):
+        fallback_sheets.append(d.strftime("%b'%Y"))
+        if d.month == 1:
+            d = d.replace(year=d.year - 1, month=12)
+        else:
+            d = d.replace(month=d.month - 1)
+    return fallback_sheets
 
 def get_all_employees():
     url = f"{FIREBASE_URL}.json"
@@ -176,7 +186,7 @@ if 'flash_msg' not in st.session_state:
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
     if val:
-        st.session_state.filter_month = "All Months" # <-- FIXED: Shows all data for the user
+        st.session_state.filter_month = "All Months"
     else:
         st.session_state.filter_month = current_month_str
 
@@ -249,12 +259,12 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
         if all_emps:
             st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
-    # --- AUTO-DATE CALCULATION LOGIC ---
+    # --- AUTO-DATE CALCULATION LOGIC (Case Insensitive) ---
     default_date = date.today()
     if formatted_name and formatted_name != "Administrator":
         df_month_check = load_data(st.session_state.filter_month)
         if not df_month_check.empty:
-             df_emp = df_month_check[df_month_check["Employee Name"] == formatted_name]
+             df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
              if not df_emp.empty:
                   df_emp = df_emp.copy()
                   df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
@@ -294,7 +304,8 @@ with st.expander("➕ Add New Entry / Search", expanded=True):
             day_str = entry_date.strftime("%a")
             date_str = entry_date.strftime("%d/%m/%Y")
             
-            is_duplicate = not df_month[(df_month["Employee Name"] == formatted_name) & (df_month["Date"] == date_str)].empty
+            # Case insensitive duplicate check
+            is_duplicate = not df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()) & (df_month["Date"] == date_str)].empty
             
             if is_duplicate:
                 st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
@@ -370,7 +381,8 @@ else:
         df_display = df_display.fillna("") 
 
         if formatted_name != "Administrator":
-            df_display = df_display[df_display["Employee Name"] == formatted_name]
+            # Case insensitive display filtering
+            df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
 
         final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
         for c in final_display_columns:
@@ -614,10 +626,11 @@ else:
                             
                             if new_sheet == selected_sheet_orig:
                                 temp_check = df_orig.drop(selected_idx)
-                                is_dup = not temp_check[(temp_check["Employee Name"] == formatted_e_name) & (temp_check["Date"] == date_str_e)].empty
+                                # Case insensitive duplicate check for edit
+                                is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
                             else:
                                 df_new = load_data(new_sheet)
-                                is_dup = not df_new[(df_new["Employee Name"] == formatted_e_name) & (df_new["Date"] == date_str_e)].empty
+                                is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
 
                             if is_dup:
                                 st.error("⚠️ An entry for this employee on this date already exists!")
