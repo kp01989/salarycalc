@@ -7,6 +7,7 @@ import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 import streamlit.components.v1 as components 
+import uuid
 
 # ==========================================
 # 1. FIREBASE CLOUD DATABASE URL
@@ -61,6 +62,38 @@ def get_all_employees():
     except Exception:
         return []
 
+# --- ADVANCED HOLIDAY FUNCTIONS ---
+def load_holidays_data():
+    try:
+        res = requests.get(f"{FIREBASE_URL}/holidays_list.json")
+        if res.status_code == 200 and res.json():
+            return res.json()
+    except Exception:
+        pass
+    return {}
+
+def save_holidays_data(data):
+    try:
+        requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data)
+    except Exception:
+        pass
+
+def get_flat_holiday_dates():
+    """Converts From-To date ranges into a flat dictionary of single dates for fast attendance checking"""
+    hol_data = load_holidays_data()
+    flat_dict = {}
+    for hid, hinfo in hol_data.items():
+        try:
+            f_date = datetime.strptime(hinfo['from'], "%d/%m/%Y").date()
+            t_date = datetime.strptime(hinfo['to'], "%d/%m/%Y").date()
+            delta = (t_date - f_date).days
+            for i in range(delta + 1):
+                d = f_date + timedelta(days=i)
+                flat_dict[d.strftime("%d/%m/%Y")] = hinfo['reason']
+        except:
+            pass
+    return flat_dict
+
 def parse_time(time_val):
     time_str = str(time_val).strip()
     try:
@@ -71,8 +104,7 @@ def parse_time(time_val):
         except ValueError:
             return datetime.strptime("00:00", "%H:%M")
 
-def calculate_times(in_time, out_time, day_str, status="Regular"):
-    # If employee is on leave, all times are zero
+def calculate_times(in_time, out_time, day_str, status="Regular", is_public_holiday=False):
     if status in ["PL", "LWP", "Absent"]:
         return "00:00", "00:00", "00:00", "00:00"
 
@@ -86,8 +118,7 @@ def calculate_times(in_time, out_time, day_str, status="Regular"):
         
     total_worked_mins = (t2 - t1).seconds // 60
     
-    # Holiday is treated exactly like Sunday (All work is Overtime, no late mark)
-    if day_str == "Sun" or status == "Holiday":
+    if day_str == "Sun" or status == "Holiday" or is_public_holiday:
         reg_mins = 0
         ot_mins = total_worked_mins 
         late_mins = 0
@@ -124,6 +155,8 @@ def calculate_times(in_time, out_time, day_str, status="Regular"):
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "Status", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
+    holidays_dict = get_flat_holiday_dates()
+    
     try:
         response = requests.get(url)
         data = response.json()
@@ -146,12 +179,15 @@ def load_data(sheet_name):
                 out_t = str(row.get("Out Time", "18:00"))
                 day_s = str(row.get("Day", "Mon"))
                 status = str(row.get("Status", "Regular"))
+                date_s = str(row.get("Date", ""))
+                
+                is_pub_hol = date_s in holidays_dict
                 
                 if pd.isna(row.get("In Time")) or in_t.lower() == 'nan':
                     continue
                     
                 try:
-                    tot, late, out_e, ot = calculate_times(in_t, out_t, day_s, status)
+                    tot, late, out_e, ot = calculate_times(in_t, out_t, day_s, status, is_pub_hol)
                     df.at[idx, "Total Hours"] = tot
                     df.at[idx, "Late Hours"] = late
                     df.at[idx, "Out Hours"] = out_e
@@ -257,10 +293,10 @@ formatted_name = st.session_state.top_emp_input.strip().title()
 # ==========================================
 # TABS SETUP
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "📊 Dashboard & History"])
+tab1, tab2, tab3, tab4 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History"])
 
 # ==========================================
-# TAB 1: ADD ATTENDANCE (Option Buttons for Entry Type)
+# TAB 1: ADD ATTENDANCE
 # ==========================================
 with tab1:
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
@@ -294,7 +330,6 @@ with tab1:
             with c1:
                 entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
             with c2:
-                # Removed Half-Day, Added Holiday
                 entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"])
             with c3:
                 in_time = st.time_input("In Time", value=time(8, 0), key=f"in_{st.session_state.form_reset_counter}")
@@ -324,7 +359,9 @@ with tab1:
                 if is_duplicate:
                     st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
                 else:
-                    total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time.strftime("%H:%M"), out_time.strftime("%H:%M"), day_str, entry_status)
+                    holidays_dict = get_flat_holiday_dates()
+                    is_pub_hol = date_str in holidays_dict
+                    total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time.strftime("%H:%M"), out_time.strftime("%H:%M"), day_str, entry_status, is_pub_hol)
                     
                     if entry_status in ["PL", "LWP", "Absent"]:
                         in_t_str, out_t_str = "00:00", "00:00"
@@ -361,7 +398,6 @@ with tab1:
         2. Missing times will default to 08:00 and 18:00. Missing Status defaults to Regular.
         """)
         
-        # --- TEMPLATE DOWNLOAD FEATURE ---
         template_df = pd.DataFrame({
             "Employee Name": ["Manoj Kumar", "Ramesh Patel", "Suresh Desai"],
             "Date": ["01/11/2026", "02/11/2026", "03/11/2026"],
@@ -378,7 +414,6 @@ with tab1:
             mime="text/csv",
         )
         st.write("")
-        # -------------------------------------
 
         uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
         
@@ -399,6 +434,7 @@ with tab1:
                     if st.button("🚀 Process & Upload Bulk Data", type="primary"):
                         success_count = 0
                         grouped = df_upload.groupby('Date')
+                        holidays_dict = get_flat_holiday_dates()
                         
                         for date_val, group in grouped:
                             try:
@@ -408,6 +444,7 @@ with tab1:
                                 sheet_n = get_sheet_name(d_obj)
                                 day_s = d_obj.strftime("%a")
                                 date_s = d_obj.strftime("%d/%m/%Y")
+                                is_pub_hol = date_s in holidays_dict
                                 
                                 df_db = load_data(sheet_n)
                                 new_rows = []
@@ -415,19 +452,15 @@ with tab1:
                                 for _, r in group.iterrows():
                                     ename = str(r['Employee Name']).strip().title()
                                     stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
-                                    
-                                    # Fallback missing status to Regular
-                                    if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]:
-                                        stat = "Regular"
+                                    if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
                                         
                                     in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
                                     out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
                                     
-                                    # Skip duplicates
                                     if not df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)].empty:
                                         continue
                                         
-                                    tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat)
+                                    tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
                                     new_rows.append({
                                         "Employee Name": ename, "Date": date_s, "Day": day_s, "Status": stat,
                                         "In Time": in_val, "Out Time": out_val, "Late Hours": late, "Out Hours": out_e,
@@ -490,6 +523,9 @@ with tab2:
             
             if st.button("💾 Save Full Roster", type="primary"):
                 new_records = []
+                holidays_dict = get_flat_holiday_dates()
+                is_pub_hol = r_date_str in holidays_dict
+                
                 for _, row in edited_roster.iterrows():
                     emp_n = row["Employee Name"]
                     stat = row["Status"]
@@ -503,7 +539,7 @@ with tab2:
                         except:
                             in_t, out_t = "08:00", "18:00"
                     
-                    tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat)
+                    tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                     new_records.append({
                         "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str, "Status": stat,
                         "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
@@ -518,9 +554,96 @@ with tab2:
                     st.rerun()
 
 # ==========================================
-# TAB 3: DASHBOARD & HISTORY
+# TAB 3: HOLIDAY CALENDAR (RANGE, EDIT, DELETE & ADMIN ONLY)
 # ==========================================
 with tab3:
+    if formatted_name != "Administrator":
+        st.error("🔒 Only Administrator has access to manage holidays.")
+        st.info("👆 Please type 'Administrator' in the Employee Name box to unlock this tab.")
+    else:
+        st.subheader("🌴 Manage Public Holidays (From - To)")
+        hol_data = load_holidays_data()
+        
+        with st.form("add_holiday_form"):
+            hc1, hc2, hc3, hc4 = st.columns([1.5, 1.5, 2, 1])
+            with hc1: 
+                f_date = st.date_input("From Date", format="DD/MM/YYYY")
+            with hc2: 
+                t_date = st.date_input("To Date", value=f_date, format="DD/MM/YYYY")
+            with hc3: 
+                hol_reason = st.text_input("Occasion / Reason", placeholder="e.g. Diwali Holidays")
+            with hc4:
+                st.write("")
+                st.write("")
+                add_hol = st.form_submit_button("➕ Add Holiday", type="primary", use_container_width=True)
+        
+        if add_hol:
+            if t_date < f_date:
+                st.error("⚠️ 'To Date' cannot be before 'From Date'!")
+            elif not hol_reason.strip():
+                st.error("⚠️ Please enter a Reason!")
+            else:
+                days_count = (t_date - f_date).days + 1
+                unique_id = str(uuid.uuid4())[:8] # Generate short unique ID
+                
+                hol_data[unique_id] = {
+                    "from": f_date.strftime("%d/%m/%Y"),
+                    "to": t_date.strftime("%d/%m/%Y"),
+                    "reason": hol_reason.strip(),
+                    "days": days_count
+                }
+                save_holidays_data(hol_data)
+                st.session_state.flash_msg = f"✅ Holiday Range Added! ({days_count} Days)"
+                st.rerun()
+            
+        if hol_data:
+            st.write("### 📅 Existing Holidays")
+            for hid, hinfo in list(hol_data.items()):
+                with st.container(border=True):
+                    c1, c2, c3, c4 = st.columns([3, 3, 1, 1])
+                    c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
+                    c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
+                    
+                    if c3.button("✏️ Edit", key=f"edit_{hid}"):
+                        st.session_state[f"edit_mode_{hid}"] = not st.session_state.get(f"edit_mode_{hid}", False)
+                        st.rerun()
+                        
+                    if c4.button("🗑️ Delete", key=f"del_{hid}"):
+                        del hol_data[hid]
+                        save_holidays_data(hol_data)
+                        st.session_state.flash_msg = "✅ Holiday entry deleted successfully!"
+                        st.rerun()
+                    
+                    if st.session_state.get(f"edit_mode_{hid}", False):
+                        with st.form(f"edit_form_{hid}"):
+                            ec1, ec2, ec3, ec4 = st.columns([1.5, 1.5, 2, 1])
+                            curr_f = datetime.strptime(hinfo['from'], "%d/%m/%Y").date()
+                            curr_t = datetime.strptime(hinfo['to'], "%d/%m/%Y").date()
+                            with ec1: ef_date = st.date_input("From Date", value=curr_f, format="DD/MM/YYYY", key=f"ef_{hid}")
+                            with ec2: et_date = st.date_input("To Date", value=curr_t, format="DD/MM/YYYY", key=f"et_{hid}")
+                            with ec3: ereason = st.text_input("Reason", value=hinfo['reason'], key=f"er_{hid}")
+                            with ec4:
+                                st.write("")
+                                st.write("")
+                                update_btn = st.form_submit_button("💾 Save", type="primary")
+
+                        if update_btn:
+                            if et_date < ef_date:
+                                st.error("⚠️ 'To Date' cannot be before 'From Date'!")
+                            else:
+                                hol_data[hid]['from'] = ef_date.strftime("%d/%m/%Y")
+                                hol_data[hid]['to'] = et_date.strftime("%d/%m/%Y")
+                                hol_data[hid]['reason'] = ereason.strip()
+                                hol_data[hid]['days'] = (et_date - ef_date).days + 1
+                                save_holidays_data(hol_data)
+                                st.session_state[f"edit_mode_{hid}"] = False
+                                st.session_state.flash_msg = "✅ Holiday updated!"
+                                st.rerun()
+
+# ==========================================
+# TAB 4: DASHBOARD & HISTORY
+# ==========================================
+with tab4:
     if not formatted_name or formatted_name == "Administrator":
         st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     else:
@@ -569,7 +692,6 @@ with tab3:
         if df_display.empty:
             st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
         else:
-            # --- SUMMARY METRICS ---
             total_reg_mins = 0
             for val in df_display["Total Hours"]:
                 if pd.notna(val) and ":" in str(val):
@@ -611,7 +733,6 @@ with tab3:
             with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # --- VISUAL CHART ---
             st.write("")
             st.subheader("📈 Daily Working Hours")
             chart_data = df_display[['Date', 'Total Hours', 'OT Hours']].copy()
@@ -682,11 +803,15 @@ with tab3:
                     status_col_idx = 3
                     max_data_row = 3 + len(df_export)
                     
+                    holidays_dict_xls = get_flat_holiday_dates()
+                    
                     for row_idx in range(4, max_data_row + 1):
+                        date_val_xls = worksheet.cell(row=row_idx, column=1).value
                         day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
                         status_val = worksheet.cell(row=row_idx, column=status_col_idx).value
+                        
                         is_sunday = (day_val == "Sun")
-                        is_holiday = (status_val == "Holiday")
+                        is_holiday = (status_val == "Holiday") or (str(date_val_xls) in holidays_dict_xls)
                         
                         for col_idx in range(1, 10):
                             cell = worksheet.cell(row=row_idx, column=col_idx)
@@ -747,9 +872,11 @@ with tab3:
 
             def highlight_rows(row):
                 colors = [''] * len(row)
+                hol_dict_hl = get_flat_holiday_dates()
+                
                 if row['Day'] == 'Sun':
                     colors = ['background-color: #ff4c4c; color: white; font-weight: bold'] * len(row)
-                elif row['Status'] == 'Holiday':
+                elif row['Status'] == 'Holiday' or row['Date'] in hol_dict_hl:
                     colors = ['background-color: #b3d9ff; color: black; font-weight: bold'] * len(row)
                 elif row['Status'] in ['PL', 'LWP', 'Absent']:
                     colors = ['background-color: #ffcc99; color: black; font-weight: bold'] * len(row)
@@ -837,7 +964,9 @@ with tab3:
                                     st.error("⚠️ An entry for this employee on this date already exists!")
                                 else:
                                     day_str_e = e_date.strftime("%a")
-                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in.strftime("%H:%M"), e_out.strftime("%H:%M"), day_str_e, e_stat)
+                                    holidays_dict = get_flat_holiday_dates()
+                                    is_pub_hol = date_str_e in holidays_dict
+                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in.strftime("%H:%M"), e_out.strftime("%H:%M"), day_str_e, e_stat, is_pub_hol)
                                     
                                     if e_stat in ["PL", "LWP", "Absent"]:
                                         in_t_str, out_t_str = "00:00", "00:00"
