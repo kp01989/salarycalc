@@ -263,6 +263,7 @@ components.html(
     height=0, width=0
 )
 
+# === AGGRESSIVE CSS FOR TABS FONT SIZE ===
 st.markdown("""
     <style>
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
@@ -270,12 +271,20 @@ st.markdown("""
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
         div[data-testid="InputInstructions"] { display: none !important; }
         
-        /* TABS FONT SIZE FIX */
-        .stTabs [data-baseweb="tab"] {
-            padding-top: 10px !important;
-            padding-bottom: 10px !important;
+        /* AGGRESSIVE SELECTORS FOR TAB FONT SIZE */
+        button[data-baseweb="tab"] {
+            padding-top: 15px !important;
+            padding-bottom: 15px !important;
         }
-        .stTabs [data-baseweb="tab"] p {
+        button[data-baseweb="tab"] > div[data-testid="stMarkdownContainer"] > p {
+            font-size: 28px !important;
+            font-weight: bold !important;
+        }
+        div[data-testid="stTabs"] button p {
+            font-size: 28px !important;
+            font-weight: bold !important;
+        }
+        .stTabs button[role="tab"] p {
             font-size: 28px !important;
             font-weight: bold !important;
         }
