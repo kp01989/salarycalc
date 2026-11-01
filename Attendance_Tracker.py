@@ -276,7 +276,7 @@ st.markdown("""
             padding-bottom: 10px !important;
         }
         .stTabs [data-baseweb="tab"] p {
-            font-size: 22px !important;
+            font-size: 28px !important;
             font-weight: bold !important;
         }
     </style>
