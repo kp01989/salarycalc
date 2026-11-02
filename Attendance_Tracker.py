@@ -263,6 +263,7 @@ components.html(
     height=0, width=0
 )
 
+# === 🚀 ULTIMATE CSS FOR TABS FONT SIZE ===
 st.markdown("""
     <style>
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
@@ -270,13 +271,18 @@ st.markdown("""
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
         div[data-testid="InputInstructions"] { display: none !important; }
         
-        /* 🔥 BRAHMASTRA CSS FOR TABS 🔥 */
-        button[data-baseweb="tab"] {
-            padding: 10px 20px !important;
-        }
-        button[data-baseweb="tab"] * {
+        /* 🔥 FORCE 28PX ON TABS EXACT DOM LOCATION 🔥 */
+        div[data-testid="stTabs"] button[role="tab"] p {
             font-size: 28px !important;
-            font-weight: 800 !important;
+            font-weight: 900 !important;
+        }
+        .stTabs button[data-baseweb="tab"] div[data-testid="stMarkdownContainer"] p {
+            font-size: 28px !important;
+            font-weight: 900 !important;
+        }
+        div[data-testid="stTabs"] button[role="tab"] {
+            padding-top: 15px !important;
+            padding-bottom: 15px !important;
         }
     </style>
 """, unsafe_allow_html=True)
