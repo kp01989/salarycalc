@@ -102,53 +102,76 @@ def parse_time(time_val):
         except ValueError:
             return datetime.strptime("00:00", "%H:%M")
 
-def calculate_times(in_time, out_time, day_str, status="Regular", is_public_holiday=False):
+def check_time_overlap(curr_in_str, curr_out_str, new_in_str, new_out_str):
+    if not curr_in_str or curr_in_str == "00:00": return False
+    
+    existing_ins = [parse_time(t) for t in str(curr_in_str).split(',') if t.strip()]
+    existing_outs = [parse_time(t) for t in str(curr_out_str).split(',') if t.strip()]
+    
+    new_in = parse_time(new_in_str)
+    new_out = parse_time(new_out_str)
+    
+    for ein, eout in zip(existing_ins, existing_outs):
+        if max(new_in, ein) < min(new_out, eout):
+            return True
+        if new_in == ein or new_out == eout:
+            return True
+            
+    return False
+
+def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_public_holiday=False):
     if status in ["PL", "LWP", "Absent"]:
         return "00:00", "00:00", "00:00", "00:00"
 
-    t1 = parse_time(in_time)
-    t2 = parse_time(out_time)
+    in_times = [parse_time(t) for t in str(in_time_str).split(',') if t.strip()]
+    out_times = [parse_time(t) for t in str(out_time_str).split(',') if t.strip()]
+    
+    if not in_times or not out_times:
+        return "00:00", "00:00", "00:00", "00:00"
+
+    min_len = min(len(in_times), len(out_times))
+    in_times = in_times[:min_len]
+    out_times = out_times[:min_len]
+
     std_in = datetime.strptime(STANDARD_IN, "%H:%M")
     std_out = datetime.strptime(STANDARD_OUT, "%H:%M")
     
-    if t2 < t1:
-        return "00:00", "00:00", "00:00", "00:00"
-        
-    total_worked_mins = (t2 - t1).seconds // 60
-    
+    total_worked_mins = 0
+    reg_mins = 0
+
+    for t1, t2 in zip(in_times, out_times):
+        if t2 > t1:
+            pair_worked_mins = (t2 - t1).seconds // 60
+            total_worked_mins += pair_worked_mins
+
+            if not (day_str == "Sun" or status == "Holiday" or is_public_holiday):
+                actual_start = max(t1, std_in)
+                actual_end = min(t2, std_out)
+                if actual_end > actual_start:
+                    reg_mins += (actual_end - actual_start).seconds // 60
+
     if day_str == "Sun" or status == "Holiday" or is_public_holiday:
+        ot_mins = total_worked_mins
         reg_mins = 0
-        ot_mins = total_worked_mins 
         late_mins = 0
         out_early_mins = 0
     else:
-        actual_start = max(t1, std_in)
-        actual_end = min(t2, std_out)
-        
-        if actual_end > actual_start:
-            reg_mins = (actual_end - actual_start).seconds // 60
-        else:
-            reg_mins = 0
-            
         ot_mins = total_worked_mins - reg_mins
-        
         if ot_mins < 30:
             ot_mins = 0
             
-        late_mins = max(0, (t1 - std_in).total_seconds() // 60) if t1 > std_in else 0
-        out_early_mins = max(0, (std_out - t2).total_seconds() // 60) if t2 < std_out else 0
-    
+        first_in = min(in_times) if in_times else std_in
+        last_out = max(out_times) if out_times else std_out
+
+        late_mins = max(0, (first_in - std_in).total_seconds() // 60) if first_in > std_in else 0
+        out_early_mins = max(0, (std_out - last_out).total_seconds() // 60) if last_out < std_out else 0
+
     def mins_to_str(m):
         if m <= 0: return "00:00"
         h, m = divmod(int(m), 60)
         return f"{h:02d}:{m:02d}"
         
-    total_hrs = mins_to_str(reg_mins)
-    ot_hrs = mins_to_str(ot_mins)
-    late_hrs = mins_to_str(late_mins) 
-    out_hrs = mins_to_str(out_early_mins) 
-    
-    return total_hrs, late_hrs, out_hrs, ot_hrs
+    return mins_to_str(reg_mins), mins_to_str(late_mins), mins_to_str(out_early_mins), mins_to_str(ot_mins)
 
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "Status", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
@@ -263,7 +286,6 @@ components.html(
     height=0, width=0
 )
 
-# === 🚀 ULTIMATE CSS FOR TABS FONT SIZE ===
 st.markdown("""
     <style>
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
@@ -271,7 +293,6 @@ st.markdown("""
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
         div[data-testid="InputInstructions"] { display: none !important; }
         
-        /* 🔥 FORCE 28PX ON TABS EXACT DOM LOCATION 🔥 */
         div[data-testid="stTabs"] button[role="tab"] p {
             font-size: 28px !important;
             font-weight: 900 !important;
@@ -315,7 +336,11 @@ with tab1:
             all_emps = get_all_employees()
             if all_emps: st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
+        # --- SMART AUTO-FILL LOGIC IMPLEMENTED ---
         default_date = date.today()
+        default_in = time(8, 0)
+        default_out = time(18, 0)
+        
         if formatted_name and formatted_name != "Administrator":
             df_month_check = load_data(st.session_state.filter_month)
             if not df_month_check.empty:
@@ -325,7 +350,19 @@ with tab1:
                       df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
                       latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
                       latest_date = latest_date_row['RealDate'].date()
-                      default_date = latest_date + timedelta(days=1)
+                      
+                      # Check if today already has an entry
+                      today_entry = df_emp[df_emp['RealDate'].dt.date == date.today()]
+                      if not today_entry.empty:
+                          default_date = date.today()
+                          # Use current time as default IN for multi-punch on same day
+                          now = datetime.now()
+                          default_in = now.time()
+                          # Keep default out to end of day to avoid overlap with current time
+                          default_out = time(18, 0) 
+                      else:
+                          # Normal next day logic
+                          default_date = latest_date + timedelta(days=1)
 
         with st.form("entry_form"):
             c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.5])
@@ -334,9 +371,9 @@ with tab1:
             with c2:
                 entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"])
             with c3:
-                in_time = st.time_input("In Time", value=time(8, 0), key=f"in_{st.session_state.form_reset_counter}")
+                in_time = st.time_input("In Time", value=default_in, key=f"in_{st.session_state.form_reset_counter}")
             with c4:
-                out_time = st.time_input("Out Time", value=time(18, 0), key=f"out_{st.session_state.form_reset_counter}")
+                out_time = st.time_input("Out Time", value=default_out, key=f"out_{st.session_state.form_reset_counter}")
                 
             with c5:
                 st.write("")
@@ -349,47 +386,74 @@ with tab1:
             elif formatted_name == "Administrator":
                 st.error("You cannot add an entry for 'Administrator'. Please type a valid name!")
             elif out_time < in_time and entry_status not in ["PL", "LWP", "Absent"]:
-                st.error("Out Time cannot be before In Time!")
+                st.error("Out Time cannot be before In Time for a single shift!")
             else:
                 target_sheet = get_sheet_name(entry_date)
                 df_month = load_data(target_sheet)
                 day_str = entry_date.strftime("%a")
                 date_str = entry_date.strftime("%d/%m/%Y")
                 
-                is_duplicate = not df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()) & (df_month["Date"] == date_str)].empty
+                existing_match = df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()) & (df_month["Date"] == date_str)]
+                holidays_dict = get_flat_holiday_dates()
+                is_pub_hol = date_str in holidays_dict
                 
-                if is_duplicate:
-                    st.error(f"⚠️ An entry for {formatted_name} on {date_str} already exists!")
+                if entry_status in ["PL", "LWP", "Absent"]:
+                    in_t_str, out_t_str = "00:00", "00:00"
                 else:
-                    holidays_dict = get_flat_holiday_dates()
-                    is_pub_hol = date_str in holidays_dict
-                    total_hrs, late_hrs, out_hrs, ot_hrs = calculate_times(in_time.strftime("%H:%M"), out_time.strftime("%H:%M"), day_str, entry_status, is_pub_hol)
-                    
-                    if entry_status in ["PL", "LWP", "Absent"]:
-                        in_t_str, out_t_str = "00:00", "00:00"
+                    in_t_str, out_t_str = in_time.strftime("%H:%M"), out_time.strftime("%H:%M")
+                
+                is_overlapping = False
+                
+                if not existing_match.empty:
+                    idx = existing_match.index[0]
+                    if entry_status not in ["PL", "LWP", "Absent"]:
+                        curr_in = str(df_month.at[idx, "In Time"])
+                        curr_out = str(df_month.at[idx, "Out Time"])
+                        
+                        if check_time_overlap(curr_in, curr_out, in_t_str, out_t_str):
+                            st.error(f"⚠️ Overlap Error: Tame nakhelo time ({in_t_str} thi {out_t_str}) phelathi j add karel time sathe overlap thay che!")
+                            is_overlapping = True
+                        else:
+                            if curr_in and curr_in != "00:00":
+                                in_t_str = curr_in + ", " + in_t_str
+                            if curr_out and curr_out != "00:00":
+                                out_t_str = curr_out + ", " + out_t_str
+                
+                if not is_overlapping:
+                    if not existing_match.empty:
+                        tot, late, out_e, ot = calculate_times(in_t_str, out_t_str, day_str, entry_status, is_pub_hol)
+                        
+                        df_month.at[idx, "In Time"] = in_t_str
+                        df_month.at[idx, "Out Time"] = out_t_str
+                        df_month.at[idx, "Total Hours"] = tot
+                        df_month.at[idx, "Late Hours"] = late
+                        df_month.at[idx, "Out Hours"] = out_e
+                        df_month.at[idx, "OT Hours"] = ot
+                        df_month.at[idx, "Status"] = entry_status
+                        
+                        save_data(df_month, target_sheet)
+                        st.session_state.flash_msg = f"✅ Additional punch added for {formatted_name} on {date_str}!"
                     else:
-                        in_t_str, out_t_str = in_time.strftime("%H:%M"), out_time.strftime("%H:%M")
-
-                    new_entry = pd.DataFrame({
-                        "Employee Name": [formatted_name],
-                        "Date": [date_str],
-                        "Day": [day_str],
-                        "Status": [entry_status],
-                        "In Time": [in_t_str],
-                        "Out Time": [out_t_str],
-                        "Late Hours": [late_hrs],
-                        "Out Hours": [out_hrs],
-                        "Total Hours": [total_hrs],
-                        "OT Hours": [ot_hrs]
-                    })
-                    df_month = pd.concat([df_month, new_entry], ignore_index=True)
-                    save_data(df_month, target_sheet) 
+                        tot, late, out_e, ot = calculate_times(in_t_str, out_t_str, day_str, entry_status, is_pub_hol)
+                        new_entry = pd.DataFrame({
+                            "Employee Name": [formatted_name],
+                            "Date": [date_str],
+                            "Day": [day_str],
+                            "Status": [entry_status],
+                            "In Time": [in_t_str],
+                            "Out Time": [out_t_str],
+                            "Late Hours": [late_hrs],
+                            "Out Hours": [out_hrs],
+                            "Total Hours": [tot],
+                            "OT Hours": [ot]
+                        })
+                        df_month = pd.concat([df_month, new_entry], ignore_index=True)
+                        save_data(df_month, target_sheet) 
+                        st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
                     st.session_state.filter_month = target_sheet
                     st.session_state.last_edited = f"{formatted_name}_{date_str}"
                     st.session_state.form_reset_counter += 1
-                    
-                    st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     st.rerun()
 
     elif entry_mode == "📂 Bulk Upload (Excel/CSV)":
@@ -397,7 +461,7 @@ with tab1:
         st.markdown("""
         **Instructions:**
         1. File must have columns: `Employee Name`, `Date` (DD/MM/YYYY), `In Time` (HH:MM), `Out Time` (HH:MM), `Status` (Optional).
-        2. Missing times will default to 08:00 and 18:00. Missing Status defaults to Regular.
+        2. Overlap Protection is Active: Duplicates or overlapping times will be automatically skipped!
         """)
         
         template_df = pd.DataFrame({
@@ -459,7 +523,31 @@ with tab1:
                                     in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
                                     out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
                                     
-                                    if not df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)].empty:
+                                    existing_match = df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)]
+                                    
+                                    if not existing_match.empty:
+                                        idx = existing_match.index[0]
+                                        if stat not in ["PL", "LWP", "Absent"]:
+                                            curr_in = str(df_db.at[idx, "In Time"])
+                                            curr_out = str(df_db.at[idx, "Out Time"])
+                                            
+                                            if check_time_overlap(curr_in, curr_out, in_val, out_val):
+                                                continue 
+                                                
+                                            if in_val != "00:00" and curr_in != "00:00":
+                                                in_val = curr_in + ", " + in_val
+                                            if out_val != "00:00" and curr_out != "00:00":
+                                                out_val = curr_out + ", " + out_val
+                                        
+                                        tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
+                                        df_db.at[idx, "In Time"] = in_val
+                                        df_db.at[idx, "Out Time"] = out_val
+                                        df_db.at[idx, "Total Hours"] = tot
+                                        df_db.at[idx, "Late Hours"] = late
+                                        df_db.at[idx, "Out Hours"] = out_e
+                                        df_db.at[idx, "OT Hours"] = ot
+                                        df_db.at[idx, "Status"] = stat
+                                        success_count += 1
                                         continue
                                         
                                     tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
@@ -472,12 +560,12 @@ with tab1:
                                     
                                 if new_rows:
                                     df_db = pd.concat([df_db, pd.DataFrame(new_rows)], ignore_index=True)
-                                    save_data(df_db, sheet_n)
+                                save_data(df_db, sheet_n)
                                     
                             except Exception:
                                 pass
                                 
-                        st.session_state.flash_msg = f"✅ Successfully uploaded {success_count} records!"
+                        st.session_state.flash_msg = f"✅ Successfully processed {success_count} records!"
                         st.rerun()
             except Exception as e:
                 st.error(f"Error reading file: {e}")
@@ -538,7 +626,7 @@ with tab2:
                         except:
                             in_t, out_t = "08:00", "18:00"
                     
-                    tot, late, out_e, out = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                    tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                     new_records.append({
                         "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str, "Status": stat,
                         "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
@@ -751,7 +839,6 @@ with tab4:
             chart_data['Overtime Hrs'] = chart_data['OT Hours'].apply(time_to_float)
             chart_data.set_index('Date', inplace=True)
             
-            # --- CHANGED TO LINE CHART ---
             st.line_chart(chart_data[['Working Hrs', 'Overtime Hrs']], use_container_width=True)
 
             st.divider()
@@ -952,11 +1039,9 @@ with tab4:
                                 def_status = ["Regular", "Holiday", "PL", "LWP", "Absent"]
                                 e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
                             with ce3:
-                                in_obj = datetime.strptime(row_data["In Time"], "%H:%M").time()
-                                e_in = st.time_input("In Time", value=in_obj, key="e_in")
+                                e_in = st.text_input("In Time (HH:MM, HH:MM)", value=row_data["In Time"], key="e_in")
                             with ce4:
-                                out_obj = datetime.strptime(row_data["Out Time"], "%H:%M").time()
-                                e_out = st.time_input("Out Time", value=out_obj, key="e_out")
+                                e_out = st.text_input("Out Time (HH:MM, HH:MM)", value=row_data["Out Time"], key="e_out")
                                 
                             if st.form_submit_button("Update Entry", type="secondary"):
                                 formatted_e_name = e_name.strip().title()
@@ -978,12 +1063,12 @@ with tab4:
                                     day_str_e = e_date.strftime("%a")
                                     holidays_dict = get_flat_holiday_dates()
                                     is_pub_hol = date_str_e in holidays_dict
-                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in.strftime("%H:%M"), e_out.strftime("%H:%M"), day_str_e, e_stat, is_pub_hol)
+                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
                                     
                                     if e_stat in ["PL", "LWP", "Absent"]:
                                         in_t_str, out_t_str = "00:00", "00:00"
                                     else:
-                                        in_t_str, out_t_str = e_in.strftime("%H:%M"), e_out.strftime("%H:%M")
+                                        in_t_str, out_t_str = e_in, e_out
 
                                     updated_row = pd.DataFrame({
                                         "Employee Name": [formatted_e_name],
