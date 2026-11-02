@@ -538,7 +538,7 @@ with tab2:
                         except:
                             in_t, out_t = "08:00", "18:00"
                     
-                    tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                    tot, late, out_e, out = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                     new_records.append({
                         "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str, "Status": stat,
                         "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
@@ -751,7 +751,8 @@ with tab4:
             chart_data['Overtime Hrs'] = chart_data['OT Hours'].apply(time_to_float)
             chart_data.set_index('Date', inplace=True)
             
-            st.bar_chart(chart_data[['Working Hrs', 'Overtime Hrs']], use_container_width=True)
+            # --- CHANGED TO LINE CHART ---
+            st.line_chart(chart_data[['Working Hrs', 'Overtime Hrs']], use_container_width=True)
 
             st.divider()
             st.subheader("📋 Attendance Sheet")
