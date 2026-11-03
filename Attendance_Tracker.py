@@ -27,7 +27,6 @@ def get_all_sheet_names():
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
-                # FILTER ADDED: Ignore holidays_list in sheets
                 return [k for k in data.keys() if k != "holidays_list"]
     except Exception:
         pass
@@ -43,31 +42,35 @@ def get_all_sheet_names():
     return fallback_sheets
 
 def get_all_employees():
-    url = f"{FIREBASE_URL}.json"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        emps = set()
-        if data and isinstance(data, dict):
-            for sheet, records in data.items():
-                if sheet == "holidays_list":
-                    continue # Ignore holiday database
-                if isinstance(records, list):
-                    for r in records:
-                        if isinstance(r, dict) and "Employee Name" in r:
-                            name = str(r["Employee Name"]).strip().title()
-                            if name and name.lower() != "nan":
-                                emps.add(name)
-                elif isinstance(records, dict):
-                    for key, r in records.items():
-                        if isinstance(r, dict) and "Employee Name" in r:
-                            name = str(r["Employee Name"]).strip().title()
-                            if name and name.lower() != "nan":
-                                emps.add(name)
-        valid_emps = [e for e in emps if e != "-"]
-        return sorted(list(valid_emps))
-    except Exception:
-        return []
+    # SMART FETCHING: Now fetches data month-by-month to avoid root crashes
+    sheets = get_all_sheet_names()
+    emps = set()
+    for sheet in sheets:
+        if sheet == "holidays_list":
+            continue
+        url = f"{FIREBASE_URL}/{sheet}.json"
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                records = response.json()
+                if records:
+                    if isinstance(records, list):
+                        for r in records:
+                            if isinstance(r, dict) and "Employee Name" in r:
+                                name = str(r.get("Employee Name", "")).strip().title()
+                                if name and name.lower() != "nan":
+                                    emps.add(name)
+                    elif isinstance(records, dict):
+                        for key, r in records.items():
+                            if isinstance(r, dict) and "Employee Name" in r:
+                                name = str(r.get("Employee Name", "")).strip().title()
+                                if name and name.lower() != "nan":
+                                    emps.add(name)
+        except Exception:
+            continue
+            
+    valid_emps = [e for e in emps if e != "-"]
+    return sorted(list(valid_emps))
 
 def load_holidays_data():
     try:
