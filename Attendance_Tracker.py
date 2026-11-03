@@ -430,7 +430,6 @@ with tab1:
                         st.session_state.flash_msg = f"✅ Additional punch added for {formatted_name} on {date_str}!"
                     else:
                         tot, late, out_e, ot = calculate_times(in_t_str, out_t_str, day_str, entry_status, is_pub_hol)
-                        # FIXED VARIABLE NAMES HERE
                         new_entry = pd.DataFrame({
                             "Employee Name": [formatted_name],
                             "Date": [date_str],
@@ -829,14 +828,6 @@ with tab4:
             st.markdown('</div>', unsafe_allow_html=True)
             
             st.write("")
-            st.subheader("📈 Daily Working Hours")
-            chart_data = df_display[['Date', 'Total Hours', 'OT Hours']].copy()
-            chart_data['Working Hrs'] = chart_data['Total Hours'].apply(time_to_float)
-            chart_data['Overtime Hrs'] = chart_data['OT Hours'].apply(time_to_float)
-            chart_data.set_index('Date', inplace=True)
-            
-            st.line_chart(chart_data[['Working Hrs', 'Overtime Hrs']], use_container_width=True)
-
             st.divider()
             st.subheader("📋 Attendance Sheet")
 
