@@ -86,7 +86,7 @@ def load_holidays_data():
 def save_holidays_data(data):
     try:
         requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data)
-        st.cache_data.clear() # CACHE CLEAR (So next load gets fresh data)
+        st.cache_data.clear() 
     except Exception:
         pass
 
@@ -237,11 +237,13 @@ def load_data(sheet_name):
         return pd.DataFrame(columns=columns)
 
 def save_data(df, sheet_name):
+    # FIX: Added .fillna("") to prevent Firebase JSON crash when saving deleted data
+    df_clean = df.fillna("")
     url = f"{FIREBASE_URL}/{sheet_name}.json"
-    data = df.to_dict(orient='records')
+    data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data)
-        st.cache_data.clear() # CACHE CLEAR (So next load gets fresh data)
+        st.cache_data.clear() 
     except Exception:
         pass
 
@@ -399,7 +401,7 @@ with tab1:
                 st.error("Out Time cannot be before In Time for a single shift!")
             else:
                 target_sheet = get_sheet_name(entry_date)
-                df_month = load_data(target_sheet)
+                df_month = load_data(target_sheet).copy() # FIX: Added .copy()
                 day_str = entry_date.strftime("%a")
                 date_str = entry_date.strftime("%d/%m/%Y")
                 
@@ -522,7 +524,7 @@ with tab1:
                                 date_s = d_obj.strftime("%d/%m/%Y")
                                 is_pub_hol = date_s in holidays_dict
                                 
-                                df_db = load_data(sheet_n)
+                                df_db = load_data(sheet_n).copy() # FIX: Added .copy()
                                 new_rows = []
                                 
                                 for _, r in group.iterrows():
@@ -589,7 +591,7 @@ with tab2:
         st.info("No employees found in the database. Please add at least one entry in 'Manual Entry' first.")
     else:
         r_sheet = get_sheet_name(roster_date)
-        df_r_month = load_data(r_sheet)
+        df_r_month = load_data(r_sheet).copy() # FIX: Added .copy()
         r_date_str = roster_date.strftime("%d/%m/%Y")
         r_day_str = roster_date.strftime("%a")
         
@@ -778,6 +780,7 @@ with tab4:
             for sht in get_all_sheet_names():
                 df_temp = load_data(sht)
                 if not df_temp.empty:
+                    df_temp = df_temp.copy() # FIX: Safe copy 
                     df_temp["_Original_Sheet"] = sht
                     df_temp["_Original_Index"] = df_temp.index
                     df_list.append(df_temp)
@@ -786,10 +789,13 @@ with tab4:
             else:
                 df_display = pd.DataFrame()
         else:
-            df_display = load_data(selected_sheet)
-            if not df_display.empty:
+            df_temp = load_data(selected_sheet)
+            if not df_temp.empty:
+                df_display = df_temp.copy() # FIX: Safe copy
                 df_display["_Original_Sheet"] = selected_sheet
                 df_display["_Original_Index"] = df_display.index
+            else:
+                df_display = pd.DataFrame()
 
         if not df_display.empty:
             df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
@@ -1068,8 +1074,8 @@ with tab4:
                             to_delete[sht].append(idx)
 
                         for sht, indices in to_delete.items():
-                            df_orig = load_data(sht)
-                            df_orig = df_orig.drop(indices) 
+                            df_orig = load_data(sht).copy() # FIX: Added safe copy
+                            df_orig = df_orig.drop(indices, errors='ignore') # FIX: Ignore index errors
                             save_data(df_orig, sht)
                         
                         st.session_state.last_edited = None
@@ -1103,13 +1109,13 @@ with tab4:
                                 date_str_e = e_date.strftime("%d/%m/%Y")
                                 new_sheet = get_sheet_name(e_date)
                                 
-                                df_orig = load_data(selected_sheet_orig)
+                                df_orig = load_data(selected_sheet_orig).copy() # FIX: Added safe copy
                                 
                                 if new_sheet == selected_sheet_orig:
-                                    temp_check = df_orig.drop(selected_idx)
+                                    temp_check = df_orig.drop(selected_idx, errors='ignore')
                                     is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
                                 else:
-                                    df_new = load_data(new_sheet)
+                                    df_new = load_data(new_sheet).copy() # FIX: Added safe copy
                                     is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
 
                                 if is_dup:
@@ -1143,7 +1149,7 @@ with tab4:
                                         df_orig.update(updated_row)
                                         save_data(df_orig, selected_sheet_orig)
                                     else:
-                                        df_orig = df_orig.drop(selected_idx)
+                                        df_orig = df_orig.drop(selected_idx, errors='ignore')
                                         save_data(df_orig, selected_sheet_orig)
                                         df_new = pd.concat([df_new, updated_row], ignore_index=True)
                                         save_data(df_new, new_sheet)
@@ -1156,8 +1162,8 @@ with tab4:
                         st.subheader("🗑️ Delete")
                         st.write("Click below to permanently delete this entry:")
                         if st.button("Delete This Entry", type="primary"):
-                            df_orig = load_data(selected_sheet_orig)
-                            df_orig = df_orig.drop(selected_idx) 
+                            df_orig = load_data(selected_sheet_orig).copy() # FIX: Added safe copy
+                            df_orig = df_orig.drop(selected_idx, errors='ignore') # FIX: Ignore index errors
                             save_data(df_orig, selected_sheet_orig)
                             
                             st.session_state.last_edited = None
