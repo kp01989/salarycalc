@@ -174,7 +174,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
     return mins_to_str(reg_mins), mins_to_str(late_mins), mins_to_str(out_early_mins), mins_to_str(ot_mins)
 
 def load_data(sheet_name):
-    columns = ["Employee Name", "Date", "Day", "Status", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours"]
+    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     holidays_dict = get_flat_holiday_dates()
     
@@ -336,7 +336,6 @@ with tab1:
             all_emps = get_all_employees()
             if all_emps: st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
-        # --- SMART AUTO-FILL LOGIC IMPLEMENTED ---
         default_date = date.today()
         default_in = time(8, 0)
         default_out = time(18, 0)
@@ -351,17 +350,13 @@ with tab1:
                       latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
                       latest_date = latest_date_row['RealDate'].date()
                       
-                      # Check if today already has an entry
                       today_entry = df_emp[df_emp['RealDate'].dt.date == date.today()]
                       if not today_entry.empty:
                           default_date = date.today()
-                          # Use current time as default IN for multi-punch on same day
                           now = datetime.now()
                           default_in = now.time()
-                          # Keep default out to end of day to avoid overlap with current time
                           default_out = time(18, 0) 
                       else:
-                          # Normal next day logic
                           default_date = latest_date + timedelta(days=1)
 
         with st.form("entry_form"):
@@ -435,17 +430,18 @@ with tab1:
                         st.session_state.flash_msg = f"✅ Additional punch added for {formatted_name} on {date_str}!"
                     else:
                         tot, late, out_e, ot = calculate_times(in_t_str, out_t_str, day_str, entry_status, is_pub_hol)
+                        # FIXED VARIABLE NAMES HERE
                         new_entry = pd.DataFrame({
                             "Employee Name": [formatted_name],
                             "Date": [date_str],
                             "Day": [day_str],
-                            "Status": [entry_status],
                             "In Time": [in_t_str],
                             "Out Time": [out_t_str],
-                            "Late Hours": [late_hrs],
-                            "Out Hours": [out_hrs],
+                            "Late Hours": [late], 
+                            "Out Hours": [out_e],
                             "Total Hours": [tot],
-                            "OT Hours": [ot]
+                            "OT Hours": [ot],
+                            "Status": [entry_status]
                         })
                         df_month = pd.concat([df_month, new_entry], ignore_index=True)
                         save_data(df_month, target_sheet) 
@@ -552,9 +548,9 @@ with tab1:
                                         
                                     tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
                                     new_rows.append({
-                                        "Employee Name": ename, "Date": date_s, "Day": day_s, "Status": stat,
+                                        "Employee Name": ename, "Date": date_s, "Day": day_s,
                                         "In Time": in_val, "Out Time": out_val, "Late Hours": late, "Out Hours": out_e,
-                                        "Total Hours": tot, "OT Hours": ot
+                                        "Total Hours": tot, "OT Hours": ot, "Status": stat
                                     })
                                     success_count += 1
                                     
@@ -628,9 +624,9 @@ with tab2:
                     
                     tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                     new_records.append({
-                        "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str, "Status": stat,
+                        "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
                         "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
-                        "Total Hours": tot, "OT Hours": ot
+                        "Total Hours": tot, "OT Hours": ot, "Status": stat
                     })
                 
                 if new_records:
@@ -782,7 +778,7 @@ with tab4:
 
             df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
 
-            final_display_columns = ["Employee Name", "Date", "Day", "Status", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "_Original_Sheet", "_Original_Index"]
+            final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status", "_Original_Sheet", "_Original_Index"]
             for c in final_display_columns:
                  if c not in df_display.columns:
                      df_display[c] = ""
@@ -899,7 +895,7 @@ with tab4:
                         cell.border = thin_border
                     
                     day_col_idx = 2 
-                    status_col_idx = 3
+                    status_col_idx = 9
                     max_data_row = 3 + len(df_export)
                     
                     holidays_dict_xls = get_flat_holiday_dates()
@@ -924,13 +920,13 @@ with tab4:
                                 cell.font = black_bold_font
                                 
                     total_row_idx = max_data_row + 2
-                    worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=5)
+                    worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
                     
                     worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
-                    worksheet.cell(row=total_row_idx, column=6, value=f"{late_hours:02d}:{late_mins:02d}")
-                    worksheet.cell(row=total_row_idx, column=7, value=f"{out_hours:02d}:{out_mins:02d}")
-                    worksheet.cell(row=total_row_idx, column=8, value=f"{reg_hours:02d}:{reg_mins:02d}")
-                    worksheet.cell(row=total_row_idx, column=9, value=f"{ot_hours:02d}:{ot_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
+                    worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
                     
                     for col_idx in range(1, 10):
                         cell = worksheet.cell(row=total_row_idx, column=col_idx)
@@ -1074,13 +1070,13 @@ with tab4:
                                         "Employee Name": [formatted_e_name],
                                         "Date": [date_str_e],
                                         "Day": [day_str_e],
-                                        "Status": [e_stat],
                                         "In Time": [in_t_str],
                                         "Out Time": [out_t_str],
                                         "Late Hours": [l_hrs],
                                         "Out Hours": [o_hrs],
                                         "Total Hours": [t_hrs],
-                                        "OT Hours": [ot_hrs]
+                                        "OT Hours": [ot_hrs],
+                                        "Status": [e_stat]
                                     })
                                     
                                     if new_sheet == selected_sheet_orig:
