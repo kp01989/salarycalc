@@ -20,6 +20,7 @@ STANDARD_OUT = "18:00"
 def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
+@st.cache_data
 def get_all_sheet_names():
     url = f"{FIREBASE_URL}.json?shallow=true"
     try:
@@ -41,6 +42,7 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
+@st.cache_data
 def get_all_employees():
     sheets = get_all_sheet_names()
     emps = set()
@@ -71,6 +73,7 @@ def get_all_employees():
     valid_emps = [e for e in emps if e != "-"]
     return sorted(list(valid_emps))
 
+@st.cache_data
 def load_holidays_data():
     try:
         res = requests.get(f"{FIREBASE_URL}/holidays_list.json")
@@ -83,6 +86,7 @@ def load_holidays_data():
 def save_holidays_data(data):
     try:
         requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data)
+        st.cache_data.clear() # CACHE CLEAR (So next load gets fresh data)
     except Exception:
         pass
 
@@ -182,6 +186,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
         
     return mins_to_str(reg_mins), mins_to_str(late_mins), mins_to_str(out_early_mins), mins_to_str(ot_mins)
 
+@st.cache_data
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
@@ -236,6 +241,7 @@ def save_data(df, sheet_name):
     data = df.to_dict(orient='records')
     try:
         requests.put(url, json=data)
+        st.cache_data.clear() # CACHE CLEAR (So next load gets fresh data)
     except Exception:
         pass
 
@@ -744,7 +750,6 @@ with tab3:
         else:
             st.write("No holidays declared yet.")
 
-# FIX: Allow 'Administrator' to bypass the block and enter Tab 4
 with tab4:
     if not formatted_name:
         st.info("👆 Please enter an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
@@ -850,6 +855,36 @@ with tab4:
 
             st.write("")
             st.divider()
+            
+            # --- SMART FILTERS UI ---
+            st.markdown("### 🔍 Smart Filters")
+            filt_c1, filt_c2, filt_c3 = st.columns(3)
+            
+            with filt_c1:
+                if is_admin and selected_emp == "All Employees":
+                    emp_opts = sorted(df_display["Employee Name"].unique().tolist())
+                    f_emps = st.multiselect("👤 Filter by Employee", emp_opts)
+                else:
+                    f_emps = []
+                    
+            with filt_c2:
+                stat_opts = sorted(df_display["Status"].unique().tolist())
+                f_stats = st.multiselect("📌 Filter by Status", stat_opts)
+                
+            with filt_c3:
+                day_opts = sorted(df_display["Day"].unique().tolist())
+                f_days = st.multiselect("📅 Filter by Day", day_opts)
+                
+            # Apply Filters
+            if f_emps:
+                df_display = df_display[df_display["Employee Name"].isin(f_emps)]
+            if f_stats:
+                df_display = df_display[df_display["Status"].isin(f_stats)]
+            if f_days:
+                df_display = df_display[df_display["Day"].isin(f_days)]
+                
+            st.write("")
+            # ------------------------
             
             head_col1, head_col2 = st.columns([3,1])
             with head_col1:
