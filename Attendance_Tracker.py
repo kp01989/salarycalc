@@ -42,7 +42,6 @@ def get_all_sheet_names():
     return fallback_sheets
 
 def get_all_employees():
-    # SMART FETCHING: Now fetches data month-by-month to avoid root crashes
     sheets = get_all_sheet_names()
     emps = set()
     for sheet in sheets:
@@ -601,12 +600,11 @@ with tab2:
                 "Out Time": ["18:00"] * len(pending_emps)
             })
             
+            # FIX: Removed TimeColumn formatting to stop Streamlit from crashing with string inputs
             edited_roster = st.data_editor(
                 roster_df,
                 column_config={
-                    "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True),
-                    "In Time": st.column_config.TimeColumn("In Time", format="HH:mm", step=60),
-                    "Out Time": st.column_config.TimeColumn("Out Time", format="HH:mm", step=60)
+                    "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True)
                 },
                 use_container_width=True,
                 hide_index=True,
