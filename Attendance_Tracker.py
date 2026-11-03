@@ -600,7 +600,6 @@ with tab2:
                 "Out Time": ["18:00"] * len(pending_emps)
             })
             
-            # FIX: Removed TimeColumn formatting to stop Streamlit from crashing with string inputs
             edited_roster = st.data_editor(
                 roster_df,
                 column_config={
@@ -745,19 +744,29 @@ with tab3:
         else:
             st.write("No holidays declared yet.")
 
+# FIX: Allow 'Administrator' to bypass the block and enter Tab 4
 with tab4:
-    if not formatted_name or formatted_name == "Administrator":
-        st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
+    if not formatted_name:
+        st.info("👆 Please enter an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     else:
+        is_admin = (formatted_name == "Administrator")
+        
         all_sheets_raw = get_all_sheet_names()
         if current_month_str not in all_sheets_raw:
             all_sheets_raw.insert(0, current_month_str)
         
         available_sheets = ["All Months"] + all_sheets_raw
 
-        if selected_sheet := st.session_state.get('filter_month', current_month_str):
-            pass
-        selected_sheet = st.session_state.filter_month
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
+        
+        if is_admin:
+            with col_f2:
+                emp_list = ["All Employees"] + get_all_employees()
+                selected_emp = st.selectbox("Select Employee", emp_list, key="admin_emp_select")
+        else:
+            selected_emp = formatted_name
 
         if selected_sheet == "All Months":
             df_list = []
@@ -783,7 +792,8 @@ with tab4:
             df_display = df_display.reset_index(drop=True)
             df_display = df_display.fillna("") 
 
-            df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
+            if selected_emp != "All Employees":
+                df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == selected_emp.lower()]
 
             final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status", "_Original_Sheet", "_Original_Index"]
             for c in final_display_columns:
@@ -792,176 +802,191 @@ with tab4:
             df_display = df_display[final_display_columns]
 
         if df_display.empty:
-            st.warning(f"No records found for '{formatted_name}' in {selected_sheet}.")
+            st.warning(f"No records found for '{selected_emp}' in {selected_sheet}.")
         else:
-            total_reg_mins = 0
-            for val in df_display["Total Hours"]:
-                if pd.notna(val) and ":" in str(val):
-                    h, m = map(int, str(val).split(":"))
-                    total_reg_mins += h * 60 + m
-            reg_hours, reg_mins = divmod(total_reg_mins, 60)
-            
-            total_ot_mins = 0
-            for val in df_display["OT Hours"]:
-                if pd.notna(val) and ":" in str(val):
-                    h, m = map(int, str(val).split(":"))
-                    total_ot_mins += h * 60 + m
-            ot_hours, ot_mins = divmod(total_ot_mins, 60)
+            if selected_emp != "All Employees":
+                total_reg_mins = 0
+                for val in df_display["Total Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        total_reg_mins += h * 60 + m
+                reg_hours, reg_mins = divmod(total_reg_mins, 60)
+                
+                total_ot_mins = 0
+                for val in df_display["OT Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        total_ot_mins += h * 60 + m
+                ot_hours, ot_mins = divmod(total_ot_mins, 60)
 
-            total_late_mins = 0
-            for val in df_display["Late Hours"]:
-                if pd.notna(val) and ":" in str(val):
-                    h, m = map(int, str(val).split(":"))
-                    total_late_mins += h * 60 + m
-            late_hours, late_mins = divmod(total_late_mins, 60)
+                total_late_mins = 0
+                for val in df_display["Late Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        total_late_mins += h * 60 + m
+                late_hours, late_mins = divmod(total_late_mins, 60)
 
-            total_out_mins = 0
-            for val in df_display["Out Hours"]:
-                if pd.notna(val) and ":" in str(val):
-                    h, m = map(int, str(val).split(":"))
-                    total_out_mins += h * 60 + m
-            out_hours, out_mins = divmod(total_out_mins, 60)
-            
-            pl_count = len(df_display[df_display["Status"] == "PL"])
-            absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
+                total_out_mins = 0
+                for val in df_display["Out Hours"]:
+                    if pd.notna(val) and ":" in str(val):
+                        h, m = map(int, str(val).split(":"))
+                        total_out_mins += h * 60 + m
+                out_hours, out_mins = divmod(total_out_mins, 60)
+                
+                pl_count = len(df_display[df_display["Status"] == "PL"])
+                absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
 
-            st.markdown('<div class="summary-container">', unsafe_allow_html=True)
-            st.subheader(f"📊 Summary for {formatted_name}")
-            m1, m2, m3, m4, m5 = st.columns(5)
-            with m1: st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
-            with m2: st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
-            with m3: st.metric(label="⚠️ Total Late/Out Hrs", value=f"{late_hours+out_hours:02d}:{(late_mins+out_mins):02d}")
-            with m4: st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
-            with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
+                st.markdown('<div class="summary-container">', unsafe_allow_html=True)
+                st.subheader(f"📊 Summary for {selected_emp}")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                with m1: st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
+                with m2: st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
+                with m3: st.metric(label="⚠️ Total Late/Out Hrs", value=f"{late_hours+out_hours:02d}:{(late_mins+out_mins):02d}")
+                with m4: st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
+                with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.subheader("📊 Master Attendance Data (All Employees)")
+
             st.write("")
             st.divider()
-            st.subheader("📋 Attendance Sheet")
-
-            col_s1, col_s2, col_s3 = st.columns([1, 1, 2])
-            with col_s1:
-                st.selectbox("Select Month to View", available_sheets, key="filter_month")
-                selected_sheet = st.session_state.filter_month
-
-            with col_s2:
+            
+            head_col1, head_col2 = st.columns([3,1])
+            with head_col1:
+                st.subheader("📋 Attendance Sheet")
+            with head_col2:
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
                     export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
                     
-                    df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
-                    worksheet = writer.sheets[export_sheet_name]
-                    
-                    center_align = Alignment(horizontal='center', vertical='center')
-                    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                    
-                    red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
-                    gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
-                    yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-                    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
-                    holiday_fill = PatternFill(start_color='B3D9FF', end_color='B3D9FF', fill_type='solid') 
-                    
-                    white_bold_font = Font(color="FFFFFF", bold=True)
-                    black_bold_font = Font(color="000000", bold=True)
-                    header_font = Font(bold=True)
-                    total_font = Font(bold=True, size=12)
-                    
-                    worksheet.merge_cells('A1:B1')
-                    worksheet.merge_cells('C1:D1')
-                    
-                    a1 = worksheet['A1']
-                    a1.value = "Employee Name :"
-                    a1.fill = gray_fill
-                    a1.font = header_font
-                    a1.alignment = center_align
-                    
-                    c1 = worksheet['C1']
-                    c1.value = formatted_name
-                    c1.fill = yellow_fill_name
-                    c1.font = header_font
-                    c1.alignment = center_align
-                    
-                    for r in worksheet['A1:D1']:
-                        for c in r:
-                            c.border = thin_border
-                            
-                    for col_idx in range(1, 10): 
-                        cell = worksheet.cell(row=3, column=col_idx)
-                        cell.fill = gray_fill
-                        cell.font = header_font
-                        cell.alignment = center_align
-                        cell.border = thin_border
-                    
-                    day_col_idx = 2 
-                    status_col_idx = 9
-                    max_data_row = 3 + len(df_export)
-                    
-                    holidays_dict_xls = get_flat_holiday_dates()
-                    
-                    for row_idx in range(4, max_data_row + 1):
-                        date_val_xls = worksheet.cell(row=row_idx, column=1).value
-                        day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
-                        status_val = worksheet.cell(row=row_idx, column=status_col_idx).value
+                    if selected_emp != "All Employees":
+                        df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
+                        df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
+                        worksheet = writer.sheets[export_sheet_name]
                         
-                        is_sunday = (day_val == "Sun")
-                        is_holiday = (status_val == "Holiday") or (str(date_val_xls) in holidays_dict_xls)
+                        center_align = Alignment(horizontal='center', vertical='center')
+                        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                         
-                        for col_idx in range(1, 10):
-                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                        red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
+                        gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
+                        yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                        total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
+                        holiday_fill = PatternFill(start_color='B3D9FF', end_color='B3D9FF', fill_type='solid') 
+                        
+                        white_bold_font = Font(color="FFFFFF", bold=True)
+                        black_bold_font = Font(color="000000", bold=True)
+                        header_font = Font(bold=True)
+                        total_font = Font(bold=True, size=12)
+                        
+                        worksheet.merge_cells('A1:B1')
+                        worksheet.merge_cells('C1:D1')
+                        
+                        a1 = worksheet['A1']
+                        a1.value = "Employee Name :"
+                        a1.fill = gray_fill
+                        a1.font = header_font
+                        a1.alignment = center_align
+                        
+                        c1 = worksheet['C1']
+                        c1.value = selected_emp
+                        c1.fill = yellow_fill_name
+                        c1.font = header_font
+                        c1.alignment = center_align
+                        
+                        for r in worksheet['A1:D1']:
+                            for c in r:
+                                c.border = thin_border
+                                
+                        for col_idx in range(1, 10): 
+                            cell = worksheet.cell(row=3, column=col_idx)
+                            cell.fill = gray_fill
+                            cell.font = header_font
                             cell.alignment = center_align
                             cell.border = thin_border
-                            if is_sunday:
-                                cell.fill = red_fill
-                                cell.font = white_bold_font
-                            elif is_holiday:
-                                cell.fill = holiday_fill
-                                cell.font = black_bold_font
-                                
-                    total_row_idx = max_data_row + 2
-                    worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
-                    
-                    worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
-                    worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
-                    worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
-                    worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
-                    worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
-                    
-                    for col_idx in range(1, 10):
-                        cell = worksheet.cell(row=total_row_idx, column=col_idx)
-                        cell.border = thin_border
-                        cell.fill = total_fill
-                        cell.font = total_font
-                        cell.alignment = center_align
+                        
+                        day_col_idx = 2 
+                        status_col_idx = 9
+                        max_data_row = 3 + len(df_export)
+                        
+                        holidays_dict_xls = get_flat_holiday_dates()
+                        
+                        for row_idx in range(4, max_data_row + 1):
+                            date_val_xls = worksheet.cell(row=row_idx, column=1).value
+                            day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
+                            status_val = worksheet.cell(row=row_idx, column=status_col_idx).value
+                            
+                            is_sunday = (day_val == "Sun")
+                            is_holiday = (status_val == "Holiday") or (str(date_val_xls) in holidays_dict_xls)
+                            
+                            for col_idx in range(1, 10):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.alignment = center_align
+                                cell.border = thin_border
+                                if is_sunday:
+                                    cell.fill = red_fill
+                                    cell.font = white_bold_font
+                                elif is_holiday:
+                                    cell.fill = holiday_fill
+                                    cell.font = black_bold_font
+                                    
+                        total_row_idx = max_data_row + 2
+                        worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
+                        
+                        worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
+                        worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
+                        worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
+                        worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
+                        worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
+                        
+                        for col_idx in range(1, 10):
+                            cell = worksheet.cell(row=total_row_idx, column=col_idx)
+                            cell.border = thin_border
+                            cell.fill = total_fill
+                            cell.font = total_font
+                            cell.alignment = center_align
 
-                    empty_row_idx = max_data_row + 1
-                    for row_idx in range(1, worksheet.max_row + 1):
-                        if row_idx == 2 or row_idx == empty_row_idx:
-                            worksheet.row_dimensions[row_idx].height = 6 
-                        else:
-                            worksheet.row_dimensions[row_idx].height = 18
-                    
-                    for col_idx in range(1, worksheet.max_column + 1):
-                        max_length = 0
-                        col_letter = get_column_letter(col_idx)
-                        for row_idx in range(3, worksheet.max_row + 1): 
-                            cell_val = worksheet.cell(row=row_idx, column=col_idx).value
-                            try:
-                                if cell_val and len(str(cell_val)) > max_length:
-                                    max_length = len(str(cell_val))
-                            except:
-                                pass
-                        worksheet.column_dimensions[col_letter].width = max_length + 3
-                    
+                        empty_row_idx = max_data_row + 1
+                        for row_idx in range(1, worksheet.max_row + 1):
+                            if row_idx == 2 or row_idx == empty_row_idx:
+                                worksheet.row_dimensions[row_idx].height = 6 
+                            else:
+                                worksheet.row_dimensions[row_idx].height = 18
+                        
+                        for col_idx in range(1, worksheet.max_column + 1):
+                            max_length = 0
+                            col_letter = get_column_letter(col_idx)
+                            for row_idx in range(3, worksheet.max_row + 1): 
+                                cell_val = worksheet.cell(row=row_idx, column=col_idx).value
+                                try:
+                                    if cell_val and len(str(cell_val)) > max_length:
+                                        max_length = len(str(cell_val))
+                                except:
+                                    pass
+                            worksheet.column_dimensions[col_letter].width = max_length + 3
+                    else:
+                        df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
+                        df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
+                        worksheet = writer.sheets[export_sheet_name]
+                        
+                        header_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
+                        header_font = Font(bold=True)
+                        for cell in worksheet[1]:
+                            cell.fill = header_fill
+                            cell.font = header_font
+                            
+                        for column_cells in worksheet.columns:
+                            length = max(len(str(cell.value)) for cell in column_cells)
+                            worksheet.column_dimensions[get_column_letter(column_cells[0].column)].width = length + 2
+
                 excel_data = buffer.getvalue()
-                file_name_export = f"Attendance_{export_sheet_name}_{formatted_name}.xlsx".replace(" ", "_")
+                file_name_export = f"Attendance_{selected_sheet}_{selected_emp}.xlsx".replace(" ", "_")
                 
                 st.download_button(
-                    label="⬇️ Download Data (Excel)",
+                    label="⬇️ Download Excel",
                     data=excel_data,
                     file_name=file_name_export,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True 
+                    use_container_width=True
                 )
 
             def highlight_rows(row):
