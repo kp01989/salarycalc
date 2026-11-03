@@ -237,7 +237,6 @@ def load_data(sheet_name):
         return pd.DataFrame(columns=columns)
 
 def save_data(df, sheet_name):
-    # FIX: Added .fillna("") to prevent Firebase JSON crash when saving deleted data
     df_clean = df.fillna("")
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     data = df_clean.to_dict(orient='records')
@@ -401,7 +400,7 @@ with tab1:
                 st.error("Out Time cannot be before In Time for a single shift!")
             else:
                 target_sheet = get_sheet_name(entry_date)
-                df_month = load_data(target_sheet).copy() # FIX: Added .copy()
+                df_month = load_data(target_sheet).copy() 
                 day_str = entry_date.strftime("%a")
                 date_str = entry_date.strftime("%d/%m/%Y")
                 
@@ -524,7 +523,7 @@ with tab1:
                                 date_s = d_obj.strftime("%d/%m/%Y")
                                 is_pub_hol = date_s in holidays_dict
                                 
-                                df_db = load_data(sheet_n).copy() # FIX: Added .copy()
+                                df_db = load_data(sheet_n).copy()
                                 new_rows = []
                                 
                                 for _, r in group.iterrows():
@@ -591,7 +590,7 @@ with tab2:
         st.info("No employees found in the database. Please add at least one entry in 'Manual Entry' first.")
     else:
         r_sheet = get_sheet_name(roster_date)
-        df_r_month = load_data(r_sheet).copy() # FIX: Added .copy()
+        df_r_month = load_data(r_sheet).copy()
         r_date_str = roster_date.strftime("%d/%m/%Y")
         r_day_str = roster_date.strftime("%a")
         
@@ -771,7 +770,7 @@ with tab4:
         if is_admin:
             with col_f2:
                 emp_list = ["All Employees"] + get_all_employees()
-                selected_emp = st.selectbox("Select Employee", emp_list, key="admin_emp_select")
+                selected_emp = st.selectbox("Select Master View", emp_list, key="admin_emp_select")
         else:
             selected_emp = formatted_name
 
@@ -780,7 +779,7 @@ with tab4:
             for sht in get_all_sheet_names():
                 df_temp = load_data(sht)
                 if not df_temp.empty:
-                    df_temp = df_temp.copy() # FIX: Safe copy 
+                    df_temp = df_temp.copy()
                     df_temp["_Original_Sheet"] = sht
                     df_temp["_Original_Index"] = df_temp.index
                     df_list.append(df_temp)
@@ -791,7 +790,7 @@ with tab4:
         else:
             df_temp = load_data(selected_sheet)
             if not df_temp.empty:
-                df_display = df_temp.copy() # FIX: Safe copy
+                df_display = df_temp.copy()
                 df_display["_Original_Sheet"] = selected_sheet
                 df_display["_Original_Index"] = df_display.index
             else:
@@ -811,75 +810,27 @@ with tab4:
                  if c not in df_display.columns:
                      df_display[c] = ""
             df_display = df_display[final_display_columns]
-
-        if df_display.empty:
-            st.warning(f"No records found for '{selected_emp}' in {selected_sheet}.")
-        else:
-            if selected_emp != "All Employees":
-                total_reg_mins = 0
-                for val in df_display["Total Hours"]:
-                    if pd.notna(val) and ":" in str(val):
-                        h, m = map(int, str(val).split(":"))
-                        total_reg_mins += h * 60 + m
-                reg_hours, reg_mins = divmod(total_reg_mins, 60)
-                
-                total_ot_mins = 0
-                for val in df_display["OT Hours"]:
-                    if pd.notna(val) and ":" in str(val):
-                        h, m = map(int, str(val).split(":"))
-                        total_ot_mins += h * 60 + m
-                ot_hours, ot_mins = divmod(total_ot_mins, 60)
-
-                total_late_mins = 0
-                for val in df_display["Late Hours"]:
-                    if pd.notna(val) and ":" in str(val):
-                        h, m = map(int, str(val).split(":"))
-                        total_late_mins += h * 60 + m
-                late_hours, late_mins = divmod(total_late_mins, 60)
-
-                total_out_mins = 0
-                for val in df_display["Out Hours"]:
-                    if pd.notna(val) and ":" in str(val):
-                        h, m = map(int, str(val).split(":"))
-                        total_out_mins += h * 60 + m
-                out_hours, out_mins = divmod(total_out_mins, 60)
-                
-                pl_count = len(df_display[df_display["Status"] == "PL"])
-                absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
-
-                st.markdown('<div class="summary-container">', unsafe_allow_html=True)
-                st.subheader(f"📊 Summary for {selected_emp}")
-                m1, m2, m3, m4, m5 = st.columns(5)
-                with m1: st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
-                with m2: st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
-                with m3: st.metric(label="⚠️ Total Late/Out Hrs", value=f"{late_hours+out_hours:02d}:{(late_mins+out_mins):02d}")
-                with m4: st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
-                with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.subheader("📊 Master Attendance Data (All Employees)")
-
-            st.write("")
-            st.divider()
             
-            # --- SMART FILTERS UI ---
-            st.markdown("### 🔍 Smart Filters")
+            st.write("")
+            
+            # --- SMART FILTERS UI (MOVED TO TOP FOR LIVE CALCULATION) ---
+            st.markdown("### 🔍 Smart Filters (Select Multiple)")
             filt_c1, filt_c2, filt_c3 = st.columns(3)
             
             with filt_c1:
                 if is_admin and selected_emp == "All Employees":
                     emp_opts = sorted(df_display["Employee Name"].unique().tolist())
-                    f_emps = st.multiselect("👤 Filter by Employee", emp_opts)
+                    f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
                 else:
                     f_emps = []
                     
             with filt_c2:
                 stat_opts = sorted(df_display["Status"].unique().tolist())
-                f_stats = st.multiselect("📌 Filter by Status", stat_opts)
+                f_stats = st.multiselect("📌 Filter by Status", stat_opts, placeholder="Select 1 or more...")
                 
             with filt_c3:
                 day_opts = sorted(df_display["Day"].unique().tolist())
-                f_days = st.multiselect("📅 Filter by Day", day_opts)
+                f_days = st.multiselect("📅 Filter by Day", day_opts, placeholder="Select 1 or more...")
                 
             # Apply Filters
             if f_emps:
@@ -889,8 +840,58 @@ with tab4:
             if f_days:
                 df_display = df_display[df_display["Day"].isin(f_days)]
                 
+            st.divider()
+
+        if df_display.empty:
+            st.warning(f"No records found with the current filters.")
+        else:
+            total_reg_mins = 0
+            for val in df_display["Total Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_reg_mins += h * 60 + m
+            reg_hours, reg_mins = divmod(total_reg_mins, 60)
+            
+            total_ot_mins = 0
+            for val in df_display["OT Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_ot_mins += h * 60 + m
+            ot_hours, ot_mins = divmod(total_ot_mins, 60)
+
+            total_late_mins = 0
+            for val in df_display["Late Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_late_mins += h * 60 + m
+            late_hours, late_mins = divmod(total_late_mins, 60)
+
+            total_out_mins = 0
+            for val in df_display["Out Hours"]:
+                if pd.notna(val) and ":" in str(val):
+                    h, m = map(int, str(val).split(":"))
+                    total_out_mins += h * 60 + m
+            out_hours, out_mins = divmod(total_out_mins, 60)
+            
+            pl_count = len(df_display[df_display["Status"] == "PL"])
+            absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
+
+            st.markdown('<div class="summary-container">', unsafe_allow_html=True)
+            if f_emps or selected_emp != "All Employees":
+                st.subheader(f"📊 Summary Data")
+            else:
+                st.subheader("📊 Master Attendance Data (All Employees)")
+                
+            m1, m2, m3, m4, m5 = st.columns(5)
+            with m1: st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
+            with m2: st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
+            with m3: st.metric(label="⚠️ Total Late/Out Hrs", value=f"{late_hours+out_hours:02d}:{(late_mins+out_mins):02d}")
+            with m4: st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
+            with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
+            st.markdown('</div>', unsafe_allow_html=True)
+
             st.write("")
-            # ------------------------
+            st.divider()
             
             head_col1, head_col2 = st.columns([3,1])
             with head_col1:
@@ -1020,7 +1021,7 @@ with tab4:
                             worksheet.column_dimensions[get_column_letter(column_cells[0].column)].width = length + 2
 
                 excel_data = buffer.getvalue()
-                file_name_export = f"Attendance_{selected_sheet}_{selected_emp}.xlsx".replace(" ", "_")
+                file_name_export = f"Attendance_{selected_sheet}.xlsx".replace(" ", "_")
                 
                 st.download_button(
                     label="⬇️ Download Excel",
@@ -1074,8 +1075,8 @@ with tab4:
                             to_delete[sht].append(idx)
 
                         for sht, indices in to_delete.items():
-                            df_orig = load_data(sht).copy() # FIX: Added safe copy
-                            df_orig = df_orig.drop(indices, errors='ignore') # FIX: Ignore index errors
+                            df_orig = load_data(sht).copy()
+                            df_orig = df_orig.drop(indices, errors='ignore')
                             save_data(df_orig, sht)
                         
                         st.session_state.last_edited = None
@@ -1109,13 +1110,13 @@ with tab4:
                                 date_str_e = e_date.strftime("%d/%m/%Y")
                                 new_sheet = get_sheet_name(e_date)
                                 
-                                df_orig = load_data(selected_sheet_orig).copy() # FIX: Added safe copy
+                                df_orig = load_data(selected_sheet_orig).copy()
                                 
                                 if new_sheet == selected_sheet_orig:
                                     temp_check = df_orig.drop(selected_idx, errors='ignore')
                                     is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
                                 else:
-                                    df_new = load_data(new_sheet).copy() # FIX: Added safe copy
+                                    df_new = load_data(new_sheet).copy()
                                     is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
 
                                 if is_dup:
@@ -1162,8 +1163,8 @@ with tab4:
                         st.subheader("🗑️ Delete")
                         st.write("Click below to permanently delete this entry:")
                         if st.button("Delete This Entry", type="primary"):
-                            df_orig = load_data(selected_sheet_orig).copy() # FIX: Added safe copy
-                            df_orig = df_orig.drop(selected_idx, errors='ignore') # FIX: Ignore index errors
+                            df_orig = load_data(selected_sheet_orig).copy()
+                            df_orig = df_orig.drop(selected_idx, errors='ignore')
                             save_data(df_orig, selected_sheet_orig)
                             
                             st.session_state.last_edited = None
