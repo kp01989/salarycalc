@@ -26,8 +26,9 @@ def get_all_sheet_names():
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()
-            if data:
-                return list(data.keys())
+            if data and isinstance(data, dict):
+                # FILTER ADDED: Ignore holidays_list in sheets
+                return [k for k in data.keys() if k != "holidays_list"]
     except Exception:
         pass
     
@@ -47,16 +48,22 @@ def get_all_employees():
         response = requests.get(url)
         data = response.json()
         emps = set()
-        if data:
+        if data and isinstance(data, dict):
             for sheet, records in data.items():
+                if sheet == "holidays_list":
+                    continue # Ignore holiday database
                 if isinstance(records, list):
                     for r in records:
-                        if r is not None and "Employee Name" in r:
-                            emps.add(r["Employee Name"])
+                        if isinstance(r, dict) and "Employee Name" in r:
+                            name = str(r["Employee Name"]).strip().title()
+                            if name and name.lower() != "nan":
+                                emps.add(name)
                 elif isinstance(records, dict):
                     for key, r in records.items():
-                        if r is not None and "Employee Name" in r:
-                            emps.add(r["Employee Name"])
+                        if isinstance(r, dict) and "Employee Name" in r:
+                            name = str(r["Employee Name"]).strip().title()
+                            if name and name.lower() != "nan":
+                                emps.add(name)
         valid_emps = [e for e in emps if e != "-"]
         return sorted(list(valid_emps))
     except Exception:
