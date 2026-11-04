@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 from datetime import datetime, date, time, timedelta
 import io
-import time as tm
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 import streamlit.components.v1 as components 
@@ -87,7 +86,9 @@ def load_holidays_data():
 def save_holidays_data(data):
     try:
         requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data)
-        st.cache_data.clear() 
+        st.cache_data.clear()
+        if 'cached_holidays' in st.session_state:
+            del st.session_state.cached_holidays
     except Exception:
         pass
 
@@ -243,7 +244,9 @@ def save_data(df, sheet_name):
     data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data)
-        st.cache_data.clear() 
+        st.cache_data.clear()
+        if 'cached_data' in st.session_state:
+            del st.session_state.cached_data
     except Exception:
         pass
 
@@ -267,6 +270,8 @@ if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
 if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
 if 'admin_auth' not in st.session_state: st.session_state.admin_auth = False
+if 'cached_data' not in st.session_state: st.session_state.cached_data = {}
+if 'cached_holidays' not in st.session_state: st.session_state.cached_holidays = None
 
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
@@ -306,6 +311,18 @@ components.html(
 
 st.markdown("""
     <style>
+        /* 3-Second Auto-Hide Animation for all Alerts/Messages for faster response */
+        @keyframes smoothFadeOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            70% { opacity: 1; transform: translateY(0); max-height: 500px; margin-bottom: 1rem; padding: 1rem; }
+            100% { opacity: 0; transform: translateY(-10px); max-height: 0; margin-bottom: 0; padding: 0; border: none; overflow: hidden; display: none; }
+        }
+        div[data-testid="stAlert"] {
+            animation: smoothFadeOut 3s ease-in-out forwards !important;
+            overflow: hidden;
+        }
+
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
         .stDownloadButton button { margin-top: 27px; }
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
@@ -329,10 +346,8 @@ st.markdown("""
 st.title("📅 Advanced Attendance Tracker")
 
 msg_placeholder = st.empty()
-has_msg = False
 if st.session_state.flash_msg:
     msg_placeholder.success(st.session_state.flash_msg)
-    has_msg = True
     st.session_state.flash_msg = "" 
 
 formatted_name = st.session_state.top_emp_input.strip().title()
@@ -392,7 +407,11 @@ with tab1:
         default_out = time(18, 0)
         
         if formatted_name and formatted_name != "Administrator":
-            df_month_check = load_data(st.session_state.filter_month)
+            # Use session state cache if available, else load
+            if st.session_state.filter_month not in st.session_state.cached_data:
+                st.session_state.cached_data[st.session_state.filter_month] = load_data(st.session_state.filter_month)
+            df_month_check = st.session_state.cached_data[st.session_state.filter_month]
+
             if not df_month_check.empty:
                  df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
                  if not df_emp.empty:
@@ -625,7 +644,9 @@ with tab2:
         st.info("No employees found in the database. Please add at least one entry in 'Manual Entry' first.")
     else:
         r_sheet = get_sheet_name(roster_date)
-        df_r_month = load_data(r_sheet).copy()
+        if r_sheet not in st.session_state.cached_data:
+            st.session_state.cached_data[r_sheet] = load_data(r_sheet)
+        df_r_month = st.session_state.cached_data[r_sheet].copy()
         r_date_str = roster_date.strftime("%d/%m/%Y")
         r_day_str = roster_date.strftime("%a")
         
@@ -670,7 +691,7 @@ with tab2:
                         except:
                             in_t, out_t = "08:00", "18:00"
                     
-                    tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                    tot, late, out_e, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                     new_records.append({
                         "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
                         "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
@@ -686,7 +707,9 @@ with tab2:
 
 with tab3:
     st.subheader("🌴 Holiday Calendar")
-    hol_data = load_holidays_data()
+    if st.session_state.cached_holidays is None:
+        st.session_state.cached_holidays = load_holidays_data()
+    hol_data = st.session_state.cached_holidays
     
     if is_admin_unlocked:
         st.info("🔓 You have Administrator access to manage holidays.")
@@ -812,7 +835,9 @@ with tab4:
         if selected_sheet == "All Months":
             df_list = []
             for sht in get_all_sheet_names():
-                df_temp = load_data(sht)
+                if sht not in st.session_state.cached_data:
+                    st.session_state.cached_data[sht] = load_data(sht)
+                df_temp = st.session_state.cached_data[sht]
                 if not df_temp.empty:
                     df_temp = df_temp.copy()
                     df_temp["_Original_Sheet"] = sht
@@ -823,7 +848,9 @@ with tab4:
             else:
                 df_display = pd.DataFrame()
         else:
-            df_temp = load_data(selected_sheet)
+            if selected_sheet not in st.session_state.cached_data:
+                st.session_state.cached_data[selected_sheet] = load_data(selected_sheet)
+            df_temp = st.session_state.cached_data[selected_sheet]
             if not df_temp.empty:
                 df_display = df_temp.copy()
                 df_display["_Original_Sheet"] = selected_sheet
@@ -1110,7 +1137,9 @@ with tab4:
                             to_delete[sht].append(idx)
 
                         for sht, indices in to_delete.items():
-                            df_orig = load_data(sht).copy()
+                            if sht not in st.session_state.cached_data:
+                                st.session_state.cached_data[sht] = load_data(sht)
+                            df_orig = st.session_state.cached_data[sht].copy()
                             df_orig = df_orig.drop(indices, errors='ignore')
                             save_data(df_orig, sht)
                         
@@ -1145,13 +1174,17 @@ with tab4:
                                 date_str_e = e_date.strftime("%d/%m/%Y")
                                 new_sheet = get_sheet_name(e_date)
                                 
-                                df_orig = load_data(selected_sheet_orig).copy()
+                                if selected_sheet_orig not in st.session_state.cached_data:
+                                    st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
+                                df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
                                 
                                 if new_sheet == selected_sheet_orig:
                                     temp_check = df_orig.drop(selected_idx, errors='ignore')
                                     is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
                                 else:
-                                    df_new = load_data(new_sheet).copy()
+                                    if new_sheet not in st.session_state.cached_data:
+                                        st.session_state.cached_data[new_sheet] = load_data(new_sheet)
+                                    df_new = st.session_state.cached_data[new_sheet].copy()
                                     is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
 
                                 if is_dup:
@@ -1198,14 +1231,12 @@ with tab4:
                         st.subheader("🗑️ Delete")
                         st.write("Click below to permanently delete this entry:")
                         if st.button("Delete This Entry", type="primary"):
-                            df_orig = load_data(selected_sheet_orig).copy()
+                            if selected_sheet_orig not in st.session_state.cached_data:
+                                st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
+                            df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
                             df_orig = df_orig.drop(selected_idx, errors='ignore')
                             save_data(df_orig, selected_sheet_orig)
                             
                             st.session_state.last_edited = None
                             st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
                             st.rerun()
-
-if has_msg:
-    tm.sleep(3)
-    msg_placeholder.empty()
