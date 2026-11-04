@@ -371,7 +371,6 @@ with tab1:
     st.divider()
 
     if entry_mode == "✏️ Manual Entry":
-        # FIX: Compact selectbox setup
         col_input1, col_input2, col_blank = st.columns([2.5, 1.5, 4])
         
         all_emps_list = get_all_employees()
@@ -425,7 +424,6 @@ with tab1:
                           default_date = latest_date + timedelta(days=1)
 
         with st.form("entry_form"):
-            # FIX: Compact Form setup
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5])
             with c1:
                 entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
@@ -519,7 +517,6 @@ with tab1:
     elif entry_mode == "📂 Bulk Upload (Excel/CSV)":
         st.subheader("📂 Upload Monthly Excel/CSV")
         
-        # FIX: Compact uploader UI
         col_up1, col_up_blank = st.columns([6, 4])
         with col_up1:
             st.markdown("""
@@ -643,7 +640,6 @@ with tab1:
 with tab2:
     st.subheader("👥 Daily Roster (Mark all employees for a day)")
     
-    # FIX: Compact Date Selection
     rc1, rc_blank = st.columns([3, 7])
     with rc1:
         roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
@@ -672,7 +668,6 @@ with tab2:
                 "Out Time": ["18:00"] * len(pending_emps)
             })
             
-            # Formatted compact UI for roster
             rost_col, rost_blank = st.columns([6, 4])
             with rost_col:
                 edited_roster = st.data_editor(
@@ -727,7 +722,6 @@ with tab3:
         st.info("🔓 You have Administrator access to manage holidays.")
         
         with st.form("add_holiday_form"):
-            # FIX: Compact Form
             hc1, hc2, hc3, hc4, hc_blank = st.columns([1.5, 1.5, 2.5, 1.5, 2])
             with hc1: 
                 f_date = st.date_input("From Date", format="DD/MM/YYYY")
@@ -894,28 +888,22 @@ with tab4:
             
             st.write("")
             
-            # --- SMART FILTERS UI ---
-            st.markdown("### 🔍 Smart Filters (Select Multiple)")
-            
-            filt_c1, filt_c2 = st.columns([1, 1])
-            
-            with filt_c1:
-                if is_admin_unlocked and selected_emp == "All Employees":
+            # FIX: Admin Only Specific Smart Filters
+            if is_admin_unlocked and selected_emp == "All Employees":
+                filt_c1, filt_c2, filt_blank = st.columns([2, 2, 6])
+                
+                with filt_c1:
                     emp_opts = sorted(df_display["Employee Name"].unique().tolist())
                     f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
-                else:
-                    f_emps = []
-                    
-            with filt_c2:
-                stat_opts = sorted(df_display["Status"].unique().tolist())
-                f_stats = st.multiselect("📌 Filter by Status", stat_opts, placeholder="Select 1 or more...")
                 
-            # Apply Filters
-            if f_emps:
-                df_display = df_display[df_display["Employee Name"].isin(f_emps)]
-            if f_stats:
-                df_display = df_display[df_display["Status"].isin(f_stats)]
+                f_stats = []
                 
+                if f_emps:
+                    df_display = df_display[df_display["Employee Name"].isin(f_emps)]
+            else:
+                f_emps = []
+                f_stats = []
+
             st.divider()
 
         if df_display.empty:
@@ -1123,7 +1111,7 @@ with tab4:
                     status_color = "#ffff66"
                 
                 with st.container(border=True):
-                    c_info, c_edit, c_del = st.columns([7.5, 1.2, 1.2])
+                    c_info, c_edit, c_del, c_blank = st.columns([5, 0.7, 0.7, 3.6])
                     
                     with c_info:
                         st.markdown(f"""
@@ -1146,7 +1134,6 @@ with tab4:
                             st.session_state.edit_row = None
                             st.rerun()
                             
-                    # --- FIX: COMPACT INLINE EDIT FORM ---
                     if st.session_state.edit_row and st.session_state.edit_row["index"] == row['_Original_Index'] and st.session_state.edit_row["sheet"] == row['_Original_Sheet']:
                         st.markdown("---")
                         row_data = st.session_state.edit_row["data"]
@@ -1236,7 +1223,6 @@ with tab4:
                                 st.session_state.edit_row = None
                                 st.rerun()
 
-                    # --- INLINE DELETE CONFIRMATION ---
                     elif st.session_state.del_row and st.session_state.del_row["index"] == row['_Original_Index'] and st.session_state.del_row["sheet"] == row['_Original_Sheet']:
                         st.markdown("---")
                         st.warning(f"Are you sure you want to delete this record for {row['Employee Name']}?")
@@ -1263,7 +1249,6 @@ with tab5:
     st.subheader("👤 Manage Employees")
     if is_admin_unlocked:
         with st.form("add_new_emp_form"):
-            # FIX: Compact form setup
             col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
             with col_e1:
                 new_emp_name = st.text_input("Enter New Employee Name", placeholder="e.g. Rahul Patel")
@@ -1304,7 +1289,7 @@ with tab5:
             
             for idx, emp in enumerate(current_emps):
                 with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([1, 6, 1.2, 1.2])
+                    c1, c2, c3, c4, c_blank = st.columns([0.6, 3, 0.7, 0.7, 4])
                     with c1:
                         st.markdown(f"<div style='padding-top: 4px; color: #8b9bb4;'>#{idx + 1}</div>", unsafe_allow_html=True)
                     with c2:
@@ -1320,7 +1305,6 @@ with tab5:
                             st.session_state.edit_emp = None
                             st.rerun()
 
-                    # --- FIX: COMPACT INLINE EDIT EMPLOYEE ---
                     if st.session_state.get('edit_emp') == emp:
                         st.markdown("---")
                         with st.form(f"edit_emp_form_{idx}"):
@@ -1352,7 +1336,6 @@ with tab5:
                                 st.session_state.edit_emp = None
                                 st.rerun()
                                 
-                    # --- INLINE DELETE EMPLOYEE ---
                     elif st.session_state.get('del_emp') == emp:
                         st.markdown("---")
                         st.warning(f"⚠️ Remove '{st.session_state.del_emp}' from the system?")
