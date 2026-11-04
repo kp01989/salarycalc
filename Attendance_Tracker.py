@@ -280,7 +280,6 @@ def on_top_name_change():
     else:
         st.session_state.filter_month = current_month_str
 
-# NEW: Advanced JavaScript for handling Enter key like Tab key globally
 components.html(
     """
     <script>
@@ -293,29 +292,19 @@ components.html(
                 if (e.key === 'Enter') {
                     let active = document.activeElement;
                     
-                    // Don't interfere if it's already a submit button
                     if (active && active.tagName === 'BUTTON') return;
-                    
-                    // Allow normal Enter behavior inside multi-line textareas (if any added later)
                     if (active && active.tagName === 'TEXTAREA') return;
 
-                    // If it's an input field, prevent default form submission and move to next
                     if (active && active.tagName === 'INPUT') {
                         e.preventDefault(); 
-                        
-                        // Select all focusable elements in logical order
                         let focusable = Array.from(document.querySelectorAll('input:not([disabled]), select:not([disabled]), button:not([disabled])'));
-                        
-                        // Find current position
                         let index = focusable.indexOf(active);
-                        
-                        // Move to next if exists
                         if (index > -1 && index < focusable.length - 1) {
                             focusable[index + 1].focus();
                         }
                     }
                 }
-            }, true); // Use capture phase to intercept before Streamlit does
+            }, true); 
         `;
         doc.head.appendChild(script);
     }
@@ -357,8 +346,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📅 Advanced Attendance Tracker")
-
 msg_placeholder = st.empty()
 if st.session_state.flash_msg:
     msg_placeholder.success(st.session_state.flash_msg)
@@ -366,7 +353,6 @@ if st.session_state.flash_msg:
 
 formatted_name = st.session_state.top_emp_input.strip().title()
 
-# ADMIN SECURITY LOGIC
 if formatted_name != "Administrator":
     st.session_state.admin_auth = False
 
@@ -385,7 +371,6 @@ with tab1:
         
         formatted_name = st.session_state.top_emp_input.strip().title()
 
-        # Admin Password Prompt
         if formatted_name == "Administrator":
             with col_input2:
                 if not st.session_state.admin_auth:
@@ -890,7 +875,8 @@ with tab4:
             
             # --- SMART FILTERS UI ---
             st.markdown("### 🔍 Smart Filters (Select Multiple)")
-            filt_c1, filt_c2, filt_c3 = st.columns(3)
+            
+            filt_c1, filt_c2 = st.columns([1, 1])
             
             with filt_c1:
                 if is_admin_unlocked and selected_emp == "All Employees":
@@ -903,17 +889,11 @@ with tab4:
                 stat_opts = sorted(df_display["Status"].unique().tolist())
                 f_stats = st.multiselect("📌 Filter by Status", stat_opts, placeholder="Select 1 or more...")
                 
-            with filt_c3:
-                day_opts = sorted(df_display["Day"].unique().tolist())
-                f_days = st.multiselect("📅 Filter by Day", day_opts, placeholder="Select 1 or more...")
-                
             # Apply Filters
             if f_emps:
                 df_display = df_display[df_display["Employee Name"].isin(f_emps)]
             if f_stats:
                 df_display = df_display[df_display["Status"].isin(f_stats)]
-            if f_days:
-                df_display = df_display[df_display["Day"].isin(f_days)]
                 
             st.divider()
 
@@ -952,7 +932,7 @@ with tab4:
             absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
 
             st.markdown('<div class="summary-container">', unsafe_allow_html=True)
-            if f_emps or selected_emp != "All Employees":
+            if f_emps or selected_emp != "All Employees" or f_stats:
                 st.subheader(f"📊 Summary Data")
             else:
                 st.subheader("📊 Master Attendance Data (All Employees)")
