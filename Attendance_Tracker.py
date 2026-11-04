@@ -299,27 +299,18 @@ def on_top_name_change():
 
 st.markdown("""
     <style>
-        /* FIX: Snap Hide System (Holds for 5 sec without animation, then instantly hides) */
-        @keyframes snapHide {
-            0%, 99% {
-                opacity: 1;
-                max-height: 100px;
-                padding: 16px;
-                margin-bottom: 1rem;
-                border-width: 1px;
-                transform: scale(1);
-            }
-            100% {
+        /* FIX: ZERO Second Instant Hide Animation */
+        @keyframes instantHide {
+            to {
                 opacity: 0;
                 max-height: 0;
                 padding: 0;
                 margin: 0;
-                border-width: 0;
+                border: none;
                 overflow: hidden;
-                display: none;
-                transform: scale(0);
             }
         }
+        
         .auto-hide-success {
             background-color: rgba(29, 169, 85, 0.2);
             border: 1px solid rgba(29, 169, 85, 0.5);
@@ -327,8 +318,9 @@ st.markdown("""
             padding: 16px;
             border-radius: 8px;
             margin-bottom: 1rem;
-            animation: snapHide 5s forwards;
+            animation: instantHide 0s 5s forwards; /* 0 second animation, 5 second delay */
         }
+        
         .auto-hide-error {
             background-color: rgba(255, 43, 43, 0.2);
             border: 1px solid rgba(255, 43, 43, 0.5);
@@ -336,7 +328,7 @@ st.markdown("""
             padding: 16px;
             border-radius: 8px;
             margin-bottom: 1rem;
-            animation: snapHide 5s forwards;
+            animation: instantHide 0s 5s forwards; /* 0 second animation, 5 second delay */
         }
         
         /* Modern Compact Table UI CSS */
