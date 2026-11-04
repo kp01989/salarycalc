@@ -44,24 +44,34 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-@st.cache_data
-def get_all_employees():
-    sheets = get_all_sheet_names()
-    emps = set()
-    
+def load_registered_employees():
     try:
         res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
-            if isinstance(data, list):
-                for r in data:
-                    if r: emps.add(str(r).strip().title())
-            elif isinstance(data, dict):
-                for k, v in data.items():
-                    if v: emps.add(str(v).strip().title())
+            if isinstance(data, dict):
+                return list(data.values())
+            elif isinstance(data, list):
+                return [x for x in data if x is not None]
     except Exception:
         pass
+    return []
+
+def save_registered_employees(emp_list):
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
+        get_all_employees.clear()
+    except Exception:
+        pass
+
+@st.cache_data
+def get_all_employees():
+    reg_emps = load_registered_employees()
+    if reg_emps:
+        return sorted(list(set(reg_emps)))
         
+    sheets = get_all_sheet_names()
+    emps = set()
     for sheet in sheets:
         if sheet in ["holidays_list", "employee_list"]:
             continue
@@ -87,33 +97,9 @@ def get_all_employees():
             continue
             
     valid_emps = sorted(list([e for e in emps if e != "-"]))
-    
-    try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=valid_emps, timeout=5)
-    except Exception:
-        pass
-        
+    if valid_emps:
+        save_registered_employees(valid_emps)
     return valid_emps
-
-def load_registered_employees():
-    try:
-        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
-        if res.status_code == 200 and res.json():
-            data = res.json()
-            if isinstance(data, dict):
-                return list(data.values())
-            elif isinstance(data, list):
-                return [x for x in data if x is not None]
-    except Exception:
-        pass
-    return []
-
-def save_registered_employees(emp_list):
-    try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
-        get_all_employees.clear()
-    except Exception:
-        pass
 
 @st.cache_data
 def load_holidays_data():
@@ -287,24 +273,14 @@ def save_data(df, sheet_name):
     try:
         requests.put(url, json=data, timeout=10)
         load_data.clear(sheet_name) 
-        get_all_employees.clear()
         if 'cached_data' in st.session_state and sheet_name in st.session_state.cached_data:
             del st.session_state.cached_data[sheet_name]
     except Exception:
         pass
 
-def time_to_float(time_str):
-    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
-    try:
-        parts = str(time_str).split(":")
-        h = int(parts[0])
-        m = int(parts[1]) if len(parts) > 1 else 0
-        return h + (m / 60.0)
-    except:
-        return 0.0
-
 current_month_str = get_sheet_name(date.today())
 
+# Variables Initialization
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
@@ -313,8 +289,14 @@ if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
 if 'admin_auth' not in st.session_state: st.session_state.admin_auth = False
 if 'cached_data' not in st.session_state: st.session_state.cached_data = {}
 if 'cached_holidays' not in st.session_state: st.session_state.cached_holidays = None
+
+# Tab 4 Actions
 if 'edit_row' not in st.session_state: st.session_state.edit_row = None
 if 'del_row' not in st.session_state: st.session_state.del_row = None
+
+# Tab 5 Actions
+if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
+if 'del_emp' not in st.session_state: st.session_state.del_emp = None
 
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
@@ -325,7 +307,6 @@ def on_top_name_change():
 
 st.markdown("""
     <style>
-        /* Modern Compact Table UI CSS */
         .record-card {
             background: #1e2530;
             border-radius: 8px;
@@ -335,18 +316,6 @@ st.markdown("""
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        .record-info {
-            flex-grow: 1;
-        }
-        .record-date {
-            font-size: 0.9em;
-            color: #8b9bb4;
-            margin-bottom: 4px;
-        }
-        .record-details {
-            font-size: 1.1em;
-            font-weight: 500;
         }
         
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
@@ -537,6 +506,13 @@ with tab1:
                         })
                         df_month = pd.concat([df_month, new_entry], ignore_index=True)
                         save_data(df_month, target_sheet) 
+                        
+                        # Auto-sync new employee to master list
+                        master = load_registered_employees()
+                        if formatted_name not in master:
+                            master.append(formatted_name)
+                            save_registered_employees(master)
+                            
                         st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
                     st.session_state.filter_month_dash = target_sheet
@@ -590,6 +566,9 @@ with tab1:
                         grouped = df_upload.groupby('Date')
                         holidays_dict = get_flat_holiday_dates()
                         
+                        master_emps = load_registered_employees()
+                        needs_master_update = False
+                        
                         for date_val, group in grouped:
                             try:
                                 d_obj = pd.to_datetime(date_val, format='%d/%m/%Y', errors='coerce').date()
@@ -605,6 +584,11 @@ with tab1:
                                 
                                 for _, r in group.iterrows():
                                     ename = str(r['Employee Name']).strip().title()
+                                    
+                                    if ename not in master_emps:
+                                        master_emps.append(ename)
+                                        needs_master_update = True
+                                        
                                     stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
                                     if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
                                         
@@ -653,6 +637,9 @@ with tab1:
                             except Exception:
                                 pass
                                 
+                        if needs_master_update:
+                            save_registered_employees(master_emps)
+                            
                         st.session_state.flash_msg = f"✅ Successfully processed {success_count} records!"
                         st.rerun()
             except Exception as e:
@@ -976,7 +963,7 @@ with tab4:
             
             head_col1, head_col2 = st.columns([3,1])
             with head_col1:
-                st.subheader("📋 Attendance Sheet")
+                st.subheader("📋 Attendance Records")
             with head_col2:
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -1112,9 +1099,9 @@ with tab4:
                     use_container_width=True
                 )
 
-            # ====================================================
-            # NEW FIX: Smart Compact Card UI with Edit/Delete Buttons 
-            # ====================================================
+            st.markdown("💡 **Tip:** Use the Edit/Delete buttons below each entry to make changes.")
+            
+            # --- COMPACT CARD UI FOR DASHBOARD (TAB 4) ---
             for index, row in df_display.iterrows():
                 status_color = "#1e2530" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1125,6 +1112,8 @@ with tab4:
                     status_color = "#1c3756"
                 elif row['Status'] in ['PL', 'LWP', 'Absent']:
                     status_color = "#563d1c"
+                elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
+                    status_color = "#3b3b18"
                 
                 st.markdown(f"""
                 <div class="record-card" style="background-color: {status_color};">
@@ -1141,13 +1130,13 @@ with tab4:
                 col_btn1, col_btn2, col_spacer = st.columns([1, 1, 10])
                 
                 with col_btn1:
-                    if st.button("✏️ Edit", key=f"edit_{index}_{row['_Original_Sheet']}"):
+                    if st.button("✏️ Edit", key=f"e_{index}_{row['_Original_Sheet']}"):
                         st.session_state.edit_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                         st.session_state.del_row = None
                         st.rerun()
                 
                 with col_btn2:
-                    if st.button("🗑️ Del", key=f"del_{index}_{row['_Original_Sheet']}"):
+                    if st.button("🗑️ Del", key=f"d_{index}_{row['_Original_Sheet']}"):
                         st.session_state.del_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                         st.session_state.edit_row = None
                         st.rerun()
@@ -1285,8 +1274,9 @@ with tab5:
                     st.warning(f"⚠️ Employee '{clean_name}' already exists in the system!")
                 else:
                     reg_emps = load_registered_employees()
-                    reg_emps.append(clean_name)
-                    save_registered_employees(reg_emps)
+                    if clean_name not in reg_emps:
+                        reg_emps.append(clean_name)
+                        save_registered_employees(reg_emps)
                     st.session_state.flash_msg = f"✅ Employee '{clean_name}' successfully added!"
                     st.rerun()
         
@@ -1295,11 +1285,75 @@ with tab5:
         
         current_emps = get_all_employees()
         if current_emps:
-            df_emps = pd.DataFrame({
-                "Sr No.": range(1, len(current_emps) + 1), 
-                "Employee Name": current_emps
-            })
-            st.dataframe(df_emps, use_container_width=True, hide_index=True)
+            # --- NEW UI: List of employees with Edit/Delete Buttons ---
+            st.markdown("""
+            <div style="display: flex; justify-content: space-between; background-color: #1e2530; padding: 10px; border-radius: 5px; border: 1px solid #303d4f; font-weight: bold; margin-bottom: 10px;">
+                <div style="flex: 1;">Sr No.</div>
+                <div style="flex: 4;">Employee Name</div>
+                <div style="flex: 2;">Actions</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            for idx, emp in enumerate(current_emps):
+                c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
+                with c1:
+                    st.write(f"**{idx + 1}**")
+                with c2:
+                    st.write(emp)
+                with c3:
+                    if st.button("✏️ Edit", key=f"emp_edit_{idx}"):
+                        st.session_state.edit_emp = emp
+                        st.session_state.del_emp = None
+                        st.rerun()
+                with c4:
+                    if st.button("🗑️ Delete", key=f"emp_del_{idx}"):
+                        st.session_state.del_emp = emp
+                        st.session_state.edit_emp = None
+                        st.rerun()
+                        
+            # Handle Edit Employee
+            if st.session_state.get('edit_emp'):
+                st.markdown("---")
+                st.subheader(f"✏️ Update Employee Name: {st.session_state.edit_emp}")
+                with st.form("edit_emp_form"):
+                    new_n = st.text_input("New Name", value=st.session_state.edit_emp)
+                    cs, cc = st.columns(2)
+                    with cs:
+                        if st.form_submit_button("💾 Save Update", type="primary"):
+                            clean_new = new_n.strip().title()
+                            if clean_new and clean_new != st.session_state.edit_emp:
+                                reg_emps = load_registered_employees()
+                                if st.session_state.edit_emp in reg_emps:
+                                    reg_emps.remove(st.session_state.edit_emp)
+                                if clean_new not in reg_emps:
+                                    reg_emps.append(clean_new)
+                                save_registered_employees(reg_emps)
+                                st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
+                            st.session_state.edit_emp = None
+                            st.rerun()
+                    with cc:
+                        if st.form_submit_button("❌ Cancel"):
+                            st.session_state.edit_emp = None
+                            st.rerun()
+                            
+            # Handle Delete Employee
+            if st.session_state.get('del_emp'):
+                st.markdown("---")
+                st.warning(f"⚠️ Are you sure you want to remove '{st.session_state.del_emp}' from the system?")
+                dy, dn = st.columns(2)
+                with dy:
+                    if st.button("✅ Yes, Delete", type="primary"):
+                        reg_emps = load_registered_employees()
+                        if st.session_state.del_emp in reg_emps:
+                            reg_emps.remove(st.session_state.del_emp)
+                            save_registered_employees(reg_emps)
+                        st.session_state.flash_msg = f"🗑️ '{st.session_state.del_emp}' deleted successfully!"
+                        st.session_state.del_emp = None
+                        st.rerun()
+                with dn:
+                    if st.button("❌ No, Cancel"):
+                        st.session_state.del_emp = None
+                        st.rerun()
         else:
             st.info("No employees found. Please add a new employee above.")
             
