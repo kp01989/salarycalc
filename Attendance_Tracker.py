@@ -10,9 +10,10 @@ import streamlit.components.v1 as components
 import uuid
 
 # ==========================================
-# 1. FIREBASE CLOUD DATABASE URL
+# 1. SETTINGS & CONSTANTS
 # ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
+ADMIN_PASSWORD = "1234"  # 👈 અહી તારો એડમિન પાસવર્ડ બદલી નાખજે
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
@@ -256,6 +257,8 @@ def time_to_float(time_str):
     except:
         return 0.0
 
+st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
+
 current_month_str = get_sheet_name(date.today())
 
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
@@ -263,6 +266,7 @@ if 'filter_month' not in st.session_state: st.session_state.filter_month = curre
 if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
 if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
+if 'admin_auth' not in st.session_state: st.session_state.admin_auth = False
 
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
@@ -270,8 +274,6 @@ def on_top_name_change():
         st.session_state.filter_month = "All Months"
     else:
         st.session_state.filter_month = current_month_str
-
-st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
 
 components.html(
     """
@@ -335,6 +337,12 @@ if st.session_state.flash_msg:
 
 formatted_name = st.session_state.top_emp_input.strip().title()
 
+# ADMIN SECURITY LOGIC
+if formatted_name != "Administrator":
+    st.session_state.admin_auth = False
+
+is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
+
 tab1, tab2, tab3, tab4 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History"])
 
 with tab1:
@@ -348,7 +356,34 @@ with tab1:
         
         formatted_name = st.session_state.top_emp_input.strip().title()
 
+        # Admin Password Prompt
         if formatted_name == "Administrator":
+            with col_input2:
+                if not st.session_state.admin_auth:
+                    ap1, ap2 = st.columns([1.5, 1])
+                    with ap1:
+                        admin_pwd = st.text_input("🔑 Enter Admin Password", type="password", key="pwd_input")
+                    with ap2:
+                        st.write("")
+                        st.write("")
+                        if st.button("Unlock Admin", type="primary"):
+                            if admin_pwd == ADMIN_PASSWORD:
+                                st.session_state.admin_auth = True
+                                st.rerun()
+                            else:
+                                st.error("❌ Incorrect Password!")
+                else:
+                    ap1, ap2 = st.columns([1.5, 1])
+                    with ap1:
+                        st.success("✅ Admin Access Granted")
+                    with ap2:
+                        st.write("")
+                        st.write("")
+                        if st.button("Lock 🔒"):
+                            st.session_state.admin_auth = False
+                            st.rerun()
+
+        if is_admin_unlocked:
             all_emps = get_all_employees()
             if all_emps: st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
@@ -653,7 +688,7 @@ with tab3:
     st.subheader("🌴 Holiday Calendar")
     hol_data = load_holidays_data()
     
-    if formatted_name == "Administrator":
+    if is_admin_unlocked:
         st.info("🔓 You have Administrator access to manage holidays.")
         
         with st.form("add_holiday_form"):
@@ -732,7 +767,7 @@ with tab3:
                                 st.session_state.flash_msg = "✅ Holiday updated!"
                                 st.rerun()
     else:
-        st.info("🔒 Only Administrator can add, edit or delete holidays.")
+        st.info("🔒 Only Administrator can add, edit or delete holidays. (Enter password in 'Add Attendance' tab to unlock)")
         if hol_data:
             st.write("### 📅 Upcoming / Declared Holidays")
             hol_list = []
@@ -754,9 +789,9 @@ with tab3:
 with tab4:
     if not formatted_name:
         st.info("👆 Please enter an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
+    elif formatted_name == "Administrator" and not is_admin_unlocked:
+        st.warning("🔒 Please enter the Admin password in the 'Add Attendance' tab to unlock the Dashboard.")
     else:
-        is_admin = (formatted_name == "Administrator")
-        
         all_sheets_raw = get_all_sheet_names()
         if current_month_str not in all_sheets_raw:
             all_sheets_raw.insert(0, current_month_str)
@@ -767,7 +802,7 @@ with tab4:
         with col_f1:
             selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
         
-        if is_admin:
+        if is_admin_unlocked:
             with col_f2:
                 emp_list = ["All Employees"] + get_all_employees()
                 selected_emp = st.selectbox("Select Master View", emp_list, key="admin_emp_select")
@@ -813,12 +848,12 @@ with tab4:
             
             st.write("")
             
-            # --- SMART FILTERS UI (MOVED TO TOP FOR LIVE CALCULATION) ---
+            # --- SMART FILTERS UI ---
             st.markdown("### 🔍 Smart Filters (Select Multiple)")
             filt_c1, filt_c2, filt_c3 = st.columns(3)
             
             with filt_c1:
-                if is_admin and selected_emp == "All Employees":
+                if is_admin_unlocked and selected_emp == "All Employees":
                     emp_opts = sorted(df_display["Employee Name"].unique().tolist())
                     f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
                 else:
