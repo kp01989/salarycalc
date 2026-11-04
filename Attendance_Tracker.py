@@ -344,6 +344,13 @@ st.markdown("""
             padding-top: 15px !important;
             padding-bottom: 15px !important;
         }
+        
+        /* FIX: Inline form alignment */
+        div[data-testid="stForm"] > div:first-child {
+            display: flex;
+            align-items: flex-end;
+            gap: 15px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -371,31 +378,42 @@ with tab1:
     st.divider()
 
     if entry_mode == "✏️ Manual Entry":
-        col_input1, col_input2, col_blank = st.columns([2.5, 1.5, 4])
         
+        # --- FIX: ADMIN UNLOCK INLINE ---
         all_emps_list = get_all_employees()
         dropdown_options = ["-- Select Employee --", "Administrator"] + all_emps_list
         
-        with col_input1:
-            st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
-
         if formatted_name == "Administrator":
-            with col_input2:
-                if not st.session_state.admin_auth:
+            if not st.session_state.admin_auth:
+                col_emp, col_pwd, col_btn, col_blank = st.columns([2, 2, 1, 3])
+                with col_emp:
+                    st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
+                with col_pwd:
                     admin_pwd = st.text_input("🔑 Enter Admin Password", type="password", key="pwd_input")
+                with col_btn:
                     st.write("")
-                    if st.button("Unlock Admin", type="primary"):
+                    st.write("")
+                    if st.button("Unlock", type="primary", use_container_width=True):
                         if admin_pwd == ADMIN_PASSWORD:
                             st.session_state.admin_auth = True
+                            st.session_state.flash_msg = "✅ Admin Access Granted!"
                             st.rerun()
                         else:
-                            st.markdown('<div class="auto-hide-error">❌ Incorrect Password!</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<div class="auto-hide-success" style="padding: 10px;">✅ Admin Access Granted</div>', unsafe_allow_html=True)
+                            st.error("❌ Incorrect Password!")
+            else:
+                col_emp, col_btn, col_blank = st.columns([2, 1, 5])
+                with col_emp:
+                    st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
+                with col_btn:
                     st.write("")
-                    if st.button("Lock 🔒"):
+                    st.write("")
+                    if st.button("Lock 🔒", use_container_width=True):
                         st.session_state.admin_auth = False
                         st.rerun()
+        else:
+            col_emp, col_blank = st.columns([2.5, 5.5])
+            with col_emp:
+                st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
 
         default_date = date.today()
         default_in = time(8, 0)
@@ -834,7 +852,7 @@ with tab4:
         
         available_sheets = ["All Months"] + all_sheets_raw
 
-        col_f1, col_f2 = st.columns(2)
+        col_f1, col_f2, col_f_blank = st.columns([2, 2, 6])
         with col_f1:
             selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
         
@@ -888,24 +906,6 @@ with tab4:
             
             st.write("")
             
-            # FIX: Admin Only Specific Smart Filters
-            if is_admin_unlocked and selected_emp == "All Employees":
-                filt_c1, filt_c2, filt_blank = st.columns([2, 2, 6])
-                
-                with filt_c1:
-                    emp_opts = sorted(df_display["Employee Name"].unique().tolist())
-                    f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
-                
-                f_stats = []
-                
-                if f_emps:
-                    df_display = df_display[df_display["Employee Name"].isin(f_emps)]
-            else:
-                f_emps = []
-                f_stats = []
-
-            st.divider()
-
         if df_display.empty:
             st.warning(f"No records found with the current filters.")
         else:
@@ -941,7 +941,7 @@ with tab4:
             absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
 
             st.markdown('<div class="summary-container">', unsafe_allow_html=True)
-            if f_emps or selected_emp != "All Employees" or f_stats:
+            if selected_emp != "All Employees":
                 st.subheader(f"📊 Summary Data")
             else:
                 st.subheader("📊 Master Attendance Data (All Employees)")
@@ -1094,9 +1094,8 @@ with tab4:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
-
-            st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
+            # --- COMPACT UI FOR TAB 4 ---
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1110,140 +1109,143 @@ with tab4:
                 elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}": 
                     status_color = "#ffff66"
                 
-                with st.container(border=True):
-                    c_info, c_edit, c_del, c_blank = st.columns([5, 0.7, 0.7, 3.6])
-                    
-                    with c_info:
-                        st.markdown(f"""
-                        <div style="border-left: 5px solid {status_color}; padding: 4px 15px; border-radius: 2px;">
-                            <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
-                            <strong style="font-size: 1.05em; margin-right: 15px; color: #e2e8f0;">{row['Employee Name']}</strong>
-                            <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> (OT: {row['OT Hours']})</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with c_edit:
-                        if st.button("✏️ Edit", key=f"e_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
-                            st.session_state.edit_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
-                            st.session_state.del_row = None
-                            st.rerun()
-                    
-                    with c_del:
-                        if st.button("🗑️ Del", key=f"d_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
-                            st.session_state.del_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
-                            st.session_state.edit_row = None
-                            st.rerun()
-                            
-                    if st.session_state.edit_row and st.session_state.edit_row["index"] == row['_Original_Index'] and st.session_state.edit_row["sheet"] == row['_Original_Sheet']:
-                        st.markdown("---")
-                        row_data = st.session_state.edit_row["data"]
-                        selected_idx = st.session_state.edit_row["index"]
-                        selected_sheet_orig = st.session_state.edit_row["sheet"]
+                # Compact table formatting with blank right col
+                col_rec, col_blank = st.columns([8, 2])
+                with col_rec:
+                    with st.container(border=True):
+                        c_info, c_edit, c_del = st.columns([6, 1, 1])
                         
-                        with st.form(f"edit_form_hist_{selected_idx}_{selected_sheet_orig}"):
-                            ce1, ce2, ce3, ce4, ce5, ce6, ce_blank = st.columns([1.5, 1.5, 1, 1, 0.8, 0.8, 1.5])
-                            with ce1:
-                                d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
-                                e_date = st.date_input("Date", value=d_obj, format="DD/MM/YYYY")
-                            with ce2:
-                                def_status = ["Regular", "Holiday", "PL", "LWP", "Absent"]
-                                e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
-                            with ce3:
-                                e_in = st.text_input("In Time", value=row_data["In Time"])
-                            with ce4:
-                                e_out = st.text_input("Out Time", value=row_data["Out Time"])
-                                
-                            with ce5:
-                                st.write("")
-                                st.write("")
-                                btn_update = st.form_submit_button("Save", type="primary", use_container_width=True)
-                            with ce6:
-                                st.write("")
-                                st.write("")
-                                btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
-                                
-                            if btn_update:
-                                formatted_e_name = row_data["Employee Name"].strip().title()
-                                date_str_e = e_date.strftime("%d/%m/%Y")
-                                new_sheet = get_sheet_name(e_date)
-                                
-                                if selected_sheet_orig not in st.session_state.cached_data:
-                                    st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
-                                df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
-                                
-                                if new_sheet == selected_sheet_orig:
-                                    temp_check = df_orig.drop(selected_idx, errors='ignore')
-                                    is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
-                                else:
-                                    if new_sheet not in st.session_state.cached_data:
-                                        st.session_state.cached_data[new_sheet] = load_data(new_sheet)
-                                    df_new = st.session_state.cached_data[new_sheet].copy()
-                                    is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
-
-                                if is_dup:
-                                    st.error("⚠️ An entry for this employee on this date already exists!")
-                                else:
-                                    day_str_e = e_date.strftime("%a")
-                                    holidays_dict = get_flat_holiday_dates()
-                                    is_pub_hol = date_str_e in holidays_dict
-                                    t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
-                                    
-                                    if e_stat in ["PL", "LWP", "Absent"]:
-                                        in_t_str, out_t_str = "00:00", "00:00"
-                                    else:
-                                        in_t_str, out_t_str = e_in, e_out
-
-                                    updated_row = pd.DataFrame({
-                                        "Employee Name": [formatted_e_name],
-                                        "Date": [date_str_e],
-                                        "Day": [day_str_e],
-                                        "In Time": [in_t_str],
-                                        "Out Time": [out_t_str],
-                                        "Late Hours": [l_hrs],
-                                        "Out Hours": [o_hrs],
-                                        "Total Hours": [t_hrs],
-                                        "OT Hours": [ot_hrs],
-                                        "Status": [e_stat]
-                                    })
-                                    
-                                    if new_sheet == selected_sheet_orig:
-                                        updated_row.index = [selected_idx]
-                                        df_orig.update(updated_row)
-                                        save_data(df_orig, selected_sheet_orig)
-                                    else:
-                                        df_orig = df_orig.drop(selected_idx, errors='ignore')
-                                        save_data(df_orig, selected_sheet_orig)
-                                        df_new = pd.concat([df_new, updated_row], ignore_index=True)
-                                        save_data(df_new, new_sheet)
-                                    
-                                    st.session_state.edit_row = None
-                                    st.session_state.flash_msg = f"✅ Record updated successfully!"
-                                    st.rerun()
-                            if btn_cancel:
+                        with c_info:
+                            st.markdown(f"""
+                            <div style="border-left: 5px solid {status_color}; padding: 4px 15px; border-radius: 2px;">
+                                <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
+                                <strong style="font-size: 1.05em; margin-right: 15px; color: #e2e8f0;">{row['Employee Name']}</strong>
+                                <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span></span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        with c_edit:
+                            if st.button("✏️ Edit", key=f"e_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
+                                st.session_state.edit_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
+                                st.session_state.del_row = None
+                                st.rerun()
+                        
+                        with c_del:
+                            if st.button("🗑️ Del", key=f"d_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
+                                st.session_state.del_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                                 st.session_state.edit_row = None
                                 st.rerun()
-
-                    elif st.session_state.del_row and st.session_state.del_row["index"] == row['_Original_Index'] and st.session_state.del_row["sheet"] == row['_Original_Sheet']:
-                        st.markdown("---")
-                        st.warning(f"Are you sure you want to delete this record for {row['Employee Name']}?")
-                        col_y, col_n = st.columns([1, 10])
-                        with col_y:
-                            if st.button("Yes", type="primary", key=f"conf_d_{row['_Original_Index']}"):
-                                sht = st.session_state.del_row["sheet"]
-                                idx = st.session_state.del_row["index"]
-                                if sht not in st.session_state.cached_data:
-                                    st.session_state.cached_data[sht] = load_data(sht)
-                                df_orig = st.session_state.cached_data[sht].copy()
-                                df_orig = df_orig.drop(idx, errors='ignore')
-                                save_data(df_orig, sht)
                                 
-                                st.session_state.del_row = None
-                                st.session_state.flash_msg = "✅ Entry permanently deleted!"
-                                st.rerun()
-                        with col_n:
-                            if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}"):
-                                st.session_state.del_row = None
-                                st.rerun()
+                        if st.session_state.edit_row and st.session_state.edit_row["index"] == row['_Original_Index'] and st.session_state.edit_row["sheet"] == row['_Original_Sheet']:
+                            st.markdown("---")
+                            row_data = st.session_state.edit_row["data"]
+                            selected_idx = st.session_state.edit_row["index"]
+                            selected_sheet_orig = st.session_state.edit_row["sheet"]
+                            
+                            with st.form(f"edit_form_hist_{selected_idx}_{selected_sheet_orig}"):
+                                ce1, ce2, ce3, ce4, ce5, ce6 = st.columns([1.5, 1.5, 1, 1, 0.8, 0.8])
+                                with ce1:
+                                    d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
+                                    e_date = st.date_input("Date", value=d_obj, format="DD/MM/YYYY")
+                                with ce2:
+                                    def_status = ["Regular", "Holiday", "PL", "LWP", "Absent"]
+                                    e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
+                                with ce3:
+                                    e_in = st.text_input("In Time", value=row_data["In Time"])
+                                with ce4:
+                                    e_out = st.text_input("Out Time", value=row_data["Out Time"])
+                                    
+                                with ce5:
+                                    st.write("")
+                                    st.write("")
+                                    btn_update = st.form_submit_button("Save", type="primary", use_container_width=True)
+                                with ce6:
+                                    st.write("")
+                                    st.write("")
+                                    btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
+                                    
+                                if btn_update:
+                                    formatted_e_name = row_data["Employee Name"].strip().title()
+                                    date_str_e = e_date.strftime("%d/%m/%Y")
+                                    new_sheet = get_sheet_name(e_date)
+                                    
+                                    if selected_sheet_orig not in st.session_state.cached_data:
+                                        st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
+                                    df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
+                                    
+                                    if new_sheet == selected_sheet_orig:
+                                        temp_check = df_orig.drop(selected_idx, errors='ignore')
+                                        is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
+                                    else:
+                                        if new_sheet not in st.session_state.cached_data:
+                                            st.session_state.cached_data[new_sheet] = load_data(new_sheet)
+                                        df_new = st.session_state.cached_data[new_sheet].copy()
+                                        is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
+
+                                    if is_dup:
+                                        st.error("⚠️ An entry for this employee on this date already exists!")
+                                    else:
+                                        day_str_e = e_date.strftime("%a")
+                                        holidays_dict = get_flat_holiday_dates()
+                                        is_pub_hol = date_str_e in holidays_dict
+                                        t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
+                                        
+                                        if e_stat in ["PL", "LWP", "Absent"]:
+                                            in_t_str, out_t_str = "00:00", "00:00"
+                                        else:
+                                            in_t_str, out_t_str = e_in, e_out
+
+                                        updated_row = pd.DataFrame({
+                                            "Employee Name": [formatted_e_name],
+                                            "Date": [date_str_e],
+                                            "Day": [day_str_e],
+                                            "In Time": [in_t_str],
+                                            "Out Time": [out_t_str],
+                                            "Late Hours": [l_hrs],
+                                            "Out Hours": [o_hrs],
+                                            "Total Hours": [t_hrs],
+                                            "OT Hours": [ot_hrs],
+                                            "Status": [e_stat]
+                                        })
+                                        
+                                        if new_sheet == selected_sheet_orig:
+                                            updated_row.index = [selected_idx]
+                                            df_orig.update(updated_row)
+                                            save_data(df_orig, selected_sheet_orig)
+                                        else:
+                                            df_orig = df_orig.drop(selected_idx, errors='ignore')
+                                            save_data(df_orig, selected_sheet_orig)
+                                            df_new = pd.concat([df_new, updated_row], ignore_index=True)
+                                            save_data(df_new, new_sheet)
+                                        
+                                        st.session_state.edit_row = None
+                                        st.session_state.flash_msg = f"✅ Record updated successfully!"
+                                        st.rerun()
+                                if btn_cancel:
+                                    st.session_state.edit_row = None
+                                    st.rerun()
+
+                        elif st.session_state.del_row and st.session_state.del_row["index"] == row['_Original_Index'] and st.session_state.del_row["sheet"] == row['_Original_Sheet']:
+                            st.markdown("---")
+                            st.warning(f"Are you sure you want to delete this record for {row['Employee Name']}?")
+                            col_y, col_n = st.columns([1, 10])
+                            with col_y:
+                                if st.button("Yes", type="primary", key=f"conf_d_{row['_Original_Index']}"):
+                                    sht = st.session_state.del_row["sheet"]
+                                    idx = st.session_state.del_row["index"]
+                                    if sht not in st.session_state.cached_data:
+                                        st.session_state.cached_data[sht] = load_data(sht)
+                                    df_orig = st.session_state.cached_data[sht].copy()
+                                    df_orig = df_orig.drop(idx, errors='ignore')
+                                    save_data(df_orig, sht)
+                                    
+                                    st.session_state.del_row = None
+                                    st.session_state.flash_msg = "✅ Entry permanently deleted!"
+                                    st.rerun()
+                            with col_n:
+                                if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}"):
+                                    st.session_state.del_row = None
+                                    st.rerun()
 
 with tab5:
     st.subheader("👤 Manage Employees")
@@ -1281,78 +1283,80 @@ with tab5:
         current_emps = get_all_employees()
         if current_emps:
             
-            hc1, hc2, hc3, hc_blank = st.columns([0.6, 3, 1.4, 4])
+            hc1, hc2, hc3, hc_blank = st.columns([0.5, 3, 1, 4])
             with hc1: st.markdown("**Sr No.**")
             with hc2: st.markdown("**Employee Name**")
             with hc3: st.markdown("**Actions**")
             st.divider()
             
             for idx, emp in enumerate(current_emps):
-                with st.container(border=True):
-                    c1, c2, c3, c4, c_blank = st.columns([0.6, 3, 0.7, 0.7, 4])
-                    with c1:
-                        st.markdown(f"<div style='padding-top: 4px; color: #8b9bb4;'>#{idx + 1}</div>", unsafe_allow_html=True)
-                    with c2:
-                        st.markdown(f"<div style='padding-top: 4px;'><strong style='font-size: 1.05em; color: #e2e8f0;'>{emp}</strong></div>", unsafe_allow_html=True)
-                    with c3:
-                        if st.button("✏️ Edit", key=f"emp_edit_{idx}", use_container_width=True):
-                            st.session_state.edit_emp = emp
-                            st.session_state.del_emp = None
-                            st.rerun()
-                    with c4:
-                        if st.button("🗑️ Delete", key=f"emp_del_{idx}", use_container_width=True):
-                            st.session_state.del_emp = emp
-                            st.session_state.edit_emp = None
-                            st.rerun()
+                c_emp, c_blank = st.columns([4.5, 4])
+                with c_emp:
+                    with st.container(border=True):
+                        c1, c2, c3, c4 = st.columns([0.5, 3, 0.7, 0.7])
+                        with c1:
+                            st.markdown(f"<div style='padding-top: 4px; color: #8b9bb4;'>#{idx + 1}</div>", unsafe_allow_html=True)
+                        with c2:
+                            st.markdown(f"<div style='padding-top: 4px;'><strong style='font-size: 1.05em; color: #e2e8f0;'>{emp}</strong></div>", unsafe_allow_html=True)
+                        with c3:
+                            if st.button("✏️ Edit", key=f"emp_edit_{idx}", use_container_width=True):
+                                st.session_state.edit_emp = emp
+                                st.session_state.del_emp = None
+                                st.rerun()
+                        with c4:
+                            if st.button("🗑️ Delete", key=f"emp_del_{idx}", use_container_width=True):
+                                st.session_state.del_emp = emp
+                                st.session_state.edit_emp = None
+                                st.rerun()
 
-                    if st.session_state.get('edit_emp') == emp:
-                        st.markdown("---")
-                        with st.form(f"edit_emp_form_{idx}"):
-                            cs1, cs2, cs3, cs_blank = st.columns([2.5, 1, 1, 3.5])
-                            with cs1:
-                                new_n = st.text_input("New Name", value=st.session_state.edit_emp)
-                            with cs2:
-                                st.write("")
-                                st.write("")
-                                btn_upd = st.form_submit_button("💾 Save", type="primary", use_container_width=True)
-                            with cs3:
-                                st.write("")
-                                st.write("")
-                                btn_canc = st.form_submit_button("❌ Cancel", use_container_width=True)
-                            
-                            if btn_upd:
-                                clean_new = new_n.strip().title()
-                                if clean_new and clean_new != st.session_state.edit_emp:
-                                    reg_emps = load_registered_employees()
-                                    if st.session_state.edit_emp in reg_emps:
-                                        reg_emps.remove(st.session_state.edit_emp)
-                                    if clean_new not in reg_emps:
-                                        reg_emps.append(clean_new)
-                                    save_registered_employees(reg_emps)
-                                    st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
-                                st.session_state.edit_emp = None
-                                st.rerun()
-                            if btn_canc:
-                                st.session_state.edit_emp = None
-                                st.rerun()
+                        if st.session_state.get('edit_emp') == emp:
+                            st.markdown("---")
+                            with st.form(f"edit_emp_form_{idx}"):
+                                cs1, cs2, cs3 = st.columns([2.5, 1, 1])
+                                with cs1:
+                                    new_n = st.text_input("New Name", value=st.session_state.edit_emp)
+                                with cs2:
+                                    st.write("")
+                                    st.write("")
+                                    btn_upd = st.form_submit_button("💾 Save", type="primary", use_container_width=True)
+                                with cs3:
+                                    st.write("")
+                                    st.write("")
+                                    btn_canc = st.form_submit_button("❌ Cancel", use_container_width=True)
                                 
-                    elif st.session_state.get('del_emp') == emp:
-                        st.markdown("---")
-                        st.warning(f"⚠️ Remove '{st.session_state.del_emp}' from the system?")
-                        dy, dn = st.columns([1, 10])
-                        with dy:
-                            if st.button("Yes", type="primary", key=f"yes_del_{idx}"):
-                                reg_emps = load_registered_employees()
-                                if st.session_state.del_emp in reg_emps:
-                                    reg_emps.remove(st.session_state.del_emp)
-                                    save_registered_employees(reg_emps)
-                                st.session_state.flash_msg = f"🗑️ '{st.session_state.del_emp}' deleted successfully!"
-                                st.session_state.del_emp = None
-                                st.rerun()
-                        with dn:
-                            if st.button("Cancel", key=f"no_del_{idx}"):
-                                st.session_state.del_emp = None
-                                st.rerun()
+                                if btn_upd:
+                                    clean_new = new_n.strip().title()
+                                    if clean_new and clean_new != st.session_state.edit_emp:
+                                        reg_emps = load_registered_employees()
+                                        if st.session_state.edit_emp in reg_emps:
+                                            reg_emps.remove(st.session_state.edit_emp)
+                                        if clean_new not in reg_emps:
+                                            reg_emps.append(clean_new)
+                                        save_registered_employees(reg_emps)
+                                        st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
+                                    st.session_state.edit_emp = None
+                                    st.rerun()
+                                if btn_canc:
+                                    st.session_state.edit_emp = None
+                                    st.rerun()
+                                    
+                        elif st.session_state.get('del_emp') == emp:
+                            st.markdown("---")
+                            st.warning(f"⚠️ Remove '{st.session_state.del_emp}' from the system?")
+                            dy, dn = st.columns([1, 10])
+                            with dy:
+                                if st.button("Yes", type="primary", key=f"yes_del_{idx}"):
+                                    reg_emps = load_registered_employees()
+                                    if st.session_state.del_emp in reg_emps:
+                                        reg_emps.remove(st.session_state.del_emp)
+                                        save_registered_employees(reg_emps)
+                                    st.session_state.flash_msg = f"🗑️ '{st.session_state.del_emp}' deleted successfully!"
+                                    st.session_state.del_emp = None
+                                    st.rerun()
+                            with dn:
+                                if st.button("Cancel", key=f"no_del_{idx}"):
+                                    st.session_state.del_emp = None
+                                    st.rerun()
 
         else:
             st.info("No employees found. Please add a new employee above.")
