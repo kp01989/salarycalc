@@ -6,11 +6,13 @@ import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 
-# ==========================================
-# 1. SETTINGS MUST BE FIRST
-# ==========================================
+# ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
+# ---------------------------------------------------------
 
+# ==========================================
+# 1. SETTINGS & CONSTANTS
+# ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 ADMIN_PASSWORD = "1234"  
 
@@ -28,7 +30,8 @@ def get_all_sheet_names():
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
-                return [k for k in data.keys() if k not in ["holidays_list", "employee_master"]]
+                # Ignore both holidays_list and employee_list to not mix them with attendance sheets
+                return [k for k in data.keys() if k not in ["holidays_list", "employee_list"]]
     except Exception:
         pass
     
@@ -42,60 +45,66 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-# --- NEW: Employee Master System ---
-@st.cache_data
-def load_employee_master():
-    try:
-        res = requests.get(f"{FIREBASE_URL}/employee_master.json", timeout=10)
-        if res.status_code == 200 and res.json():
-            return res.json()
-    except Exception:
-        pass
-    return []
-
-def save_employee_master(data):
-    try:
-        requests.put(f"{FIREBASE_URL}/employee_master.json", json=data, timeout=10)
-        st.cache_data.clear()
-    except Exception:
-        pass
-
 @st.cache_data
 def get_all_employees():
-    emps = set()
-    
-    # Load from new master list
-    master_list = load_employee_master()
-    if isinstance(master_list, list):
-        for m in master_list:
-            if m and m != "-": emps.add(str(m).strip().title())
-
-    # Also check existing sheets just in case
     url = f"{FIREBASE_URL}.json"
+    emps = set()
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
                 for sheet, records in data.items():
-                    if sheet in ["holidays_list", "employee_master"]:
+                    if sheet == "holidays_list":
                         continue
+                    
+                    # Fetch from dedicated registered employee list
+                    if sheet == "employee_list":
+                        if isinstance(records, list):
+                            for r in records:
+                                if r: emps.add(str(r).strip().title())
+                        elif isinstance(records, dict):
+                            for key, r in records.items():
+                                if r: emps.add(str(r).strip().title())
+                        continue
+                        
+                    # Fetch existing from attendance sheets
                     if isinstance(records, list):
                         for r in records:
                             if r and isinstance(r, dict) and "Employee Name" in r:
                                 name = str(r.get("Employee Name", "")).strip().title()
-                                if name and name.lower() != "nan": emps.add(name)
+                                if name and name.lower() != "nan":
+                                    emps.add(name)
                     elif isinstance(records, dict):
                         for key, r in records.items():
                             if r and isinstance(r, dict) and "Employee Name" in r:
                                 name = str(r.get("Employee Name", "")).strip().title()
-                                if name and name.lower() != "nan": emps.add(name)
+                                if name and name.lower() != "nan":
+                                    emps.add(name)
     except Exception:
         pass
-            
     valid_emps = [e for e in emps if e != "-"]
     return sorted(list(valid_emps))
-# -----------------------------------
+
+def load_registered_employees():
+    try:
+        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
+        if res.status_code == 200 and res.json():
+            data = res.json()
+            if isinstance(data, dict):
+                return list(data.values())
+            elif isinstance(data, list):
+                return [x for x in data if x is not None]
+    except Exception:
+        pass
+    return []
+
+def save_registered_employees(emp_list):
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
+        get_all_employees.clear() # Clear cache so it updates instantly
+    except Exception:
+        pass
 
 @st.cache_data
 def load_holidays_data():
@@ -302,7 +311,6 @@ def on_top_name_change():
     else:
         st.session_state.filter_month_dash = current_month_str
 
-import streamlit.components.v1 as components 
 components.html(
     """
     <script>
@@ -314,6 +322,7 @@ components.html(
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     let active = document.activeElement;
+                    
                     if (active && active.tagName === 'BUTTON') return;
                     if (active && active.tagName === 'TEXTAREA') return;
 
@@ -337,33 +346,22 @@ components.html(
 
 st.markdown("""
     <style>
-        @keyframes smoothFadeOut {
-            0% { opacity: 0; transform: translateY(-10px); }
-            10% { opacity: 1; transform: translateY(0); }
-            70% { opacity: 1; transform: translateY(0); max-height: 500px; margin-bottom: 1rem; padding: 1rem; }
-            100% { opacity: 0; transform: translateY(-10px); max-height: 0; margin-bottom: 0; padding: 0; border: none; overflow: hidden; display: none; }
-        }
-        div[data-testid="stAlert"] {
-            animation: smoothFadeOut 3s ease-in-out forwards !important;
-            overflow: hidden;
-        }
-
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
         .stDownloadButton button { margin-top: 27px; }
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
         div[data-testid="InputInstructions"] { display: none !important; }
         
         div[data-testid="stTabs"] button[role="tab"] p {
-            font-size: 24px !important;
-            font-weight: bold !important;
+            font-size: 28px !important;
+            font-weight: 900 !important;
         }
         .stTabs button[data-baseweb="tab"] div[data-testid="stMarkdownContainer"] p {
-            font-size: 24px !important;
-            font-weight: bold !important;
+            font-size: 28px !important;
+            font-weight: 900 !important;
         }
         div[data-testid="stTabs"] button[role="tab"] {
-            padding-top: 10px !important;
-            padding-bottom: 10px !important;
+            padding-top: 15px !important;
+            padding-bottom: 15px !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -382,8 +380,8 @@ if formatted_name != "Administrator":
 
 is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
 
-# NEW: Tab 5 Added
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holidays", "📊 Dashboard", "⚙️ Manage Employees"])
+# FIX: Added the 5th Tab for Manage Employees
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"])
 
 with tab1:
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
@@ -520,13 +518,6 @@ with tab1:
                         df_month.at[idx, "Status"] = entry_status
                         
                         save_data(df_month, target_sheet)
-                        
-                        # NEW: Auto-register employee if not in master list
-                        master_list = load_employee_master()
-                        if formatted_name not in master_list:
-                            master_list.append(formatted_name)
-                            save_employee_master(master_list)
-                            
                         st.session_state.flash_msg = f"✅ Additional punch added for {formatted_name} on {date_str}!"
                     else:
                         tot, late, out_e, ot = calculate_times(in_t_str, out_t_str, day_str, entry_status, is_pub_hol)
@@ -544,13 +535,6 @@ with tab1:
                         })
                         df_month = pd.concat([df_month, new_entry], ignore_index=True)
                         save_data(df_month, target_sheet) 
-                        
-                        # NEW: Auto-register employee if not in master list
-                        master_list = load_employee_master()
-                        if formatted_name not in master_list:
-                            master_list.append(formatted_name)
-                            save_employee_master(master_list)
-                            
                         st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
                     st.session_state.filter_month_dash = target_sheet
@@ -603,8 +587,6 @@ with tab1:
                         success_count = 0
                         grouped = df_upload.groupby('Date')
                         holidays_dict = get_flat_holiday_dates()
-                        master_list = load_employee_master()
-                        needs_master_update = False
                         
                         for date_val, group in grouped:
                             try:
@@ -621,11 +603,6 @@ with tab1:
                                 
                                 for _, r in group.iterrows():
                                     ename = str(r['Employee Name']).strip().title()
-                                    
-                                    if ename not in master_list:
-                                        master_list.append(ename)
-                                        needs_master_update = True
-                                        
                                     stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
                                     if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
                                         
@@ -674,9 +651,6 @@ with tab1:
                             except Exception:
                                 pass
                                 
-                        if needs_master_update:
-                            save_employee_master(master_list)
-                            
                         st.session_state.flash_msg = f"✅ Successfully processed {success_count} records!"
                         st.rerun()
             except Exception as e:
@@ -688,7 +662,7 @@ with tab2:
     
     all_emp_list = get_all_employees()
     if not all_emp_list:
-        st.info("No employees found in the database. Go to 'Manage Employees' tab to add staff.")
+        st.info("No employees found in the database. Please add at least one entry in 'Manual Entry' first.")
     else:
         r_sheet = get_sheet_name(roster_date)
         if r_sheet not in st.session_state.cached_data:
@@ -1284,44 +1258,50 @@ with tab4:
                             st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
                             st.rerun()
 
-# --- NEW: Tab 5 (Employee Master) Logic ---
+# =========================================================
+# NEW TAB 5 LOGIC: MANAGE EMPLOYEES
+# =========================================================
 with tab5:
-    st.subheader("⚙️ Employee Master (Add / Remove Employees)")
-    if not is_admin_unlocked:
-        st.warning("🔒 Please enter the Admin password in the 'Add Attendance' tab to unlock Employee Management.")
-    else:
-        emp_list = load_employee_master()
-        if not isinstance(emp_list, list):
-            emp_list = []
-            
-        with st.form("add_emp_form"):
-            new_emp = st.text_input("➕ Add New Employee Name", placeholder="e.g. Rahul Kumar")
-            
-            if st.form_submit_button("Save Employee", type="primary"):
-                name = new_emp.strip().title()
-                if not name:
-                    st.error("⚠️ Please enter a name!")
-                elif name in emp_list:
-                    st.error("⚠️ Employee already exists in the system!")
-                elif name == "Administrator":
-                    st.error("⚠️ You cannot add 'Administrator' as an employee.")
+    st.subheader("👤 Manage Employees")
+    if is_admin_unlocked:
+        with st.form("add_new_emp_form"):
+            col_e1, col_e2 = st.columns([3, 1])
+            with col_e1:
+                new_emp_name = st.text_input("Enter New Employee Name", placeholder="e.g. Rahul Patel")
+            with col_e2:
+                st.write("")
+                st.write("")
+                add_emp_btn = st.form_submit_button("➕ Add Employee", type="primary", use_container_width=True)
+        
+        if add_emp_btn:
+            clean_name = new_emp_name.strip().title()
+            if not clean_name:
+                st.error("⚠️ Please enter a valid name!")
+            elif clean_name == "Administrator":
+                st.error("⚠️ You cannot add 'Administrator' as an employee.")
+            else:
+                all_existing = get_all_employees()
+                if clean_name in all_existing:
+                    st.warning(f"⚠️ Employee '{clean_name}' already exists in the system!")
                 else:
-                    emp_list.append(name)
-                    save_employee_master(emp_list)
-                    st.session_state.flash_msg = f"✅ {name} added to the system successfully!"
+                    reg_emps = load_registered_employees()
+                    reg_emps.append(clean_name)
+                    save_registered_employees(reg_emps)
+                    st.session_state.flash_msg = f"✅ Employee '{clean_name}' successfully added!"
                     st.rerun()
         
-        st.write("---")
+        st.divider()
+        st.write("### 📋 All Registered Employees")
         
-        if emp_list:
-            st.write("### 👥 Current Active Employees")
-            for e in sorted(emp_list):
-                c1, c2 = st.columns([3, 1])
-                c1.write(f"👤 **{e}**")
-                if c2.button("🗑️ Remove", key=f"del_emp_{e}"):
-                    emp_list.remove(e)
-                    save_employee_master(emp_list)
-                    st.session_state.flash_msg = f"✅ {e} removed from the system!"
-                    st.rerun()
+        current_emps = get_all_employees()
+        if current_emps:
+            df_emps = pd.DataFrame({
+                "Sr No.": range(1, len(current_emps) + 1), 
+                "Employee Name": current_emps
+            })
+            st.dataframe(df_emps, use_container_width=True, hide_index=True)
         else:
-            st.info("No employees added yet. Add your first employee above!")
+            st.info("No employees found. Please add a new employee above.")
+            
+    else:
+        st.caption("🔒 **Note:** Only Administrator can manage employees. (Enter password in 'Add Attendance' tab to unlock)")
