@@ -5,6 +5,7 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
+import uuid
 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
@@ -30,7 +31,6 @@ def get_all_sheet_names():
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
-                # Ignore both holidays_list and employee_list to not mix them with attendance sheets
                 return [k for k in data.keys() if k not in ["holidays_list", "employee_list"]]
     except Exception:
         pass
@@ -58,7 +58,6 @@ def get_all_employees():
                     if sheet == "holidays_list":
                         continue
                     
-                    # Fetch from dedicated registered employee list
                     if sheet == "employee_list":
                         if isinstance(records, list):
                             for r in records:
@@ -68,7 +67,6 @@ def get_all_employees():
                                 if r: emps.add(str(r).strip().title())
                         continue
                         
-                    # Fetch existing from attendance sheets
                     if isinstance(records, list):
                         for r in records:
                             if r and isinstance(r, dict) and "Employee Name" in r:
@@ -102,7 +100,7 @@ def load_registered_employees():
 def save_registered_employees(emp_list):
     try:
         requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
-        get_all_employees.clear() # Clear cache so it updates instantly
+        get_all_employees.clear()
     except Exception:
         pass
 
@@ -119,7 +117,7 @@ def load_holidays_data():
 def save_holidays_data(data):
     try:
         requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data, timeout=10)
-        st.cache_data.clear()
+        load_holidays_data.clear() 
         if 'cached_holidays' in st.session_state:
             del st.session_state.cached_holidays
     except Exception:
@@ -277,9 +275,10 @@ def save_data(df, sheet_name):
     data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data, timeout=10)
-        st.cache_data.clear()
-        if 'cached_data' in st.session_state:
-            del st.session_state.cached_data
+        load_data.clear(sheet_name) 
+        get_all_employees.clear()
+        if 'cached_data' in st.session_state and sheet_name in st.session_state.cached_data:
+            del st.session_state.cached_data[sheet_name]
     except Exception:
         pass
 
@@ -310,39 +309,6 @@ def on_top_name_change():
         st.session_state.filter_month_dash = current_month_str 
     else:
         st.session_state.filter_month_dash = current_month_str
-
-components.html(
-    """
-    <script>
-    const doc = window.parent.document;
-    if (!doc.getElementById('advanced-enter-tab')) {
-        let script = doc.createElement('script');
-        script.id = 'advanced-enter-tab';
-        script.innerHTML = `
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    let active = document.activeElement;
-                    
-                    if (active && active.tagName === 'BUTTON') return;
-                    if (active && active.tagName === 'TEXTAREA') return;
-
-                    if (active && active.tagName === 'INPUT') {
-                        e.preventDefault(); 
-                        let focusable = Array.from(document.querySelectorAll('input:not([disabled]), select:not([disabled]), button:not([disabled])'));
-                        let index = focusable.indexOf(active);
-                        if (index > -1 && index < focusable.length - 1) {
-                            focusable[index + 1].focus();
-                        }
-                    }
-                }
-            }, true); 
-        `;
-        doc.head.appendChild(script);
-    }
-    </script>
-    """,
-    height=0, width=0
-)
 
 st.markdown("""
     <style>
@@ -380,7 +346,6 @@ if formatted_name != "Administrator":
 
 is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
 
-# FIX: Added the 5th Tab for Manage Employees
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"])
 
 with tab1:
@@ -1258,9 +1223,6 @@ with tab4:
                             st.session_state.flash_msg = f"✅ Record for {row_data['Employee Name']} on {row_data['Date']} permanently deleted!"
                             st.rerun()
 
-# =========================================================
-# NEW TAB 5 LOGIC: MANAGE EMPLOYEES
-# =========================================================
 with tab5:
     st.subheader("👤 Manage Employees")
     if is_admin_unlocked:
