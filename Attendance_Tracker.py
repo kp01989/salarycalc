@@ -5,7 +5,6 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
-import uuid
 
 # ==========================================
 # 1. SETTINGS & CONSTANTS
@@ -281,7 +280,6 @@ def on_top_name_change():
 
 st.markdown("""
     <style>
-        /* FIX: Removed Auto-Hide animation to keep messages permanently visible */
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
         .stDownloadButton button { margin-top: 27px; }
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
@@ -307,7 +305,6 @@ st.title("📅 Advanced Attendance Tracker")
 msg_placeholder = st.empty()
 if st.session_state.flash_msg:
     msg_placeholder.success(st.session_state.flash_msg)
-    # Don't clear flash_msg immediately so it stays on screen until another action happens
     st.session_state.flash_msg = "" 
 
 formatted_name = st.session_state.top_emp_input.strip().title()
@@ -473,7 +470,7 @@ with tab1:
                         save_data(df_month, target_sheet) 
                         st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
-                    st.session_state.filter_month = target_sheet
+                    st.session_state.filter_month_dash = target_sheet
                     st.session_state.last_edited = f"{formatted_name}_{date_str}"
                     st.session_state.form_reset_counter += 1
                     st.rerun()
@@ -747,7 +744,6 @@ with tab3:
                                 st.session_state.flash_msg = "✅ Holiday updated!"
                                 st.rerun()
     else:
-        # FIX: Changed to a permanent caption instead of an alert
         st.caption("🔒 **Note:** Only Administrator can add, edit or delete holidays. (Enter password in 'Add Attendance' tab to unlock)")
         
         if hol_data:
@@ -772,7 +768,6 @@ with tab4:
     if not formatted_name:
         st.info("👆 Please enter an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     elif formatted_name == "Administrator" and not is_admin_unlocked:
-        # FIX: Changed to a permanent caption instead of an alert
         st.caption("🔒 **Note:** Please enter the Admin password in the 'Add Attendance' tab to unlock the Dashboard.")
     else:
         all_sheets_raw = get_all_sheet_names()
