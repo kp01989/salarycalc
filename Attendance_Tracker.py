@@ -962,7 +962,7 @@ with tab4:
             st.write("")
             st.divider()
             
-            # --- FIX: MOVED EDIT/DELETE FORMS TO THE TOP & MADE ONE-LINE STRIP ---
+            # --- EDIT/DELETE FORMS ---
             if st.session_state.edit_row:
                 st.subheader("✏️ Edit Selected Entry")
                 row_data = st.session_state.edit_row["data"]
@@ -1218,6 +1218,7 @@ with tab4:
 
             st.markdown("💡 **Tip:** Use the Edit/Delete buttons on the right side of each entry to make changes.")
             
+            # --- FIX: NARROW COMPACT UI & BUTTONS CLOSER ---
             for index, row in df_display.iterrows():
                 status_color = "#1e2530" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1231,15 +1232,16 @@ with tab4:
                 elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
                     status_color = "#3b3b18"
                 
-                c_info, c_edit, c_del = st.columns([7.5, 1, 1])
+                # Made info smaller, buttons closer, and added blank space on the right
+                c_info, c_edit, c_del, c_blank = st.columns([5, 0.7, 0.7, 3.6])
                 
                 with c_info:
                     st.markdown(f"""
-                    <div style="background-color: {status_color}; padding: 10px 15px; border-radius: 6px; border: 1px solid #303d4f; height: 100%; display: flex; align-items: center;">
+                    <div style="background-color: {status_color}; padding: 6px 12px; border-radius: 6px; border: 1px solid #303d4f; height: 100%; display: flex; align-items: center;">
                         <div style="width: 100%;">
-                            <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
-                            <strong style="font-size: 1.05em; margin-right: 15px;">{row['Employee Name']}</strong>
-                            <span style="font-size: 0.95em; color: #d1d5db;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> (OT: {row['OT Hours']})</span>
+                            <span style="color: #8b9bb4; font-size: 0.85em; margin-right: 10px;">{row['Date']} ({row['Day']})</span>
+                            <strong style="font-size: 1em; margin-right: 10px;">{row['Employee Name']}</strong>
+                            <span style="font-size: 0.9em; color: #d1d5db;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> (OT: {row['OT Hours']})</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1292,7 +1294,6 @@ with tab5:
         current_emps = get_all_employees()
         if current_emps:
             
-            # --- MANAGE EMPLOYEES: ONE LINE STRIP FIX ---
             if st.session_state.get('edit_emp'):
                 st.subheader(f"✏️ Update Employee Name: {st.session_state.edit_emp}")
                 with st.form("edit_emp_form"):
@@ -1342,18 +1343,16 @@ with tab5:
                         st.session_state.del_emp = None
                         st.rerun()
                 st.markdown("---")
-            # --------------------------------------------------------
-
-            st.markdown("""
-            <div style="display: flex; justify-content: space-between; background-color: #1e2530; padding: 10px; border-radius: 5px; border: 1px solid #303d4f; font-weight: bold; margin-bottom: 10px;">
-                <div style="flex: 1;">Sr No.</div>
-                <div style="flex: 4;">Employee Name</div>
-                <div style="flex: 2;">Actions</div>
-            </div>
-            """, unsafe_allow_html=True)
+            
+            # Use columns for headers to match exactly
+            hc1, hc2, hc3, hc_blank = st.columns([0.6, 3, 1.4, 4])
+            with hc1: st.markdown("**Sr No.**")
+            with hc2: st.markdown("**Employee Name**")
+            with hc3: st.markdown("**Actions**")
+            st.divider()
             
             for idx, emp in enumerate(current_emps):
-                c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
+                c1, c2, c3, c4, c_blank = st.columns([0.6, 3, 0.7, 0.7, 4])
                 with c1:
                     st.write(f"**{idx + 1}**")
                 with c2:
