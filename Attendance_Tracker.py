@@ -5,7 +5,6 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
-import uuid
 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
@@ -45,28 +44,36 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
+# FIX: Smart Loop Auto-Sync logic 
 @st.cache_data
 def get_all_employees():
-    url = f"{FIREBASE_URL}.json"
+    sheets = get_all_sheet_names()
     emps = set()
+    
+    # 1. Get manually registered employees first
     try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data and isinstance(data, dict):
-                for sheet, records in data.items():
-                    if sheet == "holidays_list":
-                        continue
-                    
-                    if sheet == "employee_list":
-                        if isinstance(records, list):
-                            for r in records:
-                                if r: emps.add(str(r).strip().title())
-                        elif isinstance(records, dict):
-                            for key, r in records.items():
-                                if r: emps.add(str(r).strip().title())
-                        continue
-                        
+        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
+        if res.status_code == 200 and res.json():
+            data = res.json()
+            if isinstance(data, list):
+                for r in data:
+                    if r: emps.add(str(r).strip().title())
+            elif isinstance(data, dict):
+                for k, v in data.items():
+                    if v: emps.add(str(v).strip().title())
+    except Exception:
+        pass
+        
+    # 2. Scan all attendance sheets to catch legacy employees
+    for sheet in sheets:
+        if sheet in ["holidays_list", "employee_list"]:
+            continue
+        url = f"{FIREBASE_URL}/{sheet}.json"
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                records = response.json()
+                if records:
                     if isinstance(records, list):
                         for r in records:
                             if r and isinstance(r, dict) and "Employee Name" in r:
@@ -79,10 +86,18 @@ def get_all_employees():
                                 name = str(r.get("Employee Name", "")).strip().title()
                                 if name and name.lower() != "nan":
                                     emps.add(name)
+        except Exception:
+            continue
+            
+    valid_emps = sorted(list([e for e in emps if e != "-"]))
+    
+    # 3. Auto-Sync all missing legacy employees to the master list
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=valid_emps, timeout=5)
     except Exception:
         pass
-    valid_emps = [e for e in emps if e != "-"]
-    return sorted(list(valid_emps))
+        
+    return valid_emps
 
 def load_registered_employees():
     try:
