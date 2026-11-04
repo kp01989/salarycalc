@@ -5,6 +5,12 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
+import uuid
+
+# ---------------------------------------------------------
+# FIX: st.set_page_config MUST be the very first command! 
+# ---------------------------------------------------------
+st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
 
 # ==========================================
 # 1. SETTINGS & CONSTANTS
@@ -40,36 +46,36 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
+# FIX: Optimized to fetch all employees in ONE fast network call instead of 12
 @st.cache_data
 def get_all_employees():
-    sheets = get_all_sheet_names()
-    emps = set()
-    for sheet in sheets:
-        if sheet == "holidays_list":
-            continue
-        url = f"{FIREBASE_URL}/{sheet}.json"
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                records = response.json()
-                if records:
+    url = f"{FIREBASE_URL}.json"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            emps = set()
+            if data and isinstance(data, dict):
+                for sheet, records in data.items():
+                    if sheet == "holidays_list":
+                        continue
                     if isinstance(records, list):
                         for r in records:
-                            if isinstance(r, dict) and "Employee Name" in r:
+                            if r and isinstance(r, dict) and "Employee Name" in r:
                                 name = str(r.get("Employee Name", "")).strip().title()
                                 if name and name.lower() != "nan":
                                     emps.add(name)
                     elif isinstance(records, dict):
                         for key, r in records.items():
-                            if isinstance(r, dict) and "Employee Name" in r:
+                            if r and isinstance(r, dict) and "Employee Name" in r:
                                 name = str(r.get("Employee Name", "")).strip().title()
                                 if name and name.lower() != "nan":
                                     emps.add(name)
-        except Exception:
-            continue
-            
-    valid_emps = [e for e in emps if e != "-"]
-    return sorted(list(valid_emps))
+                valid_emps = [e for e in emps if e != "-"]
+                return sorted(list(valid_emps))
+    except Exception:
+        pass
+    return []
 
 @st.cache_data
 def load_holidays_data():
@@ -84,7 +90,7 @@ def load_holidays_data():
 def save_holidays_data(data):
     try:
         requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data, timeout=10)
-        st.cache_data.clear()
+        load_holidays_data.clear() # Smart Cache Clear
         if 'cached_holidays' in st.session_state:
             del st.session_state.cached_holidays
     except Exception:
@@ -242,9 +248,10 @@ def save_data(df, sheet_name):
     data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data, timeout=10)
-        st.cache_data.clear()
-        if 'cached_data' in st.session_state:
-            del st.session_state.cached_data
+        load_data.clear(sheet_name) # Smart Cache Clear
+        get_all_employees.clear() 
+        if 'cached_data' in st.session_state and sheet_name in st.session_state.cached_data:
+            del st.session_state.cached_data[sheet_name]
     except Exception:
         pass
 
@@ -257,8 +264,6 @@ def time_to_float(time_str):
         return h + (m / 60.0)
     except:
         return 0.0
-
-st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
 
 current_month_str = get_sheet_name(date.today())
 
