@@ -44,8 +44,6 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-# FIX: Completely removed the auto-sync from historical sheets.
-# Now strictly reads ONLY from employee_list!
 @st.cache_data
 def get_all_employees():
     emps = set()
@@ -301,6 +299,33 @@ def on_top_name_change():
 
 st.markdown("""
     <style>
+        /* CSS Auto-hide exactly for specific success/error messages */
+        @keyframes smoothFadeOut {
+            0% { opacity: 0; transform: translateY(-10px); }
+            10% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); max-height: 500px; margin-bottom: 1rem; padding: 16px; }
+            100% { opacity: 0; transform: translateY(-10px); max-height: 0; margin-bottom: 0; padding: 0; border: none; overflow: hidden; display: none; }
+        }
+        .auto-hide-success {
+            background-color: rgba(29, 169, 85, 0.2);
+            border: 1px solid rgba(29, 169, 85, 0.5);
+            color: rgb(184, 241, 198);
+            padding: 16px;
+            border-radius: 8px;
+            animation: smoothFadeOut 5s ease-in-out forwards;
+            font-family: sans-serif;
+        }
+        .auto-hide-error {
+            background-color: rgba(255, 43, 43, 0.2);
+            border: 1px solid rgba(255, 43, 43, 0.5);
+            color: rgb(255, 189, 189);
+            padding: 16px;
+            border-radius: 8px;
+            animation: smoothFadeOut 5s ease-in-out forwards;
+            font-family: sans-serif;
+        }
+        
+        /* Modern Compact Table UI CSS */
         .record-card {
             background: #1e2530;
             border-radius: 8px;
@@ -334,9 +359,8 @@ st.markdown("""
 
 st.title("📅 Advanced Attendance Tracker")
 
-msg_placeholder = st.empty()
 if st.session_state.flash_msg:
-    msg_placeholder.success(st.session_state.flash_msg)
+    st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
     st.session_state.flash_msg = "" 
 
 raw_emp_name = st.session_state.top_emp_selectbox
@@ -379,11 +403,11 @@ with tab1:
                                 st.session_state.admin_auth = True
                                 st.rerun()
                             else:
-                                st.error("❌ Incorrect Password!")
+                                st.markdown('<div class="auto-hide-error" style="margin-top: 28px;">❌ Incorrect Password!</div>', unsafe_allow_html=True)
                 else:
                     ap1, ap2 = st.columns([1.5, 1])
                     with ap1:
-                        st.success("✅ Admin Access Granted")
+                        st.markdown('<div class="auto-hide-success" style="margin-top: 28px;">✅ Admin Access Granted</div>', unsafe_allow_html=True)
                     with ap2:
                         st.write("")
                         st.write("")
@@ -648,7 +672,7 @@ with tab2:
         pending_emps = [e for e in all_emp_list if e not in existing_emps_on_date]
         
         if not pending_emps:
-            st.success(f"✅ All employees are already marked for {r_date_str}.")
+            st.markdown(f'<div class="auto-hide-success">✅ All employees are already marked for {r_date_str}.</div>', unsafe_allow_html=True)
         else:
             roster_df = pd.DataFrame({
                 "Employee Name": pending_emps,
