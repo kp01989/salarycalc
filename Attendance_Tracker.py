@@ -323,10 +323,9 @@ def on_top_name_change():
     else:
         st.session_state.filter_month_dash = current_month_str
 
-
 st.markdown("""
     <style>
-        /* Modern Compact Table UI */
+        /* Modern Compact Table UI CSS */
         .record-card {
             background: #1e2530;
             border-radius: 8px;
@@ -348,10 +347,6 @@ st.markdown("""
         .record-details {
             font-size: 1.1em;
             font-weight: 500;
-        }
-        .record-actions {
-            display: flex;
-            gap: 8px;
         }
         
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
@@ -1117,18 +1112,19 @@ with tab4:
                     use_container_width=True
                 )
 
-            # NEW: Compact Card UI for Attendance 
+            # ====================================================
+            # NEW FIX: Smart Compact Card UI with Edit/Delete Buttons 
+            # ====================================================
             for index, row in df_display.iterrows():
-                # Define Status Colors
                 status_color = "#1e2530" 
                 hol_dict_hl = get_flat_holiday_dates()
                 
                 if row['Day'] == 'Sun':
-                    status_color = "#4a1c1c" # Dark Red for Sunday
+                    status_color = "#4a1c1c"
                 elif row['Status'] == 'Holiday' or row['Date'] in hol_dict_hl:
-                    status_color = "#1c3756" # Dark Blue for Holiday
+                    status_color = "#1c3756"
                 elif row['Status'] in ['PL', 'LWP', 'Absent']:
-                    status_color = "#563d1c" # Dark Orange for Leave
+                    status_color = "#563d1c"
                 
                 st.markdown(f"""
                 <div class="record-card" style="background-color: {status_color};">
