@@ -330,9 +330,6 @@ st.markdown("""
             animation: instantHide 0s 5s forwards;
         }
         
-        div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
-        .stDownloadButton button { margin-top: 27px; }
-        [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
         div[data-testid="InputInstructions"] { display: none !important; }
         
         div[data-testid="stTabs"] button[role="tab"] p {
@@ -374,7 +371,8 @@ with tab1:
     st.divider()
 
     if entry_mode == "✏️ Manual Entry":
-        col_input1, col_input2 = st.columns([1.5, 2.5])
+        # FIX: Compact selectbox setup
+        col_input1, col_input2, col_blank = st.columns([2.5, 1.5, 4])
         
         all_emps_list = get_all_employees()
         dropdown_options = ["-- Select Employee --", "Administrator"] + all_emps_list
@@ -385,28 +383,20 @@ with tab1:
         if formatted_name == "Administrator":
             with col_input2:
                 if not st.session_state.admin_auth:
-                    ap1, ap2 = st.columns([1.5, 1])
-                    with ap1:
-                        admin_pwd = st.text_input("🔑 Enter Admin Password", type="password", key="pwd_input")
-                    with ap2:
-                        st.write("")
-                        st.write("")
-                        if st.button("Unlock Admin", type="primary"):
-                            if admin_pwd == ADMIN_PASSWORD:
-                                st.session_state.admin_auth = True
-                                st.rerun()
-                            else:
-                                st.markdown('<div class="auto-hide-error" style="margin-top: 28px;">❌ Incorrect Password!</div>', unsafe_allow_html=True)
-                else:
-                    ap1, ap2 = st.columns([1.5, 1])
-                    with ap1:
-                        st.markdown('<div class="auto-hide-success" style="margin-top: 28px;">✅ Admin Access Granted</div>', unsafe_allow_html=True)
-                    with ap2:
-                        st.write("")
-                        st.write("")
-                        if st.button("Lock 🔒"):
-                            st.session_state.admin_auth = False
+                    admin_pwd = st.text_input("🔑 Enter Admin Password", type="password", key="pwd_input")
+                    st.write("")
+                    if st.button("Unlock Admin", type="primary"):
+                        if admin_pwd == ADMIN_PASSWORD:
+                            st.session_state.admin_auth = True
                             st.rerun()
+                        else:
+                            st.markdown('<div class="auto-hide-error">❌ Incorrect Password!</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="auto-hide-success" style="padding: 10px;">✅ Admin Access Granted</div>', unsafe_allow_html=True)
+                    st.write("")
+                    if st.button("Lock 🔒"):
+                        st.session_state.admin_auth = False
+                        st.rerun()
 
         default_date = date.today()
         default_in = time(8, 0)
@@ -435,7 +425,8 @@ with tab1:
                           default_date = latest_date + timedelta(days=1)
 
         with st.form("entry_form"):
-            c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.5])
+            # FIX: Compact Form setup
+            c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5])
             with c1:
                 entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
             with c2:
@@ -444,7 +435,6 @@ with tab1:
                 in_time = st.time_input("In Time", value=default_in, key=f"in_{st.session_state.form_reset_counter}")
             with c4:
                 out_time = st.time_input("Out Time", value=default_out, key=f"out_{st.session_state.form_reset_counter}")
-                
             with c5:
                 st.write("")
                 st.write("")
@@ -528,127 +518,135 @@ with tab1:
 
     elif entry_mode == "📂 Bulk Upload (Excel/CSV)":
         st.subheader("📂 Upload Monthly Excel/CSV")
-        st.markdown("""
-        **Instructions:**
-        1. File must have columns: `Employee Name`, `Date` (DD/MM/YYYY), `In Time` (HH:MM), `Out Time` (HH:MM), `Status` (Optional).
-        2. Overlap Protection is Active: Duplicates or overlapping times will be automatically skipped!
-        """)
         
-        template_df = pd.DataFrame({
-            "Employee Name": ["Manoj Kumar", "Ramesh Patel", "Suresh Desai"],
-            "Date": ["01/11/2026", "02/11/2026", "03/11/2026"],
-            "In Time": ["08:00", "09:15", ""],
-            "Out Time": ["18:00", "18:00", ""],
-            "Status": ["Regular", "Holiday", "PL"]
-        })
-        csv_template = template_df.to_csv(index=False).encode('utf-8')
-        
-        st.download_button(
-            label="📥 Download CSV Template",
-            data=csv_template,
-            file_name="Attendance_Template.csv",
-            mime="text/csv",
-        )
-        st.write("")
+        # FIX: Compact uploader UI
+        col_up1, col_up_blank = st.columns([6, 4])
+        with col_up1:
+            st.markdown("""
+            **Instructions:**
+            1. File must have columns: `Employee Name`, `Date` (DD/MM/YYYY), `In Time` (HH:MM), `Out Time` (HH:MM), `Status` (Optional).
+            2. Overlap Protection is Active: Duplicates or overlapping times will be automatically skipped!
+            """)
+            
+            template_df = pd.DataFrame({
+                "Employee Name": ["Manoj Kumar", "Ramesh Patel", "Suresh Desai"],
+                "Date": ["01/11/2026", "02/11/2026", "03/11/2026"],
+                "In Time": ["08:00", "09:15", ""],
+                "Out Time": ["18:00", "18:00", ""],
+                "Status": ["Regular", "Holiday", "PL"]
+            })
+            csv_template = template_df.to_csv(index=False).encode('utf-8')
+            
+            st.download_button(
+                label="📥 Download CSV Template",
+                data=csv_template,
+                file_name="Attendance_Template.csv",
+                mime="text/csv",
+            )
+            st.write("")
 
-        uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
-        
-        if uploaded_file is not None:
-            try:
-                if uploaded_file.name.endswith('.csv'):
-                    df_upload = pd.read_csv(uploaded_file)
-                else:
-                    df_upload = pd.read_excel(uploaded_file)
-                    
-                required_cols = ["Employee Name", "Date", "In Time", "Out Time"]
-                if not all(c in df_upload.columns for c in required_cols):
-                    st.error(f"Missing required columns! Required: {required_cols}")
-                else:
-                    st.write("Preview of Uploaded Data:")
-                    st.dataframe(df_upload.head(3), use_container_width=True)
-                    
-                    if st.button("🚀 Process & Upload Bulk Data", type="primary"):
-                        success_count = 0
-                        grouped = df_upload.groupby('Date')
-                        holidays_dict = get_flat_holiday_dates()
+            uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+            
+            if uploaded_file is not None:
+                try:
+                    if uploaded_file.name.endswith('.csv'):
+                        df_upload = pd.read_csv(uploaded_file)
+                    else:
+                        df_upload = pd.read_excel(uploaded_file)
                         
-                        master_emps = get_all_employees()
+                    required_cols = ["Employee Name", "Date", "In Time", "Out Time"]
+                    if not all(c in df_upload.columns for c in required_cols):
+                        st.error(f"Missing required columns! Required: {required_cols}")
+                    else:
+                        st.write("Preview of Uploaded Data:")
+                        st.dataframe(df_upload.head(3), use_container_width=True)
                         
-                        for date_val, group in grouped:
-                            try:
-                                d_obj = pd.to_datetime(date_val, format='%d/%m/%Y', errors='coerce').date()
-                                if pd.isna(d_obj): continue
-                                
-                                sheet_n = get_sheet_name(d_obj)
-                                day_s = d_obj.strftime("%a")
-                                date_s = d_obj.strftime("%d/%m/%Y")
-                                is_pub_hol = date_s in holidays_dict
-                                
-                                df_db = load_data(sheet_n).copy()
-                                new_rows = []
-                                
-                                for _, r in group.iterrows():
-                                    ename = str(r['Employee Name']).strip().title()
+                        if st.button("🚀 Process & Upload Bulk Data", type="primary"):
+                            success_count = 0
+                            grouped = df_upload.groupby('Date')
+                            holidays_dict = get_flat_holiday_dates()
+                            
+                            master_emps = get_all_employees()
+                            
+                            for date_val, group in grouped:
+                                try:
+                                    d_obj = pd.to_datetime(date_val, format='%d/%m/%Y', errors='coerce').date()
+                                    if pd.isna(d_obj): continue
                                     
-                                    if ename not in master_emps:
-                                        continue
+                                    sheet_n = get_sheet_name(d_obj)
+                                    day_s = d_obj.strftime("%a")
+                                    date_s = d_obj.strftime("%d/%m/%Y")
+                                    is_pub_hol = date_s in holidays_dict
+                                    
+                                    df_db = load_data(sheet_n).copy()
+                                    new_rows = []
+                                    
+                                    for _, r in group.iterrows():
+                                        ename = str(r['Employee Name']).strip().title()
                                         
-                                    stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
-                                    if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
-                                        
-                                    in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
-                                    out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
-                                    
-                                    existing_match = df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)]
-                                    
-                                    if not existing_match.empty:
-                                        idx = existing_match.index[0]
-                                        if stat not in ["PL", "LWP", "Absent"]:
-                                            curr_in = str(df_db.at[idx, "In Time"])
-                                            curr_out = str(df_db.at[idx, "Out Time"])
+                                        if ename not in master_emps:
+                                            continue
                                             
-                                            if check_time_overlap(curr_in, curr_out, in_val, out_val):
-                                                continue 
+                                        stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
+                                        if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
+                                            
+                                        in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
+                                        out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
+                                        
+                                        existing_match = df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)]
+                                        
+                                        if not existing_match.empty:
+                                            idx = existing_match.index[0]
+                                            if stat not in ["PL", "LWP", "Absent"]:
+                                                curr_in = str(df_db.at[idx, "In Time"])
+                                                curr_out = str(df_db.at[idx, "Out Time"])
                                                 
-                                            if in_val != "00:00" and curr_in != "00:00":
-                                                in_val = curr_in + ", " + in_val
-                                            if out_val != "00:00" and curr_out != "00:00":
-                                                out_val = curr_out + ", " + out_val
-                                        
+                                                if check_time_overlap(curr_in, curr_out, in_val, out_val):
+                                                    continue 
+                                                    
+                                                if in_val != "00:00" and curr_in != "00:00":
+                                                    in_val = curr_in + ", " + in_val
+                                                if out_val != "00:00" and curr_out != "00:00":
+                                                    out_val = curr_out + ", " + out_val
+                                            
+                                            tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
+                                            df_db.at[idx, "In Time"] = in_val
+                                            df_db.at[idx, "Out Time"] = out_val
+                                            df_db.at[idx, "Total Hours"] = tot
+                                            df_db.at[idx, "Late Hours"] = late
+                                            df_db.at[idx, "Out Hours"] = out_e
+                                            df_db.at[idx, "OT Hours"] = ot
+                                            df_db.at[idx, "Status"] = stat
+                                            success_count += 1
+                                            continue
+                                            
                                         tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
-                                        df_db.at[idx, "In Time"] = in_val
-                                        df_db.at[idx, "Out Time"] = out_val
-                                        df_db.at[idx, "Total Hours"] = tot
-                                        df_db.at[idx, "Late Hours"] = late
-                                        df_db.at[idx, "Out Hours"] = out_e
-                                        df_db.at[idx, "OT Hours"] = ot
-                                        df_db.at[idx, "Status"] = stat
+                                        new_rows.append({
+                                            "Employee Name": ename, "Date": date_s, "Day": day_s,
+                                            "In Time": in_val, "Out Time": out_val, "Late Hours": late, "Out Hours": out_e,
+                                            "Total Hours": tot, "OT Hours": ot, "Status": stat
+                                        })
                                         success_count += 1
-                                        continue
                                         
-                                    tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
-                                    new_rows.append({
-                                        "Employee Name": ename, "Date": date_s, "Day": day_s,
-                                        "In Time": in_val, "Out Time": out_val, "Late Hours": late, "Out Hours": out_e,
-                                        "Total Hours": tot, "OT Hours": ot, "Status": stat
-                                    })
-                                    success_count += 1
+                                    if new_rows:
+                                        df_db = pd.concat([df_db, pd.DataFrame(new_rows)], ignore_index=True)
+                                    save_data(df_db, sheet_n)
+                                        
+                                except Exception:
+                                    pass
                                     
-                                if new_rows:
-                                    df_db = pd.concat([df_db, pd.DataFrame(new_rows)], ignore_index=True)
-                                save_data(df_db, sheet_n)
-                                    
-                            except Exception:
-                                pass
-                                
-                        st.session_state.flash_msg = f"✅ Successfully processed {success_count} valid records!"
-                        st.rerun()
-            except Exception as e:
-                st.error(f"Error reading file: {e}")
+                            st.session_state.flash_msg = f"✅ Successfully processed {success_count} valid records!"
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
 
 with tab2:
     st.subheader("👥 Daily Roster (Mark all employees for a day)")
-    roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
+    
+    # FIX: Compact Date Selection
+    rc1, rc_blank = st.columns([3, 7])
+    with rc1:
+        roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
     
     all_emp_list = get_all_employees()
     if not all_emp_list:
@@ -674,47 +672,50 @@ with tab2:
                 "Out Time": ["18:00"] * len(pending_emps)
             })
             
-            edited_roster = st.data_editor(
-                roster_df,
-                column_config={
-                    "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True)
-                },
-                use_container_width=True,
-                hide_index=True,
-                num_rows="dynamic"
-            )
-            
-            if st.button("💾 Save Full Roster", type="primary"):
-                new_records = []
-                holidays_dict = get_flat_holiday_dates()
-                is_pub_hol = r_date_str in holidays_dict
+            # Formatted compact UI for roster
+            rost_col, rost_blank = st.columns([6, 4])
+            with rost_col:
+                edited_roster = st.data_editor(
+                    roster_df,
+                    column_config={
+                        "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True)
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="dynamic"
+                )
                 
-                for _, row in edited_roster.iterrows():
-                    emp_n = row["Employee Name"]
-                    stat = row["Status"]
+                if st.button("💾 Save Full Roster", type="primary"):
+                    new_records = []
+                    holidays_dict = get_flat_holiday_dates()
+                    is_pub_hol = r_date_str in holidays_dict
                     
-                    if stat in ["PL", "LWP", "Absent"]:
-                        in_t, out_t = "00:00", "00:00"
-                    else:
-                        try:
-                            in_t = row["In Time"].strftime("%H:%M") if isinstance(row["In Time"], time) else str(row["In Time"])
-                            out_t = row["Out Time"].strftime("%H:%M") if isinstance(row["Out Time"], time) else str(row["Out Time"])
-                        except:
-                            in_t, out_t = "08:00", "18:00"
+                    for _, row in edited_roster.iterrows():
+                        emp_n = row["Employee Name"]
+                        stat = row["Status"]
+                        
+                        if stat in ["PL", "LWP", "Absent"]:
+                            in_t, out_t = "00:00", "00:00"
+                        else:
+                            try:
+                                in_t = row["In Time"].strftime("%H:%M") if isinstance(row["In Time"], time) else str(row["In Time"])
+                                out_t = row["Out Time"].strftime("%H:%M") if isinstance(row["Out Time"], time) else str(row["Out Time"])
+                            except:
+                                in_t, out_t = "08:00", "18:00"
+                        
+                        tot, late, out_e, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                        new_records.append({
+                            "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
+                            "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
+                            "Total Hours": tot, "OT Hours": ot, "Status": stat
+                        })
                     
-                    tot, late, out_e, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
-                    new_records.append({
-                        "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
-                        "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
-                        "Total Hours": tot, "OT Hours": ot, "Status": stat
-                    })
-                
-                if new_records:
-                    df_new_roster = pd.DataFrame(new_records)
-                    df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
-                    save_data(df_r_month, r_sheet)
-                    st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
-                    st.rerun()
+                    if new_records:
+                        df_new_roster = pd.DataFrame(new_records)
+                        df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
+                        save_data(df_r_month, r_sheet)
+                        st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
+                        st.rerun()
 
 with tab3:
     st.subheader("🌴 Holiday Calendar")
@@ -726,7 +727,8 @@ with tab3:
         st.info("🔓 You have Administrator access to manage holidays.")
         
         with st.form("add_holiday_form"):
-            hc1, hc2, hc3, hc4 = st.columns([1.5, 1.5, 2, 1])
+            # FIX: Compact Form
+            hc1, hc2, hc3, hc4, hc_blank = st.columns([1.5, 1.5, 2.5, 1.5, 2])
             with hc1: 
                 f_date = st.date_input("From Date", format="DD/MM/YYYY")
             with hc2: 
@@ -759,47 +761,49 @@ with tab3:
             
         if hol_data:
             st.write("### 📅 Existing Holidays")
-            for hid, hinfo in list(hol_data.items()):
-                with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([3, 3, 1, 1])
-                    c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
-                    c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
-                    
-                    if c3.button("✏️ Edit", key=f"edit_{hid}"):
-                        st.session_state[f"edit_mode_{hid}"] = not st.session_state.get(f"edit_mode_{hid}", False)
-                        st.rerun()
+            hol_col, hol_blank = st.columns([6, 4])
+            with hol_col:
+                for hid, hinfo in list(hol_data.items()):
+                    with st.container(border=True):
+                        c1, c2, c3, c4 = st.columns([3, 3, 1, 1])
+                        c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
+                        c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
                         
-                    if c4.button("🗑️ Delete", key=f"del_{hid}"):
-                        del hol_data[hid]
-                        save_holidays_data(hol_data)
-                        st.session_state.flash_msg = "✅ Holiday entry deleted successfully!"
-                        st.rerun()
-                    
-                    if st.session_state.get(f"edit_mode_{hid}", False):
-                        with st.form(f"edit_form_{hid}"):
-                            ec1, ec2, ec3, ec4 = st.columns([1.5, 1.5, 2, 1])
-                            curr_f = datetime.strptime(hinfo['from'], "%d/%m/%Y").date()
-                            curr_t = datetime.strptime(hinfo['to'], "%d/%m/%Y").date()
-                            with ec1: ef_date = st.date_input("From Date", value=curr_f, format="DD/MM/YYYY", key=f"ef_{hid}")
-                            with ec2: et_date = st.date_input("To Date", value=curr_t, format="DD/MM/YYYY", key=f"et_{hid}")
-                            with ec3: ereason = st.text_input("Reason", value=hinfo['reason'], key=f"er_{hid}")
-                            with ec4:
-                                st.write("")
-                                st.write("")
-                                update_btn = st.form_submit_button("💾 Save", type="primary")
+                        if c3.button("✏️ Edit", key=f"edit_{hid}"):
+                            st.session_state[f"edit_mode_{hid}"] = not st.session_state.get(f"edit_mode_{hid}", False)
+                            st.rerun()
+                            
+                        if c4.button("🗑️ Delete", key=f"del_{hid}"):
+                            del hol_data[hid]
+                            save_holidays_data(hol_data)
+                            st.session_state.flash_msg = "✅ Holiday entry deleted successfully!"
+                            st.rerun()
+                        
+                        if st.session_state.get(f"edit_mode_{hid}", False):
+                            with st.form(f"edit_form_{hid}"):
+                                ec1, ec2, ec3, ec4 = st.columns([1.5, 1.5, 2, 1])
+                                curr_f = datetime.strptime(hinfo['from'], "%d/%m/%Y").date()
+                                curr_t = datetime.strptime(hinfo['to'], "%d/%m/%Y").date()
+                                with ec1: ef_date = st.date_input("From Date", value=curr_f, format="DD/MM/YYYY", key=f"ef_{hid}")
+                                with ec2: et_date = st.date_input("To Date", value=curr_t, format="DD/MM/YYYY", key=f"et_{hid}")
+                                with ec3: ereason = st.text_input("Reason", value=hinfo['reason'], key=f"er_{hid}")
+                                with ec4:
+                                    st.write("")
+                                    st.write("")
+                                    update_btn = st.form_submit_button("💾 Save", type="primary")
 
-                        if update_btn:
-                            if et_date < ef_date:
-                                st.error("⚠️ 'To Date' cannot be before 'From Date'!")
-                            else:
-                                hol_data[hid]['from'] = ef_date.strftime("%d/%m/%Y")
-                                hol_data[hid]['to'] = et_date.strftime("%d/%m/%Y")
-                                hol_data[hid]['reason'] = ereason.strip()
-                                hol_data[hid]['days'] = (et_date - ef_date).days + 1
-                                save_holidays_data(hol_data)
-                                st.session_state[f"edit_mode_{hid}"] = False
-                                st.session_state.flash_msg = "✅ Holiday updated!"
-                                st.rerun()
+                            if update_btn:
+                                if et_date < ef_date:
+                                    st.error("⚠️ 'To Date' cannot be before 'From Date'!")
+                                else:
+                                    hol_data[hid]['from'] = ef_date.strftime("%d/%m/%Y")
+                                    hol_data[hid]['to'] = et_date.strftime("%d/%m/%Y")
+                                    hol_data[hid]['reason'] = ereason.strip()
+                                    hol_data[hid]['days'] = (et_date - ef_date).days + 1
+                                    save_holidays_data(hol_data)
+                                    st.session_state[f"edit_mode_{hid}"] = False
+                                    st.session_state.flash_msg = "✅ Holiday updated!"
+                                    st.rerun()
     else:
         st.caption("🔒 **Note:** Only Administrator can add, edit or delete holidays. (Enter password in 'Add Attendance' tab to unlock)")
         
@@ -817,7 +821,10 @@ with tab3:
             df_hol['SortDate'] = pd.to_datetime(df_hol['From Date'], format='%d/%m/%Y', errors='coerce')
             df_hol = df_hol.sort_values('SortDate').drop(columns=['SortDate']).reset_index(drop=True)
             df_hol.index = range(1, len(df_hol) + 1)
-            st.dataframe(df_hol, use_container_width=True)
+            
+            hol_col, _ = st.columns([6, 4])
+            with hol_col:
+                st.dataframe(df_hol, use_container_width=True)
         else:
             st.write("No holidays declared yet.")
 
@@ -1102,7 +1109,6 @@ with tab4:
 
             st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
-            # --- FIX: INLINE EDIT/DELETE LOGIC ---
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1140,7 +1146,7 @@ with tab4:
                             st.session_state.edit_row = None
                             st.rerun()
                             
-                    # --- INLINE EDIT FORM ---
+                    # --- FIX: COMPACT INLINE EDIT FORM ---
                     if st.session_state.edit_row and st.session_state.edit_row["index"] == row['_Original_Index'] and st.session_state.edit_row["sheet"] == row['_Original_Sheet']:
                         st.markdown("---")
                         row_data = st.session_state.edit_row["data"]
@@ -1148,7 +1154,7 @@ with tab4:
                         selected_sheet_orig = st.session_state.edit_row["sheet"]
                         
                         with st.form(f"edit_form_hist_{selected_idx}_{selected_sheet_orig}"):
-                            ce1, ce2, ce3, ce4, ce5, ce6 = st.columns([1.2, 1.2, 1.2, 1.2, 1, 1])
+                            ce1, ce2, ce3, ce4, ce5, ce6, ce_blank = st.columns([1.5, 1.5, 1, 1, 0.8, 0.8, 1.5])
                             with ce1:
                                 d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
                                 e_date = st.date_input("Date", value=d_obj, format="DD/MM/YYYY")
@@ -1257,7 +1263,8 @@ with tab5:
     st.subheader("👤 Manage Employees")
     if is_admin_unlocked:
         with st.form("add_new_emp_form"):
-            col_e1, col_e2 = st.columns([3, 1])
+            # FIX: Compact form setup
+            col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
             with col_e1:
                 new_emp_name = st.text_input("Enter New Employee Name", placeholder="e.g. Rahul Patel")
             with col_e2:
@@ -1295,7 +1302,6 @@ with tab5:
             with hc3: st.markdown("**Actions**")
             st.divider()
             
-            # --- FIX: INLINE FOR TAB 5 ---
             for idx, emp in enumerate(current_emps):
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([1, 6, 1.2, 1.2])
@@ -1314,11 +1320,11 @@ with tab5:
                             st.session_state.edit_emp = None
                             st.rerun()
 
-                    # --- INLINE EDIT EMPLOYEE ---
+                    # --- FIX: COMPACT INLINE EDIT EMPLOYEE ---
                     if st.session_state.get('edit_emp') == emp:
                         st.markdown("---")
                         with st.form(f"edit_emp_form_{idx}"):
-                            cs1, cs2, cs3 = st.columns([3, 1, 1])
+                            cs1, cs2, cs3, cs_blank = st.columns([2.5, 1, 1, 3.5])
                             with cs1:
                                 new_n = st.text_input("New Name", value=st.session_state.edit_emp)
                             with cs2:
