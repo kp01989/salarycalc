@@ -5,7 +5,6 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
-import streamlit.components.v1 as components 
 import uuid
 
 # ==========================================
@@ -24,7 +23,7 @@ def get_sheet_name(selected_date):
 def get_all_sheet_names():
     url = f"{FIREBASE_URL}.json?shallow=true"
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
@@ -51,7 +50,7 @@ def get_all_employees():
             continue
         url = f"{FIREBASE_URL}/{sheet}.json"
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             if response.status_code == 200:
                 records = response.json()
                 if records:
@@ -76,7 +75,7 @@ def get_all_employees():
 @st.cache_data
 def load_holidays_data():
     try:
-        res = requests.get(f"{FIREBASE_URL}/holidays_list.json")
+        res = requests.get(f"{FIREBASE_URL}/holidays_list.json", timeout=10)
         if res.status_code == 200 and res.json():
             return res.json()
     except Exception:
@@ -85,7 +84,7 @@ def load_holidays_data():
 
 def save_holidays_data(data):
     try:
-        requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data)
+        requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data, timeout=10)
         st.cache_data.clear()
         if 'cached_holidays' in st.session_state:
             del st.session_state.cached_holidays
@@ -195,7 +194,7 @@ def load_data(sheet_name):
     holidays_dict = get_flat_holiday_dates()
     
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         data = response.json()
         if data:
             if isinstance(data, dict):
@@ -243,7 +242,7 @@ def save_data(df, sheet_name):
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     data = df_clean.to_dict(orient='records')
     try:
-        requests.put(url, json=data)
+        requests.put(url, json=data, timeout=10)
         st.cache_data.clear()
         if 'cached_data' in st.session_state:
             del st.session_state.cached_data
@@ -280,39 +279,6 @@ def on_top_name_change():
     else:
         st.session_state.filter_month = current_month_str
 
-components.html(
-    """
-    <script>
-    const doc = window.parent.document;
-    if (!doc.getElementById('advanced-enter-tab')) {
-        let script = doc.createElement('script');
-        script.id = 'advanced-enter-tab';
-        script.innerHTML = `
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    let active = document.activeElement;
-                    
-                    if (active && active.tagName === 'BUTTON') return;
-                    if (active && active.tagName === 'TEXTAREA') return;
-
-                    if (active && active.tagName === 'INPUT') {
-                        e.preventDefault(); 
-                        let focusable = Array.from(document.querySelectorAll('input:not([disabled]), select:not([disabled]), button:not([disabled])'));
-                        let index = focusable.indexOf(active);
-                        if (index > -1 && index < focusable.length - 1) {
-                            focusable[index + 1].focus();
-                        }
-                    }
-                }
-            }, true); 
-        `;
-        doc.head.appendChild(script);
-    }
-    </script>
-    """,
-    height=0, width=0
-)
-
 st.markdown("""
     <style>
         @keyframes smoothFadeOut {
@@ -345,6 +311,8 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
+
+st.title("📅 Advanced Attendance Tracker")
 
 msg_placeholder = st.empty()
 if st.session_state.flash_msg:
