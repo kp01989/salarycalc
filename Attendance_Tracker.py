@@ -44,11 +44,11 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
+# FIX: Completely removed the auto-sync from historical sheets.
+# Now strictly reads ONLY from employee_list!
 @st.cache_data
 def get_all_employees():
-    sheets = get_all_sheet_names()
     emps = set()
-    
     try:
         res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
         if res.status_code == 200 and res.json():
@@ -62,37 +62,7 @@ def get_all_employees():
     except Exception:
         pass
         
-    for sheet in sheets:
-        if sheet in ["holidays_list", "employee_list"]:
-            continue
-        url = f"{FIREBASE_URL}/{sheet}.json"
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                records = response.json()
-                if records:
-                    if isinstance(records, list):
-                        for r in records:
-                            if r and isinstance(r, dict) and "Employee Name" in r:
-                                name = str(r.get("Employee Name", "")).strip().title()
-                                if name and name.lower() != "nan":
-                                    emps.add(name)
-                    elif isinstance(records, dict):
-                        for key, r in records.items():
-                            if r and isinstance(r, dict) and "Employee Name" in r:
-                                name = str(r.get("Employee Name", "")).strip().title()
-                                if name and name.lower() != "nan":
-                                    emps.add(name)
-        except Exception:
-            continue
-            
     valid_emps = sorted(list([e for e in emps if e != "-"]))
-    
-    try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=valid_emps, timeout=5)
-    except Exception:
-        pass
-        
     return valid_emps
 
 def load_registered_employees():
@@ -287,7 +257,6 @@ def save_data(df, sheet_name):
     try:
         requests.put(url, json=data, timeout=10)
         load_data.clear(sheet_name) 
-        get_all_employees.clear()
         if 'cached_data' in st.session_state and sheet_name in st.session_state.cached_data:
             del st.session_state.cached_data[sheet_name]
     except Exception:
@@ -370,7 +339,6 @@ if st.session_state.flash_msg:
     msg_placeholder.success(st.session_state.flash_msg)
     st.session_state.flash_msg = "" 
 
-# FIX 1: Retrieve formatted_name safely from the dropdown box instead of text input
 raw_emp_name = st.session_state.top_emp_selectbox
 if raw_emp_name == "-- Select Employee --":
     formatted_name = ""
@@ -391,7 +359,6 @@ with tab1:
     if entry_mode == "✏️ Manual Entry":
         col_input1, col_input2 = st.columns([1.5, 2.5])
         
-        # FIX 2: Creating dropdown options specifically for manual entry
         all_emps_list = get_all_employees()
         dropdown_options = ["-- Select Employee --", "Administrator"] + all_emps_list
         
@@ -588,7 +555,6 @@ with tab1:
                         grouped = df_upload.groupby('Date')
                         holidays_dict = get_flat_holiday_dates()
                         
-                        # FIX 3: Fetching strict employee list for bulk upload security
                         master_emps = get_all_employees()
                         
                         for date_val, group in grouped:
@@ -607,7 +573,6 @@ with tab1:
                                 for _, r in group.iterrows():
                                     ename = str(r['Employee Name']).strip().title()
                                     
-                                    # STRIK CHECK: Skip if employee doesn't exist in Manage Employees
                                     if ename not in master_emps:
                                         continue
                                         
