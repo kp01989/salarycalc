@@ -264,7 +264,6 @@ st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page
 current_month_str = get_sheet_name(date.today())
 
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
-# FIX: Set current_month_str as the default filter instead of letting it reset or show "All Months"
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
@@ -282,17 +281,7 @@ def on_top_name_change():
 
 st.markdown("""
     <style>
-        @keyframes smoothFadeOut {
-            0% { opacity: 0; transform: translateY(-10px); }
-            10% { opacity: 1; transform: translateY(0); }
-            70% { opacity: 1; transform: translateY(0); max-height: 500px; margin-bottom: 1rem; padding: 1rem; }
-            100% { opacity: 0; transform: translateY(-10px); max-height: 0; margin-bottom: 0; padding: 0; border: none; overflow: hidden; display: none; }
-        }
-        div[data-testid="stAlert"] {
-            animation: smoothFadeOut 3s ease-in-out forwards !important;
-            overflow: hidden;
-        }
-
+        /* FIX: Removed Auto-Hide animation to keep messages permanently visible */
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
         .stDownloadButton button { margin-top: 27px; }
         [data-testid="stMetric"] { background-color: #1e2530; padding: 15px; border-radius: 12px; border: 1px solid #303d4f; }
@@ -318,6 +307,7 @@ st.title("📅 Advanced Attendance Tracker")
 msg_placeholder = st.empty()
 if st.session_state.flash_msg:
     msg_placeholder.success(st.session_state.flash_msg)
+    # Don't clear flash_msg immediately so it stays on screen until another action happens
     st.session_state.flash_msg = "" 
 
 formatted_name = st.session_state.top_emp_input.strip().title()
@@ -483,7 +473,7 @@ with tab1:
                         save_data(df_month, target_sheet) 
                         st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
-                    st.session_state.filter_month_dash = target_sheet
+                    st.session_state.filter_month = target_sheet
                     st.session_state.last_edited = f"{formatted_name}_{date_str}"
                     st.session_state.form_reset_counter += 1
                     st.rerun()
@@ -757,7 +747,9 @@ with tab3:
                                 st.session_state.flash_msg = "✅ Holiday updated!"
                                 st.rerun()
     else:
-        st.info("🔒 Only Administrator can add, edit or delete holidays. (Enter password in 'Add Attendance' tab to unlock)")
+        # FIX: Changed to a permanent caption instead of an alert
+        st.caption("🔒 **Note:** Only Administrator can add, edit or delete holidays. (Enter password in 'Add Attendance' tab to unlock)")
+        
         if hol_data:
             st.write("### 📅 Upcoming / Declared Holidays")
             hol_list = []
@@ -780,7 +772,8 @@ with tab4:
     if not formatted_name:
         st.info("👆 Please enter an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     elif formatted_name == "Administrator" and not is_admin_unlocked:
-        st.warning("🔒 Please enter the Admin password in the 'Add Attendance' tab to unlock the Dashboard.")
+        # FIX: Changed to a permanent caption instead of an alert
+        st.caption("🔒 **Note:** Please enter the Admin password in the 'Add Attendance' tab to unlock the Dashboard.")
     else:
         all_sheets_raw = get_all_sheet_names()
         if current_month_str not in all_sheets_raw:
@@ -790,7 +783,6 @@ with tab4:
 
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            # FIX: Use session state variable to default to current month and sync it 
             selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
         
         if is_admin_unlocked:
