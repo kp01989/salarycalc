@@ -264,7 +264,8 @@ st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page
 current_month_str = get_sheet_name(date.today())
 
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
-if 'filter_month' not in st.session_state: st.session_state.filter_month = current_month_str
+# FIX: Set current_month_str as the default filter instead of letting it reset or show "All Months"
+if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
 if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
@@ -275,9 +276,9 @@ if 'cached_holidays' not in st.session_state: st.session_state.cached_holidays =
 def on_top_name_change():
     val = st.session_state.top_emp_input.strip()
     if val:
-        st.session_state.filter_month = "All Months"
+        st.session_state.filter_month_dash = current_month_str 
     else:
-        st.session_state.filter_month = current_month_str
+        st.session_state.filter_month_dash = current_month_str
 
 st.markdown("""
     <style>
@@ -374,9 +375,9 @@ with tab1:
         default_out = time(18, 0)
         
         if formatted_name and formatted_name != "Administrator":
-            if st.session_state.filter_month not in st.session_state.cached_data:
-                st.session_state.cached_data[st.session_state.filter_month] = load_data(st.session_state.filter_month)
-            df_month_check = st.session_state.cached_data[st.session_state.filter_month]
+            if st.session_state.filter_month_dash not in st.session_state.cached_data:
+                st.session_state.cached_data[st.session_state.filter_month_dash] = load_data(st.session_state.filter_month_dash)
+            df_month_check = st.session_state.cached_data[st.session_state.filter_month_dash]
 
             if not df_month_check.empty:
                  df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_name.lower()]
@@ -482,7 +483,7 @@ with tab1:
                         save_data(df_month, target_sheet) 
                         st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
-                    st.session_state.filter_month = target_sheet
+                    st.session_state.filter_month_dash = target_sheet
                     st.session_state.last_edited = f"{formatted_name}_{date_str}"
                     st.session_state.form_reset_counter += 1
                     st.rerun()
@@ -789,6 +790,7 @@ with tab4:
 
         col_f1, col_f2 = st.columns(2)
         with col_f1:
+            # FIX: Use session state variable to default to current month and sync it 
             selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
         
         if is_admin_unlocked:
