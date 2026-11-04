@@ -44,34 +44,24 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-def load_registered_employees():
+@st.cache_data
+def get_all_employees():
+    sheets = get_all_sheet_names()
+    emps = set()
+    
     try:
         res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
-            if isinstance(data, dict):
-                return list(data.values())
-            elif isinstance(data, list):
-                return [x for x in data if x is not None]
+            if isinstance(data, list):
+                for r in data:
+                    if r: emps.add(str(r).strip().title())
+            elif isinstance(data, dict):
+                for k, v in data.items():
+                    if v: emps.add(str(v).strip().title())
     except Exception:
         pass
-    return []
-
-def save_registered_employees(emp_list):
-    try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
-        get_all_employees.clear()
-    except Exception:
-        pass
-
-@st.cache_data
-def get_all_employees():
-    reg_emps = load_registered_employees()
-    if reg_emps:
-        return sorted(list(set(reg_emps)))
         
-    sheets = get_all_sheet_names()
-    emps = set()
     for sheet in sheets:
         if sheet in ["holidays_list", "employee_list"]:
             continue
@@ -97,9 +87,33 @@ def get_all_employees():
             continue
             
     valid_emps = sorted(list([e for e in emps if e != "-"]))
-    if valid_emps:
-        save_registered_employees(valid_emps)
+    
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=valid_emps, timeout=5)
+    except Exception:
+        pass
+        
     return valid_emps
+
+def load_registered_employees():
+    try:
+        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
+        if res.status_code == 200 and res.json():
+            data = res.json()
+            if isinstance(data, dict):
+                return list(data.values())
+            elif isinstance(data, list):
+                return [x for x in data if x is not None]
+    except Exception:
+        pass
+    return []
+
+def save_registered_employees(emp_list):
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
+        get_all_employees.clear()
+    except Exception:
+        pass
 
 @st.cache_data
 def load_holidays_data():
@@ -273,17 +287,28 @@ def save_data(df, sheet_name):
     try:
         requests.put(url, json=data, timeout=10)
         load_data.clear(sheet_name) 
+        get_all_employees.clear()
         if 'cached_data' in st.session_state and sheet_name in st.session_state.cached_data:
             del st.session_state.cached_data[sheet_name]
     except Exception:
         pass
+
+def time_to_float(time_str):
+    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
+    try:
+        parts = str(time_str).split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        return h + (m / 60.0)
+    except:
+        return 0.0
 
 current_month_str = get_sheet_name(date.today())
 
 # Variables Initialization
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
-if 'top_emp_input' not in st.session_state: st.session_state.top_emp_input = ""
+if 'top_emp_selectbox' not in st.session_state: st.session_state.top_emp_selectbox = "-- Select Employee --"
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
 if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
 if 'admin_auth' not in st.session_state: st.session_state.admin_auth = False
@@ -299,8 +324,8 @@ if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
 if 'del_emp' not in st.session_state: st.session_state.del_emp = None
 
 def on_top_name_change():
-    val = st.session_state.top_emp_input.strip()
-    if val:
+    val = st.session_state.top_emp_selectbox
+    if val and val != "-- Select Employee --":
         st.session_state.filter_month_dash = current_month_str 
     else:
         st.session_state.filter_month_dash = current_month_str
@@ -345,7 +370,12 @@ if st.session_state.flash_msg:
     msg_placeholder.success(st.session_state.flash_msg)
     st.session_state.flash_msg = "" 
 
-formatted_name = st.session_state.top_emp_input.strip().title()
+# FIX 1: Retrieve formatted_name safely from the dropdown box instead of text input
+raw_emp_name = st.session_state.top_emp_selectbox
+if raw_emp_name == "-- Select Employee --":
+    formatted_name = ""
+else:
+    formatted_name = raw_emp_name.strip().title()
 
 if formatted_name != "Administrator":
     st.session_state.admin_auth = False
@@ -360,10 +390,13 @@ with tab1:
 
     if entry_mode == "✏️ Manual Entry":
         col_input1, col_input2 = st.columns([1.5, 2.5])
-        with col_input1:
-            st.text_input("Employee Name", placeholder="Please enter name", key="top_emp_input", on_change=on_top_name_change)
         
-        formatted_name = st.session_state.top_emp_input.strip().title()
+        # FIX 2: Creating dropdown options specifically for manual entry
+        all_emps_list = get_all_employees()
+        dropdown_options = ["-- Select Employee --", "Administrator"] + all_emps_list
+        
+        with col_input1:
+            st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
 
         if formatted_name == "Administrator":
             with col_input2:
@@ -390,10 +423,6 @@ with tab1:
                         if st.button("Lock 🔒"):
                             st.session_state.admin_auth = False
                             st.rerun()
-
-        if is_admin_unlocked:
-            all_emps = get_all_employees()
-            if all_emps: st.caption(f"📝 **Existing Employees:** {', '.join(all_emps)}")
 
         default_date = date.today()
         default_in = time(8, 0)
@@ -439,9 +468,9 @@ with tab1:
 
         if submit:
             if not formatted_name:
-                st.error("Please enter an Employee Name above!")
+                st.error("Please select an Employee Name from the dropdown above!")
             elif formatted_name == "Administrator":
-                st.error("You cannot add an entry for 'Administrator'. Please type a valid name!")
+                st.error("You cannot add an entry for 'Administrator'. Please select a valid employee!")
             elif out_time < in_time and entry_status not in ["PL", "LWP", "Absent"]:
                 st.error("Out Time cannot be before In Time for a single shift!")
             else:
@@ -506,13 +535,6 @@ with tab1:
                         })
                         df_month = pd.concat([df_month, new_entry], ignore_index=True)
                         save_data(df_month, target_sheet) 
-                        
-                        # Auto-sync new employee to master list
-                        master = load_registered_employees()
-                        if formatted_name not in master:
-                            master.append(formatted_name)
-                            save_registered_employees(master)
-                            
                         st.session_state.flash_msg = f"✅ Record for {formatted_name} on {date_str} saved successfully!"
                     
                     st.session_state.filter_month_dash = target_sheet
@@ -566,8 +588,8 @@ with tab1:
                         grouped = df_upload.groupby('Date')
                         holidays_dict = get_flat_holiday_dates()
                         
-                        master_emps = load_registered_employees()
-                        needs_master_update = False
+                        # FIX 3: Fetching strict employee list for bulk upload security
+                        master_emps = get_all_employees()
                         
                         for date_val, group in grouped:
                             try:
@@ -585,9 +607,9 @@ with tab1:
                                 for _, r in group.iterrows():
                                     ename = str(r['Employee Name']).strip().title()
                                     
+                                    # STRIK CHECK: Skip if employee doesn't exist in Manage Employees
                                     if ename not in master_emps:
-                                        master_emps.append(ename)
-                                        needs_master_update = True
+                                        continue
                                         
                                     stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
                                     if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
@@ -637,10 +659,7 @@ with tab1:
                             except Exception:
                                 pass
                                 
-                        if needs_master_update:
-                            save_registered_employees(master_emps)
-                            
-                        st.session_state.flash_msg = f"✅ Successfully processed {success_count} records!"
+                        st.session_state.flash_msg = f"✅ Successfully processed {success_count} valid records!"
                         st.rerun()
             except Exception as e:
                 st.error(f"Error reading file: {e}")
@@ -651,7 +670,7 @@ with tab2:
     
     all_emp_list = get_all_employees()
     if not all_emp_list:
-        st.info("No employees found in the database. Please add at least one entry in 'Manual Entry' first.")
+        st.info("No employees found in the database. Please add them in 'Manage Employees' first.")
     else:
         r_sheet = get_sheet_name(roster_date)
         if r_sheet not in st.session_state.cached_data:
@@ -822,7 +841,7 @@ with tab3:
 
 with tab4:
     if not formatted_name:
-        st.info("👆 Please enter an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
+        st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     elif formatted_name == "Administrator" and not is_admin_unlocked:
         st.caption("🔒 **Note:** Please enter the Admin password in the 'Add Attendance' tab to unlock the Dashboard.")
     else:
@@ -1101,7 +1120,6 @@ with tab4:
 
             st.markdown("💡 **Tip:** Use the Edit/Delete buttons below each entry to make changes.")
             
-            # --- COMPACT CARD UI FOR DASHBOARD (TAB 4) ---
             for index, row in df_display.iterrows():
                 status_color = "#1e2530" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1285,7 +1303,6 @@ with tab5:
         
         current_emps = get_all_employees()
         if current_emps:
-            # --- NEW UI: List of employees with Edit/Delete Buttons ---
             st.markdown("""
             <div style="display: flex; justify-content: space-between; background-color: #1e2530; padding: 10px; border-radius: 5px; border: 1px solid #303d4f; font-weight: bold; margin-bottom: 10px;">
                 <div style="flex: 1;">Sr No.</div>
@@ -1311,7 +1328,6 @@ with tab5:
                         st.session_state.edit_emp = None
                         st.rerun()
                         
-            # Handle Edit Employee
             if st.session_state.get('edit_emp'):
                 st.markdown("---")
                 st.subheader(f"✏️ Update Employee Name: {st.session_state.edit_emp}")
@@ -1336,7 +1352,6 @@ with tab5:
                             st.session_state.edit_emp = None
                             st.rerun()
                             
-            # Handle Delete Employee
             if st.session_state.get('del_emp'):
                 st.markdown("---")
                 st.warning(f"⚠️ Are you sure you want to remove '{st.session_state.del_emp}' from the system?")
