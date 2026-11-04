@@ -962,7 +962,7 @@ with tab4:
             st.write("")
             st.divider()
             
-            # --- FIX: MOVED EDIT/DELETE FORMS TO THE TOP ---
+            # --- FIX: MOVED EDIT/DELETE FORMS TO THE TOP & MADE ONE-LINE STRIP ---
             if st.session_state.edit_row:
                 st.subheader("✏️ Edit Selected Entry")
                 row_data = st.session_state.edit_row["data"]
@@ -971,7 +971,8 @@ with tab4:
                 
                 with st.form("edit_form_hist"):
                     e_name = st.text_input("Employee Name", value=row_data["Employee Name"], disabled=True)
-                    ce1, ce2, ce3, ce4 = st.columns(4)
+                    
+                    ce1, ce2, ce3, ce4, ce5, ce6 = st.columns([1.2, 1.2, 1.2, 1.2, 1, 1])
                     with ce1:
                         d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
                         e_date = st.date_input("Date", value=d_obj, key="e_date", format="DD/MM/YYYY")
@@ -979,73 +980,79 @@ with tab4:
                         def_status = ["Regular", "Holiday", "PL", "LWP", "Absent"]
                         e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
                     with ce3:
-                        e_in = st.text_input("In Time (HH:MM, HH:MM)", value=row_data["In Time"], key="e_in")
+                        e_in = st.text_input("In Time", value=row_data["In Time"], key="e_in")
                     with ce4:
-                        e_out = st.text_input("Out Time (HH:MM, HH:MM)", value=row_data["Out Time"], key="e_out")
+                        e_out = st.text_input("Out Time", value=row_data["Out Time"], key="e_out")
                         
-                    col_save, col_cancel = st.columns([1, 1])
-                    with col_save:
-                        if st.form_submit_button("Update Entry", type="primary"):
-                            formatted_e_name = e_name.strip().title()
-                            date_str_e = e_date.strftime("%d/%m/%Y")
-                            new_sheet = get_sheet_name(e_date)
+                    with ce5:
+                        st.write("")
+                        st.write("")
+                        btn_update = st.form_submit_button("Update", type="primary", use_container_width=True)
+                    with ce6:
+                        st.write("")
+                        st.write("")
+                        btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
+                        
+                    if btn_update:
+                        formatted_e_name = e_name.strip().title()
+                        date_str_e = e_date.strftime("%d/%m/%Y")
+                        new_sheet = get_sheet_name(e_date)
+                        
+                        if selected_sheet_orig not in st.session_state.cached_data:
+                            st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
+                        df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
+                        
+                        if new_sheet == selected_sheet_orig:
+                            temp_check = df_orig.drop(selected_idx, errors='ignore')
+                            is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
+                        else:
+                            if new_sheet not in st.session_state.cached_data:
+                                st.session_state.cached_data[new_sheet] = load_data(new_sheet)
+                            df_new = st.session_state.cached_data[new_sheet].copy()
+                            is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
+
+                        if is_dup:
+                            st.error("⚠️ An entry for this employee on this date already exists!")
+                        else:
+                            day_str_e = e_date.strftime("%a")
+                            holidays_dict = get_flat_holiday_dates()
+                            is_pub_hol = date_str_e in holidays_dict
+                            t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
                             
-                            if selected_sheet_orig not in st.session_state.cached_data:
-                                st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
-                            df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
+                            if e_stat in ["PL", "LWP", "Absent"]:
+                                in_t_str, out_t_str = "00:00", "00:00"
+                            else:
+                                in_t_str, out_t_str = e_in, e_out
+
+                            updated_row = pd.DataFrame({
+                                "Employee Name": [formatted_e_name],
+                                "Date": [date_str_e],
+                                "Day": [day_str_e],
+                                "In Time": [in_t_str],
+                                "Out Time": [out_t_str],
+                                "Late Hours": [l_hrs],
+                                "Out Hours": [o_hrs],
+                                "Total Hours": [t_hrs],
+                                "OT Hours": [ot_hrs],
+                                "Status": [e_stat]
+                            })
                             
                             if new_sheet == selected_sheet_orig:
-                                temp_check = df_orig.drop(selected_idx, errors='ignore')
-                                is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
+                                updated_row.index = [selected_idx]
+                                df_orig.update(updated_row)
+                                save_data(df_orig, selected_sheet_orig)
                             else:
-                                if new_sheet not in st.session_state.cached_data:
-                                    st.session_state.cached_data[new_sheet] = load_data(new_sheet)
-                                df_new = st.session_state.cached_data[new_sheet].copy()
-                                is_dup = not df_new[(df_new["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (df_new["Date"] == date_str_e)].empty
-
-                            if is_dup:
-                                st.error("⚠️ An entry for this employee on this date already exists!")
-                            else:
-                                day_str_e = e_date.strftime("%a")
-                                holidays_dict = get_flat_holiday_dates()
-                                is_pub_hol = date_str_e in holidays_dict
-                                t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
-                                
-                                if e_stat in ["PL", "LWP", "Absent"]:
-                                    in_t_str, out_t_str = "00:00", "00:00"
-                                else:
-                                    in_t_str, out_t_str = e_in, e_out
-
-                                updated_row = pd.DataFrame({
-                                    "Employee Name": [formatted_e_name],
-                                    "Date": [date_str_e],
-                                    "Day": [day_str_e],
-                                    "In Time": [in_t_str],
-                                    "Out Time": [out_t_str],
-                                    "Late Hours": [l_hrs],
-                                    "Out Hours": [o_hrs],
-                                    "Total Hours": [t_hrs],
-                                    "OT Hours": [ot_hrs],
-                                    "Status": [e_stat]
-                                })
-                                
-                                if new_sheet == selected_sheet_orig:
-                                    updated_row.index = [selected_idx]
-                                    df_orig.update(updated_row)
-                                    save_data(df_orig, selected_sheet_orig)
-                                else:
-                                    df_orig = df_orig.drop(selected_idx, errors='ignore')
-                                    save_data(df_orig, selected_sheet_orig)
-                                    df_new = pd.concat([df_new, updated_row], ignore_index=True)
-                                    save_data(df_new, new_sheet)
-                                
-                                st.session_state.edit_row = None
-                                st.session_state.flash_msg = f"✅ Record updated successfully!"
-                                st.rerun()
-                    with col_cancel:
-                        if st.form_submit_button("Cancel"):
+                                df_orig = df_orig.drop(selected_idx, errors='ignore')
+                                save_data(df_orig, selected_sheet_orig)
+                                df_new = pd.concat([df_new, updated_row], ignore_index=True)
+                                save_data(df_new, new_sheet)
+                            
                             st.session_state.edit_row = None
+                            st.session_state.flash_msg = f"✅ Record updated successfully!"
                             st.rerun()
+                    if btn_cancel:
+                        st.session_state.edit_row = None
+                        st.rerun()
                 st.markdown("---")
 
             if st.session_state.del_row:
@@ -1285,29 +1292,37 @@ with tab5:
         current_emps = get_all_employees()
         if current_emps:
             
-            # --- FIX: MOVED EDIT/DELETE FORMS TO THE TOP ---
+            # --- MANAGE EMPLOYEES: ONE LINE STRIP FIX ---
             if st.session_state.get('edit_emp'):
                 st.subheader(f"✏️ Update Employee Name: {st.session_state.edit_emp}")
                 with st.form("edit_emp_form"):
-                    new_n = st.text_input("New Name", value=st.session_state.edit_emp)
-                    cs, cc = st.columns(2)
-                    with cs:
-                        if st.form_submit_button("💾 Save Update", type="primary"):
-                            clean_new = new_n.strip().title()
-                            if clean_new and clean_new != st.session_state.edit_emp:
-                                reg_emps = load_registered_employees()
-                                if st.session_state.edit_emp in reg_emps:
-                                    reg_emps.remove(st.session_state.edit_emp)
-                                if clean_new not in reg_emps:
-                                    reg_emps.append(clean_new)
-                                save_registered_employees(reg_emps)
-                                st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
-                            st.session_state.edit_emp = None
-                            st.rerun()
-                    with cc:
-                        if st.form_submit_button("❌ Cancel"):
-                            st.session_state.edit_emp = None
-                            st.rerun()
+                    cs1, cs2, cs3 = st.columns([3, 1, 1])
+                    with cs1:
+                        new_n = st.text_input("New Name", value=st.session_state.edit_emp)
+                    with cs2:
+                        st.write("")
+                        st.write("")
+                        btn_upd = st.form_submit_button("💾 Save", type="primary", use_container_width=True)
+                    with cs3:
+                        st.write("")
+                        st.write("")
+                        btn_canc = st.form_submit_button("❌ Cancel", use_container_width=True)
+                    
+                    if btn_upd:
+                        clean_new = new_n.strip().title()
+                        if clean_new and clean_new != st.session_state.edit_emp:
+                            reg_emps = load_registered_employees()
+                            if st.session_state.edit_emp in reg_emps:
+                                reg_emps.remove(st.session_state.edit_emp)
+                            if clean_new not in reg_emps:
+                                reg_emps.append(clean_new)
+                            save_registered_employees(reg_emps)
+                            st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
+                        st.session_state.edit_emp = None
+                        st.rerun()
+                    if btn_canc:
+                        st.session_state.edit_emp = None
+                        st.rerun()
                 st.markdown("---")
                             
             if st.session_state.get('del_emp'):
