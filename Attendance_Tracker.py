@@ -12,7 +12,7 @@ import uuid
 # 1. SETTINGS & CONSTANTS
 # ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
-ADMIN_PASSWORD = "1234"  # 👈 અહી તારો એડમિન પાસવર્ડ બદલી નાખજે
+ADMIN_PASSWORD = "1234"  
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
@@ -280,27 +280,42 @@ def on_top_name_change():
     else:
         st.session_state.filter_month = current_month_str
 
+# NEW: Advanced JavaScript for handling Enter key like Tab key globally
 components.html(
     """
     <script>
     const doc = window.parent.document;
-    if (!doc.getElementById('custom-enter-tab')) {
+    if (!doc.getElementById('advanced-enter-tab')) {
         let script = doc.createElement('script');
-        script.id = 'custom-enter-tab';
+        script.id = 'advanced-enter-tab';
         script.innerHTML = `
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     let active = document.activeElement;
+                    
+                    // Don't interfere if it's already a submit button
+                    if (active && active.tagName === 'BUTTON') return;
+                    
+                    // Allow normal Enter behavior inside multi-line textareas (if any added later)
+                    if (active && active.tagName === 'TEXTAREA') return;
+
+                    // If it's an input field, prevent default form submission and move to next
                     if (active && active.tagName === 'INPUT') {
                         e.preventDefault(); 
-                        let focusable = Array.from(document.querySelectorAll('input:not([disabled]), button:not([disabled])'));
+                        
+                        // Select all focusable elements in logical order
+                        let focusable = Array.from(document.querySelectorAll('input:not([disabled]), select:not([disabled]), button:not([disabled])'));
+                        
+                        // Find current position
                         let index = focusable.indexOf(active);
+                        
+                        // Move to next if exists
                         if (index > -1 && index < focusable.length - 1) {
                             focusable[index + 1].focus();
                         }
                     }
                 }
-            });
+            }, true); // Use capture phase to intercept before Streamlit does
         `;
         doc.head.appendChild(script);
     }
@@ -311,7 +326,6 @@ components.html(
 
 st.markdown("""
     <style>
-        /* 3-Second Auto-Hide Animation for all Alerts/Messages for faster response */
         @keyframes smoothFadeOut {
             0% { opacity: 0; transform: translateY(-10px); }
             10% { opacity: 1; transform: translateY(0); }
@@ -407,7 +421,6 @@ with tab1:
         default_out = time(18, 0)
         
         if formatted_name and formatted_name != "Administrator":
-            # Use session state cache if available, else load
             if st.session_state.filter_month not in st.session_state.cached_data:
                 st.session_state.cached_data[st.session_state.filter_month] = load_data(st.session_state.filter_month)
             df_month_check = st.session_state.cached_data[st.session_state.filter_month]
