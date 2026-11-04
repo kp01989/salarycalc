@@ -318,7 +318,7 @@ st.markdown("""
             padding: 16px;
             border-radius: 8px;
             margin-bottom: 1rem;
-            animation: instantHide 0s 5s forwards; /* 0 second animation, 5 second delay */
+            animation: instantHide 0s 5s forwards; 
         }
         
         .auto-hide-error {
@@ -328,19 +328,7 @@ st.markdown("""
             padding: 16px;
             border-radius: 8px;
             margin-bottom: 1rem;
-            animation: instantHide 0s 5s forwards; /* 0 second animation, 5 second delay */
-        }
-        
-        /* Modern Compact Table UI CSS */
-        .record-card {
-            background: #1e2530;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 10px;
-            border: 1px solid #303d4f;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            animation: instantHide 0s 5s forwards;
         }
         
         div[data-baseweb="input"], div[data-testid="stDateInput"], div[data-testid="stTimeInput"] { max-width: 320px; }
@@ -1113,8 +1101,9 @@ with tab4:
                     use_container_width=True
                 )
 
-            st.markdown("💡 **Tip:** Use the Edit/Delete buttons below each entry to make changes.")
+            st.markdown("💡 **Tip:** Use the Edit/Delete buttons on the right side of each entry to make changes.")
             
+            # --- FIX: SINGLE STRIP UI ---
             for index, row in df_display.iterrows():
                 status_color = "#1e2530" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1128,28 +1117,28 @@ with tab4:
                 elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
                     status_color = "#3b3b18"
                 
-                st.markdown(f"""
-                <div class="record-card" style="background-color: {status_color};">
-                    <div class="record-info">
-                        <div class="record-date">{row['Date']} ({row['Day']}) • {row['Employee Name']}</div>
-                        <div class="record-details">
-                            {row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | 
-                            Total: {row['Total Hours']} (OT: {row['OT Hours']})
+                # Split row into 3 columns: Info (7.5/10), Edit Button (1/10), Delete Button (1/10)
+                c_info, c_edit, c_del = st.columns([7.5, 1, 1])
+                
+                with c_info:
+                    st.markdown(f"""
+                    <div style="background-color: {status_color}; padding: 10px 15px; border-radius: 6px; border: 1px solid #303d4f; height: 100%; display: flex; align-items: center;">
+                        <div style="width: 100%;">
+                            <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
+                            <strong style="font-size: 1.05em; margin-right: 15px;">{row['Employee Name']}</strong>
+                            <span style="font-size: 0.95em; color: #d1d5db;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> (OT: {row['OT Hours']})</span>
                         </div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
                 
-                col_btn1, col_btn2, col_spacer = st.columns([1, 1, 10])
-                
-                with col_btn1:
-                    if st.button("✏️ Edit", key=f"e_{index}_{row['_Original_Sheet']}"):
+                with c_edit:
+                    if st.button("✏️ Edit", key=f"e_{index}_{row['_Original_Sheet']}", use_container_width=True):
                         st.session_state.edit_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                         st.session_state.del_row = None
                         st.rerun()
                 
-                with col_btn2:
-                    if st.button("🗑️ Del", key=f"d_{index}_{row['_Original_Sheet']}"):
+                with c_del:
+                    if st.button("🗑️ Del", key=f"d_{index}_{row['_Original_Sheet']}", use_container_width=True):
                         st.session_state.del_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                         st.session_state.edit_row = None
                         st.rerun()
