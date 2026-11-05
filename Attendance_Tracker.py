@@ -5,6 +5,7 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
+import uuid
 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
@@ -345,7 +346,6 @@ st.markdown("""
             padding-bottom: 15px !important;
         }
         
-        /* FIX: Inline form alignment */
         div[data-testid="stForm"] > div:first-child {
             display: flex;
             align-items: flex-end;
@@ -378,8 +378,6 @@ with tab1:
     st.divider()
 
     if entry_mode == "✏️ Manual Entry":
-        
-        # --- FIX: ADMIN UNLOCK INLINE ---
         all_emps_list = get_all_employees()
         dropdown_options = ["-- Select Employee --", "Administrator"] + all_emps_list
         
@@ -656,79 +654,83 @@ with tab1:
                     st.error(f"Error reading file: {e}")
 
 with tab2:
-    st.subheader("👥 Daily Roster (Mark all employees for a day)")
-    
-    rc1, rc_blank = st.columns([3, 7])
-    with rc1:
-        roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
-    
-    all_emp_list = get_all_employees()
-    if not all_emp_list:
-        st.info("No employees found in the database. Please add them in 'Manage Employees' first.")
-    else:
-        r_sheet = get_sheet_name(roster_date)
-        if r_sheet not in st.session_state.cached_data:
-            st.session_state.cached_data[r_sheet] = load_data(r_sheet)
-        df_r_month = st.session_state.cached_data[r_sheet].copy()
-        r_date_str = roster_date.strftime("%d/%m/%Y")
-        r_day_str = roster_date.strftime("%a")
+    if is_admin_unlocked:
+        st.subheader("👥 Daily Roster (Mark all employees for a day)")
         
-        existing_emps_on_date = df_r_month[df_r_month["Date"] == r_date_str]["Employee Name"].tolist() if not df_r_month.empty else []
-        pending_emps = [e for e in all_emp_list if e not in existing_emps_on_date]
+        rc1, rc_blank = st.columns([3, 7])
+        with rc1:
+            roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
         
-        if not pending_emps:
-            st.markdown(f'<div class="auto-hide-success">✅ All employees are already marked for {r_date_str}.</div>', unsafe_allow_html=True)
+        all_emp_list = get_all_employees()
+        if not all_emp_list:
+            st.info("No employees found in the database. Please add them in 'Manage Employees' first.")
         else:
-            roster_df = pd.DataFrame({
-                "Employee Name": pending_emps,
-                "Status": ["Regular"] * len(pending_emps),
-                "In Time": ["08:00"] * len(pending_emps),
-                "Out Time": ["18:00"] * len(pending_emps)
-            })
+            r_sheet = get_sheet_name(roster_date)
+            if r_sheet not in st.session_state.cached_data:
+                st.session_state.cached_data[r_sheet] = load_data(r_sheet)
+            df_r_month = st.session_state.cached_data[r_sheet].copy()
+            r_date_str = roster_date.strftime("%d/%m/%Y")
+            r_day_str = roster_date.strftime("%a")
             
-            rost_col, rost_blank = st.columns([6, 4])
-            with rost_col:
-                edited_roster = st.data_editor(
-                    roster_df,
-                    column_config={
-                        "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True)
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                    num_rows="dynamic"
-                )
+            existing_emps_on_date = df_r_month[df_r_month["Date"] == r_date_str]["Employee Name"].tolist() if not df_r_month.empty else []
+            pending_emps = [e for e in all_emp_list if e not in existing_emps_on_date]
+            
+            if not pending_emps:
+                st.markdown(f'<div class="auto-hide-success">✅ All employees are already marked for {r_date_str}.</div>', unsafe_allow_html=True)
+            else:
+                roster_df = pd.DataFrame({
+                    "Employee Name": pending_emps,
+                    "Status": ["Regular"] * len(pending_emps),
+                    "In Time": ["08:00"] * len(pending_emps),
+                    "Out Time": ["18:00"] * len(pending_emps)
+                })
                 
-                if st.button("💾 Save Full Roster", type="primary"):
-                    new_records = []
-                    holidays_dict = get_flat_holiday_dates()
-                    is_pub_hol = r_date_str in holidays_dict
+                rost_col, rost_blank = st.columns([6, 4])
+                with rost_col:
+                    edited_roster = st.data_editor(
+                        roster_df,
+                        column_config={
+                            "Status": st.column_config.SelectboxColumn("Status", options=["Regular", "Holiday", "PL", "LWP", "Absent"], required=True)
+                        },
+                        use_container_width=True,
+                        hide_index=True,
+                        num_rows="dynamic"
+                    )
                     
-                    for _, row in edited_roster.iterrows():
-                        emp_n = row["Employee Name"]
-                        stat = row["Status"]
+                    if st.button("💾 Save Full Roster", type="primary"):
+                        new_records = []
+                        holidays_dict = get_flat_holiday_dates()
+                        is_pub_hol = r_date_str in holidays_dict
                         
-                        if stat in ["PL", "LWP", "Absent"]:
-                            in_t, out_t = "00:00", "00:00"
-                        else:
-                            try:
-                                in_t = row["In Time"].strftime("%H:%M") if isinstance(row["In Time"], time) else str(row["In Time"])
-                                out_t = row["Out Time"].strftime("%H:%M") if isinstance(row["Out Time"], time) else str(row["Out Time"])
-                            except:
-                                in_t, out_t = "08:00", "18:00"
+                        for _, row in edited_roster.iterrows():
+                            emp_n = row["Employee Name"]
+                            stat = row["Status"]
+                            
+                            if stat in ["PL", "LWP", "Absent"]:
+                                in_t, out_t = "00:00", "00:00"
+                            else:
+                                try:
+                                    in_t = row["In Time"].strftime("%H:%M") if isinstance(row["In Time"], time) else str(row["In Time"])
+                                    out_t = row["Out Time"].strftime("%H:%M") if isinstance(row["Out Time"], time) else str(row["Out Time"])
+                                except:
+                                    in_t, out_t = "08:00", "18:00"
+                            
+                            tot, late, out_e, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                            new_records.append({
+                                "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
+                                "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
+                                "Total Hours": tot, "OT Hours": ot, "Status": stat
+                            })
                         
-                        tot, late, out_e, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
-                        new_records.append({
-                            "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
-                            "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
-                            "Total Hours": tot, "OT Hours": ot, "Status": stat
-                        })
-                    
-                    if new_records:
-                        df_new_roster = pd.DataFrame(new_records)
-                        df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
-                        save_data(df_r_month, r_sheet)
-                        st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
-                        st.rerun()
+                        if new_records:
+                            df_new_roster = pd.DataFrame(new_records)
+                            df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
+                            save_data(df_r_month, r_sheet)
+                            st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
+                            st.rerun()
+    else:
+        st.subheader("👥 Daily Roster")
+        st.caption("🔒 **Note:** Only Administrator can access and manage the Daily Roster. (Enter password in 'Add Attendance' tab to unlock)")
 
 with tab3:
     st.subheader("🌴 Holiday Calendar")
@@ -906,6 +908,23 @@ with tab4:
             
             st.write("")
             
+            if is_admin_unlocked and selected_emp == "All Employees":
+                filt_c1, filt_c2, filt_blank = st.columns([2, 2, 6])
+                
+                with filt_c1:
+                    emp_opts = sorted(df_display["Employee Name"].unique().tolist())
+                    f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
+                
+                f_stats = []
+                
+                if f_emps:
+                    df_display = df_display[df_display["Employee Name"].isin(f_emps)]
+            else:
+                f_emps = []
+                f_stats = []
+
+            st.divider()
+
         if df_display.empty:
             st.warning(f"No records found with the current filters.")
         else:
@@ -1094,8 +1113,9 @@ with tab4:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
+
+            st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
-            # --- COMPACT UI FOR TAB 4 ---
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1109,7 +1129,6 @@ with tab4:
                 elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}": 
                     status_color = "#ffff66"
                 
-                # Compact table formatting with blank right col
                 col_rec, col_blank = st.columns([8, 2])
                 with col_rec:
                     with st.container(border=True):
@@ -1283,14 +1302,14 @@ with tab5:
         current_emps = get_all_employees()
         if current_emps:
             
-            hc1, hc2, hc3, hc_blank = st.columns([0.5, 3, 1, 4])
+            hc1, hc2, hc3, hc_blank = st.columns([0.6, 3, 1.4, 4])
             with hc1: st.markdown("**Sr No.**")
             with hc2: st.markdown("**Employee Name**")
             with hc3: st.markdown("**Actions**")
             st.divider()
             
             for idx, emp in enumerate(current_emps):
-                c_emp, c_blank = st.columns([4.5, 4])
+                c_emp, c_blank = st.columns([5, 4])
                 with c_emp:
                     with st.container(border=True):
                         c1, c2, c3, c4 = st.columns([0.5, 3, 0.7, 0.7])
