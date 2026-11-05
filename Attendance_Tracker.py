@@ -16,7 +16,7 @@ st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page
 # 1. SETTINGS & CONSTANTS
 # ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
-ADMIN_PASSWORD = "1234"  
+ADMIN_PASSWORD = "3690"  
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
