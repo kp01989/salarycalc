@@ -6,7 +6,6 @@ import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 import uuid
-import time as time_module
 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
@@ -46,11 +45,11 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-# FIX: Added LIVE Cache Buster logic, so it NEVER remembers old deleted names
-def get_all_employees():
+# --- FIX: SINGLE MASTER LIST LOGIC ---
+def fetch_employees_from_db():
     emps = set()
     try:
-        cb = int(time_module.time()) # Forces system to fetch fresh data every second
+        cb = uuid.uuid4().hex
         res = requests.get(f"{FIREBASE_URL}/employee_list.json?_={cb}", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
@@ -62,17 +61,19 @@ def get_all_employees():
                     if v: emps.add(str(v).strip().title())
     except Exception:
         pass
-        
-    valid_emps = sorted(list([e for e in emps if e != "-"]))
-    return valid_emps
+    return sorted(list([e for e in emps if e != "-"]))
 
-# FIX: Bulletproof Saving Logic
-def save_registered_employees(emp_list):
+def save_employees_to_db(emp_list):
+    clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
     try:
-        clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
         requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
     except Exception:
         pass
+    st.session_state.emp_list = clean_list
+
+if 'emp_list' not in st.session_state:
+    st.session_state.emp_list = fetch_employees_from_db()
+# -------------------------------------
 
 @st.cache_data
 def load_holidays_data():
@@ -251,16 +252,6 @@ def save_data(df, sheet_name):
     except Exception:
         pass
 
-def time_to_float(time_str):
-    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
-    try:
-        parts = str(time_str).split(":")
-        h = int(parts[0])
-        m = int(parts[1]) if len(parts) > 1 else 0
-        return h + (m / 60.0)
-    except:
-        return 0.0
-
 current_month_str = get_sheet_name(date.today())
 
 # Variables Initialization
@@ -380,8 +371,8 @@ with tab1:
     st.divider()
 
     if entry_mode == "✏️ Manual Entry":
-        all_emps_list = get_all_employees()
-        dropdown_options = ["-- Select Employee --", "Administrator"] + all_emps_list
+        # FIX: Directly use the single source of truth for the dropdown
+        dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
         
         if formatted_name == "Administrator":
             if not st.session_state.admin_auth:
@@ -581,7 +572,7 @@ with tab1:
                             grouped = df_upload.groupby('Date')
                             holidays_dict = get_flat_holiday_dates()
                             
-                            master_emps = get_all_employees()
+                            master_emps = st.session_state.emp_list
                             
                             for date_val, group in grouped:
                                 try:
@@ -663,7 +654,7 @@ if is_admin_unlocked:
         with rc1:
             roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
         
-        all_emp_list = get_all_employees()
+        all_emp_list = st.session_state.emp_list
         if not all_emp_list:
             st.info("No employees found in the database. Please add them in 'Manage Employees' first.")
         else:
@@ -855,7 +846,7 @@ with tab4:
         
         if is_admin_unlocked:
             with col_f2:
-                emp_list = ["All Employees"] + get_all_employees()
+                emp_list = ["All Employees"] + st.session_state.emp_list
                 selected_emp = st.selectbox("Select Master View", emp_list, key="admin_emp_select")
         else:
             selected_emp = formatted_name
@@ -1285,19 +1276,19 @@ if is_admin_unlocked:
             elif clean_name == "Administrator":
                 st.error("⚠️ You cannot add 'Administrator' as an employee.")
             else:
-                all_existing = get_all_employees()
+                all_existing = st.session_state.emp_list.copy()
                 if clean_name in all_existing:
                     st.warning(f"⚠️ Employee '{clean_name}' already exists in the system!")
                 else:
                     all_existing.append(clean_name)
-                    save_registered_employees(all_existing)
+                    save_employees_to_db(all_existing)
                     st.session_state.flash_msg = f"✅ Employee '{clean_name}' successfully added!"
                     st.rerun()
         
         st.divider()
         st.write("### 📋 All Registered Employees")
         
-        current_emps = get_all_employees()
+        current_emps = st.session_state.emp_list
         if current_emps:
             
             hc1, hc2, hc3, hc_blank = st.columns([0.5, 3, 1, 4])
@@ -1344,12 +1335,12 @@ if is_admin_unlocked:
                                 if btn_upd:
                                     clean_new = new_n.strip().title()
                                     if clean_new and clean_new != st.session_state.edit_emp:
-                                        reg_emps = get_all_employees()
-                                        if st.session_state.edit_emp in reg_emps:
-                                            reg_emps.remove(st.session_state.edit_emp)
-                                        if clean_new not in reg_emps:
-                                            reg_emps.append(clean_new)
-                                        save_registered_employees(reg_emps)
+                                        curr = st.session_state.emp_list.copy()
+                                        if st.session_state.edit_emp in curr:
+                                            curr.remove(st.session_state.edit_emp)
+                                        if clean_new not in curr:
+                                            curr.append(clean_new)
+                                        save_employees_to_db(curr)
                                         st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
                                     st.session_state.edit_emp = None
                                     st.rerun()
@@ -1363,10 +1354,10 @@ if is_admin_unlocked:
                             dy, dn = st.columns([1, 10])
                             with dy:
                                 if st.button("Yes", type="primary", key=f"yes_del_{idx}"):
-                                    reg_emps = get_all_employees()
-                                    if st.session_state.del_emp in reg_emps:
-                                        reg_emps.remove(st.session_state.del_emp)
-                                    save_registered_employees(reg_emps)
+                                    curr = st.session_state.emp_list.copy()
+                                    if st.session_state.del_emp in curr:
+                                        curr.remove(st.session_state.del_emp)
+                                    save_employees_to_db(curr)
                                     st.session_state.flash_msg = f"🗑️ '{st.session_state.del_emp}' deleted successfully!"
                                     st.session_state.del_emp = None
                                     st.rerun()
