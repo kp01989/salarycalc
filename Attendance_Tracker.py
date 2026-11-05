@@ -5,6 +5,8 @@ from datetime import datetime, date, time, timedelta
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
+import uuid
+import time as time_module
 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
@@ -44,11 +46,12 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-# No cache here, fetches live perfect list every time
+# FIX: Added LIVE Cache Buster logic, so it NEVER remembers old deleted names
 def get_all_employees():
     emps = set()
     try:
-        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
+        cb = int(time_module.time()) # Forces system to fetch fresh data every second
+        res = requests.get(f"{FIREBASE_URL}/employee_list.json?_={cb}", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
             if isinstance(data, list):
@@ -63,7 +66,7 @@ def get_all_employees():
     valid_emps = sorted(list([e for e in emps if e != "-"]))
     return valid_emps
 
-# Robust Save logic
+# FIX: Bulletproof Saving Logic
 def save_registered_employees(emp_list):
     try:
         clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
@@ -248,6 +251,16 @@ def save_data(df, sheet_name):
     except Exception:
         pass
 
+def time_to_float(time_str):
+    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
+    try:
+        parts = str(time_str).split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        return h + (m / 60.0)
+    except:
+        return 0.0
+
 current_month_str = get_sheet_name(date.today())
 
 # Variables Initialization
@@ -383,7 +396,7 @@ with tab1:
                     if st.button("Unlock", type="primary", use_container_width=True):
                         if admin_pwd == ADMIN_PASSWORD:
                             st.session_state.admin_auth = True
-                            st.session_state.flash_msg = "✅ Admin Access Granted!"
+                            st.session_state.flash_msg = "✅ Admin Access Granted! You can now access Roster and Manage Employees."
                             st.rerun()
                         else:
                             st.error("❌ Incorrect Password!")
@@ -1313,7 +1326,6 @@ if is_admin_unlocked:
                                 st.session_state.edit_emp = None
                                 st.rerun()
 
-                        # FIX: Bulletproof Edit logic fetching direct from Live list
                         if st.session_state.get('edit_emp') == emp:
                             st.markdown("---")
                             with st.form(f"edit_emp_form_{idx}"):
@@ -1345,7 +1357,6 @@ if is_admin_unlocked:
                                     st.session_state.edit_emp = None
                                     st.rerun()
                                     
-                        # FIX: Bulletproof Delete logic fetching direct from Live list
                         elif st.session_state.get('del_emp') == emp:
                             st.markdown("---")
                             st.warning(f"⚠️ Remove '{st.session_state.del_emp}' from the system?")
