@@ -253,8 +253,9 @@ def save_data(df, sheet_name):
 
 current_month_str = get_sheet_name(date.today())
 
+# Variables Initialization
 if 'active_tab' not in st.session_state:
-    st.session_state.active_tab = "Tab 1"
+    st.session_state.active_tab = "Add Attendance" # Changed to text names
 
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
@@ -351,28 +352,47 @@ if formatted_name != "Administrator":
 
 is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
 
+# --- FIX: DYNAMIC TAB SELECTION MAGIC ---
 if is_admin_unlocked:
     tab_list = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"]
-    try:
-        default_idx = ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5"].index(st.session_state.active_tab)
-    except ValueError:
-        default_idx = 0
-    tabs = st.tabs(tab_list)
-    tab1, tab2, tab3, tab4, tab5 = tabs
 else:
     tab_list = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History"]
-    try:
-        if st.session_state.active_tab == "Tab 1": default_idx = 0
-        elif st.session_state.active_tab == "Tab 3": default_idx = 1
-        elif st.session_state.active_tab == "Tab 4": default_idx = 2
-        else: default_idx = 0
-    except ValueError:
-        default_idx = 0
-    tabs = st.tabs(tab_list)
+
+# Find the default index safely
+default_idx = 0
+for i, tab_name in enumerate(tab_list):
+    if st.session_state.active_tab in tab_name:
+        default_idx = i
+        break
+
+# Create tabs with explicit tracking logic (Streamlit 1.35+ feature `default` allows this natively, but we will use the safest callback route)
+# Note: Since Streamlit's native st.tabs() doesn't officially support 'setting the active tab from code' reliably in older versions without custom components, 
+# we bind the buttons to set the state, but we MUST wrap the main UI blocks in a way that respects it.
+
+tabs = st.tabs(tab_list)
+
+# We will assign the containers to our variables
+if is_admin_unlocked:
+    tab1, tab2, tab3, tab4, tab5 = tabs
+else:
     tab1, tab3, tab4 = tabs
+    tab2 = None
+    tab5 = None
+
+# We use CSS trickery and logical wrappers to force the view, but the best reliable way natively is just injecting a click via JS if it gets stuck, or just tracking the state properly.
+# However, Streamlit reruns top to bottom. If a button inside Tab 5 is clicked, Streamlit reloads, forgets the tab, and goes to Tab 1.
+# The only pure Python way to prevent this is NOT using st.tabs, but rather an st.radio or st.segmented_control for navigation.
+# BUT, we can make the buttons themselves remember!
+
+# To truly fix the "Tab reset" issue without changing UI to buttons, we pass the tab state to the callbacks.
+
+def set_tab(tab_name):
+    st.session_state.active_tab = tab_name
 
 with tab1:
-    st.session_state.active_tab = "Tab 1"
+    # A dummy invisible button to trigger tab memory (Workaround for Streamlit tab tracking)
+    st.write(f"<span style='display:none' class='tab-tracker' id='Add Attendance'></span>", unsafe_allow_html=True)
+    
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
     st.divider()
 
@@ -389,11 +409,10 @@ with tab1:
                 with col_btn:
                     st.write("")
                     st.write("")
-                    if st.button("Unlock", type="primary", use_container_width=True):
+                    if st.button("Unlock", type="primary", use_container_width=True, on_click=set_tab, args=("Add Attendance",)):
                         if admin_pwd == ADMIN_PASSWORD:
                             st.session_state.admin_auth = True
                             st.session_state.flash_msg = "✅ Admin Access Granted! You can now access Roster and Manage Employees."
-                            st.rerun()
                         else:
                             st.error("❌ Incorrect Password!")
             else:
@@ -403,9 +422,8 @@ with tab1:
                 with col_btn:
                     st.write("")
                     st.write("")
-                    if st.button("Lock 🔒", use_container_width=True):
+                    if st.button("Lock 🔒", use_container_width=True, on_click=set_tab, args=("Add Attendance",)):
                         st.session_state.admin_auth = False
-                        st.rerun()
         else:
             col_emp, col_blank = st.columns([2.5, 5.5])
             with col_emp:
@@ -453,6 +471,7 @@ with tab1:
                 submit = st.form_submit_button("Save Entry", type="primary", use_container_width=True)
 
         if submit:
+            set_tab("Add Attendance")
             if not formatted_name:
                 st.error("Please select an Employee Name from the dropdown above!")
             elif formatted_name == "Administrator":
@@ -572,7 +591,7 @@ with tab1:
                         st.write("Preview of Uploaded Data:")
                         st.dataframe(df_upload.head(3), use_container_width=True)
                         
-                        if st.button("🚀 Process & Upload Bulk Data", type="primary"):
+                        if st.button("🚀 Process & Upload Bulk Data", type="primary", on_click=set_tab, args=("Add Attendance",)):
                             success_count = 0
                             grouped = df_upload.groupby('Date')
                             holidays_dict = get_flat_holiday_dates()
@@ -651,9 +670,9 @@ with tab1:
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
 
-if is_admin_unlocked:
+if is_admin_unlocked and tab2:
     with tab2:
-        st.session_state.active_tab = "Tab 2"
+        st.write(f"<span style='display:none' class='tab-tracker' id='Daily Roster'></span>", unsafe_allow_html=True)
         st.subheader("👥 Daily Roster (Mark all employees for a day)")
         
         rc1, rc_blank = st.columns([3, 7])
@@ -696,7 +715,7 @@ if is_admin_unlocked:
                         num_rows="dynamic"
                     )
                     
-                    if st.button("💾 Save Full Roster", type="primary"):
+                    if st.button("💾 Save Full Roster", type="primary", on_click=set_tab, args=("Daily Roster",)):
                         new_records = []
                         holidays_dict = get_flat_holiday_dates()
                         is_pub_hol = r_date_str in holidays_dict
@@ -729,7 +748,7 @@ if is_admin_unlocked:
                             st.rerun()
 
 with tab3:
-    st.session_state.active_tab = "Tab 3"
+    st.write(f"<span style='display:none' class='tab-tracker' id='Holiday Calendar'></span>", unsafe_allow_html=True)
     st.subheader("🌴 Holiday Calendar")
     if st.session_state.cached_holidays is None:
         st.session_state.cached_holidays = load_holidays_data()
@@ -752,6 +771,7 @@ with tab3:
                 add_hol = st.form_submit_button("➕ Add Holiday", type="primary", use_container_width=True)
         
         if add_hol:
+            set_tab("Holiday Calendar")
             if t_date < f_date:
                 st.error("⚠️ 'To Date' cannot be before 'From Date'!")
             elif not hol_reason.strip():
@@ -780,11 +800,11 @@ with tab3:
                         c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
                         c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
                         
-                        if c3.button("✏️ Edit", key=f"edit_{hid}"):
+                        if c3.button("✏️ Edit", key=f"edit_{hid}", on_click=set_tab, args=("Holiday Calendar",)):
                             st.session_state[f"edit_mode_{hid}"] = not st.session_state.get(f"edit_mode_{hid}", False)
                             st.rerun()
                             
-                        if c4.button("🗑️ Delete", key=f"del_{hid}"):
+                        if c4.button("🗑️ Delete", key=f"del_{hid}", on_click=set_tab, args=("Holiday Calendar",)):
                             del hol_data[hid]
                             save_holidays_data(hol_data)
                             st.session_state.flash_msg = "✅ Holiday entry deleted successfully!"
@@ -804,6 +824,7 @@ with tab3:
                                     update_btn = st.form_submit_button("💾 Save", type="primary")
 
                             if update_btn:
+                                set_tab("Holiday Calendar")
                                 if et_date < ef_date:
                                     st.error("⚠️ 'To Date' cannot be before 'From Date'!")
                                 else:
@@ -838,7 +859,7 @@ with tab3:
             st.write("No holidays declared yet.")
 
 with tab4:
-    st.session_state.active_tab = "Tab 4"
+    st.write(f"<span style='display:none' class='tab-tracker' id='Dashboard & History'></span>", unsafe_allow_html=True)
     if not formatted_name:
         st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     else:
@@ -1132,28 +1153,25 @@ with tab4:
                         else:
                             c_info, c_blank_space = st.columns([7, 1])
                         
-                        # --- FIX: ADDED OT, LATE, AND EARLY OUT DETAILS HERE ---
                         with c_info:
                             st.markdown(f"""
                             <div style="border-left: 5px solid {status_color}; padding: 4px 15px; border-radius: 2px;">
                                 <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
                                 <strong style="font-size: 1.05em; margin-right: 15px; color: #e2e8f0;">{row['Employee Name']}</strong>
-                                <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> <span style="font-size: 0.9em;">(OT: {row['OT Hours']} | Late: {row['Late Hours']} | Early: {row['Out Hours']})</span></span>
+                                <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> <span style="font-size: 0.9em;">(OT: {row['OT Hours']} | Late: {row['Late Hours']} | Out: {row['Out Hours']})</span></span>
                             </div>
                             """, unsafe_allow_html=True)
                         
                         if is_admin_unlocked:
                             with c_edit:
-                                if st.button("✏️ Edit", key=f"e_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
+                                if st.button("✏️ Edit", key=f"e_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True, on_click=set_tab, args=("Dashboard & History",)):
                                     st.session_state.edit_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                                     st.session_state.del_row = None
-                                    st.rerun()
                             
                             with c_del:
-                                if st.button("🗑️ Del", key=f"d_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
+                                if st.button("🗑️ Del", key=f"d_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True, on_click=set_tab, args=("Dashboard & History",)):
                                     st.session_state.del_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                                     st.session_state.edit_row = None
-                                    st.rerun()
                                     
                             if st.session_state.edit_row and st.session_state.edit_row["index"] == row['_Original_Index'] and st.session_state.edit_row["sheet"] == row['_Original_Sheet']:
                                 st.markdown("---")
@@ -1184,6 +1202,7 @@ with tab4:
                                         btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
                                         
                                     if btn_update:
+                                        set_tab("Dashboard & History")
                                         formatted_e_name = row_data["Employee Name"].strip().title()
                                         date_str_e = e_date.strftime("%d/%m/%Y")
                                         new_sheet = get_sheet_name(e_date)
@@ -1241,6 +1260,7 @@ with tab4:
                                             st.session_state.flash_msg = f"✅ Record updated successfully!"
                                             st.rerun()
                                     if btn_cancel:
+                                        set_tab("Dashboard & History")
                                         st.session_state.edit_row = None
                                         st.rerun()
 
@@ -1249,7 +1269,7 @@ with tab4:
                                 st.warning(f"Are you sure you want to delete this record for {row['Employee Name']}?")
                                 col_y, col_n = st.columns([1, 10])
                                 with col_y:
-                                    if st.button("Yes", type="primary", key=f"conf_d_{row['_Original_Index']}"):
+                                    if st.button("Yes", type="primary", key=f"conf_d_{row['_Original_Index']}", on_click=set_tab, args=("Dashboard & History",)):
                                         sht = st.session_state.del_row["sheet"]
                                         idx = st.session_state.del_row["index"]
                                         if sht not in st.session_state.cached_data:
@@ -1262,13 +1282,13 @@ with tab4:
                                         st.session_state.flash_msg = "✅ Entry permanently deleted!"
                                         st.rerun()
                                 with col_n:
-                                    if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}"):
+                                    if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}", on_click=set_tab, args=("Dashboard & History",)):
                                         st.session_state.del_row = None
                                         st.rerun()
 
-if is_admin_unlocked:
+if is_admin_unlocked and tab5:
     with tab5:
-        st.session_state.active_tab = "Tab 5"
+        st.write(f"<span style='display:none' class='tab-tracker' id='Manage Employees'></span>", unsafe_allow_html=True)
         st.subheader("👤 Manage Employees")
         with st.form("add_new_emp_form"):
             col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
@@ -1280,6 +1300,7 @@ if is_admin_unlocked:
                 add_emp_btn = st.form_submit_button("➕ Add Employee", type="primary", use_container_width=True)
         
         if add_emp_btn:
+            set_tab("Manage Employees")
             clean_name = new_emp_name.strip().title()
             if not clean_name:
                 st.error("⚠️ Please enter a valid name!")
@@ -1317,15 +1338,13 @@ if is_admin_unlocked:
                         with c2:
                             st.markdown(f"<div style='padding-top: 4px;'><strong style='font-size: 1.05em; color: #e2e8f0;'>{emp}</strong></div>", unsafe_allow_html=True)
                         with c3:
-                            if st.button("✏️ Edit", key=f"emp_edit_{idx}", use_container_width=True):
+                            if st.button("✏️ Edit", key=f"emp_edit_{idx}", use_container_width=True, on_click=set_tab, args=("Manage Employees",)):
                                 st.session_state.edit_emp = emp
                                 st.session_state.del_emp = None
-                                st.rerun()
                         with c4:
-                            if st.button("🗑️ Delete", key=f"emp_del_{idx}", use_container_width=True):
+                            if st.button("🗑️ Delete", key=f"emp_del_{idx}", use_container_width=True, on_click=set_tab, args=("Manage Employees",)):
                                 st.session_state.del_emp = emp
                                 st.session_state.edit_emp = None
-                                st.rerun()
 
                         if st.session_state.get('edit_emp') == emp:
                             st.markdown("---")
@@ -1343,6 +1362,7 @@ if is_admin_unlocked:
                                     btn_canc = st.form_submit_button("❌ Cancel", use_container_width=True)
                                 
                                 if btn_upd:
+                                    set_tab("Manage Employees")
                                     clean_new = new_n.strip().title()
                                     if clean_new and clean_new != st.session_state.edit_emp:
                                         curr = st.session_state.emp_list.copy()
@@ -1355,6 +1375,7 @@ if is_admin_unlocked:
                                     st.session_state.edit_emp = None
                                     st.rerun()
                                 if btn_canc:
+                                    set_tab("Manage Employees")
                                     st.session_state.edit_emp = None
                                     st.rerun()
                                     
@@ -1363,7 +1384,7 @@ if is_admin_unlocked:
                             st.warning(f"⚠️ Remove '{st.session_state.del_emp}' from the system?")
                             dy, dn = st.columns([1, 10])
                             with dy:
-                                if st.button("Yes", type="primary", key=f"yes_del_{idx}"):
+                                if st.button("Yes", type="primary", key=f"yes_del_{idx}", on_click=set_tab, args=("Manage Employees",)):
                                     curr = st.session_state.emp_list.copy()
                                     if st.session_state.del_emp in curr:
                                         curr.remove(st.session_state.del_emp)
@@ -1372,9 +1393,29 @@ if is_admin_unlocked:
                                     st.session_state.del_emp = None
                                     st.rerun()
                             with dn:
-                                if st.button("Cancel", key=f"no_del_{idx}"):
+                                if st.button("Cancel", key=f"no_del_{idx}", on_click=set_tab, args=("Manage Employees",)):
                                     st.session_state.del_emp = None
                                     st.rerun()
 
         else:
             st.info("No employees found. Please add a new employee above.")
+            
+# --- TAB SWITCHING JAVASCRIPT HACK ---
+# This is a safe frontend trick to force Streamlit to click the correct tab after a reload based on the session state.
+if is_admin_unlocked:
+    st.components.v1.html(
+        f"""
+        <script>
+        const targetTab = "{st.session_state.active_tab}";
+        const parent = window.parent.document;
+        const tabs = parent.querySelectorAll('button[role="tab"]');
+        for (let i = 0; i < tabs.length; i++) {{
+            if (tabs[i].innerText.includes(targetTab)) {{
+                tabs[i].click();
+                break;
+            }}
+        }}
+        </script>
+        """,
+        height=0
+    )
