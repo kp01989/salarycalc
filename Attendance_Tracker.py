@@ -280,9 +280,20 @@ if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
 if 'del_emp' not in st.session_state: st.session_state.del_emp = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 
-# --- FIX: THEME-RESPONSIVE CSS ---
 st.markdown("""
     <style>
+        /* --- Mobile Scroll Fix --- */
+        .stApp, [data-testid="stAppViewContainer"] {
+            overflow-y: scroll !important;
+            -webkit-overflow-scrolling: touch !important;
+            overscroll-behavior-y: contain !important;
+        }
+        
+        [data-testid="stDataFrame"], [data-testid="stTable"] {
+            touch-action: pan-x pan-y !important;
+        }
+        /* ------------------------- */
+        
         @keyframes instantHide {
             to {
                 opacity: 0;
@@ -1123,7 +1134,6 @@ elif selected_tab == "📊 Dashboard & History":
             if is_admin_unlocked:
                 st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
-            # --- FIX: THEME-RESPONSIVE INLINE TEXT COLORS ---
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1317,7 +1327,6 @@ elif selected_tab == "👤 Manage Employees":
         with hc3: st.markdown("**Actions**")
         st.divider()
         
-        # --- FIX: THEME-RESPONSIVE MANAGE EMPLOYEE TEXT COLORS ---
         for idx, emp in enumerate(current_emps):
             c_emp, c_blank = st.columns([4.5, 4])
             with c_emp:
