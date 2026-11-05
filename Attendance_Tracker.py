@@ -44,7 +44,7 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-@st.cache_data
+# FIX: Removed @st.cache_data so the dropdown fetches LIVE fresh data every time
 def get_all_employees():
     emps = set()
     try:
@@ -76,10 +76,11 @@ def load_registered_employees():
         pass
     return []
 
+# FIX: Strictly clean and de-duplicate the list before saving
 def save_registered_employees(emp_list):
     try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=emp_list, timeout=10)
-        get_all_employees.clear()
+        clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
     except Exception:
         pass
 
@@ -295,7 +296,6 @@ def on_top_name_change():
     else:
         st.session_state.filter_month_dash = current_month_str
 
-
 st.markdown("""
     <style>
         @keyframes instantHide {
@@ -369,10 +369,8 @@ if formatted_name != "Administrator":
 
 is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
 
-
-# --- DYNAMIC TAB CREATION BASED ON ADMIN STATUS ---
+# --- DYNAMIC TAB CREATION ---
 if is_admin_unlocked:
-    # Admin gets all 5 tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📝 Add Attendance", 
         "👥 Daily Roster", 
@@ -381,7 +379,6 @@ if is_admin_unlocked:
         "👤 Manage Employees"
     ])
 else:
-    # Normal users get exactly 3 tabs. The others don't exist in the UI at all.
     tab1, tab3, tab4 = st.tabs([
         "📝 Add Attendance", 
         "🌴 Holiday Calendar", 
@@ -668,7 +665,6 @@ with tab1:
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
 
-# Only run Tab 2 code if Admin is unlocked
 if is_admin_unlocked:
     with tab2:
         st.subheader("👥 Daily Roster (Mark all employees for a day)")
@@ -1123,7 +1119,8 @@ with tab4:
                     use_container_width=True
                 )
 
-            st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
+            if is_admin_unlocked:
+                st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
@@ -1279,7 +1276,6 @@ with tab4:
                                         st.session_state.del_row = None
                                         st.rerun()
 
-# Only run Tab 5 code if Admin is unlocked
 if is_admin_unlocked:
     with tab5:
         st.subheader("👤 Manage Employees")
@@ -1342,6 +1338,7 @@ if is_admin_unlocked:
                                 st.session_state.edit_emp = None
                                 st.rerun()
 
+                        # FIX: Update Edit logic to handle duplicates strictly
                         if st.session_state.get('edit_emp') == emp:
                             st.markdown("---")
                             with st.form(f"edit_emp_form_{idx}"):
@@ -1361,8 +1358,7 @@ if is_admin_unlocked:
                                     clean_new = new_n.strip().title()
                                     if clean_new and clean_new != st.session_state.edit_emp:
                                         reg_emps = load_registered_employees()
-                                        if st.session_state.edit_emp in reg_emps:
-                                            reg_emps.remove(st.session_state.edit_emp)
+                                        reg_emps = [e for e in reg_emps if e != st.session_state.edit_emp]
                                         if clean_new not in reg_emps:
                                             reg_emps.append(clean_new)
                                         save_registered_employees(reg_emps)
@@ -1373,6 +1369,7 @@ if is_admin_unlocked:
                                     st.session_state.edit_emp = None
                                     st.rerun()
                                     
+                        # FIX: Update Delete logic to remove all matching duplicates
                         elif st.session_state.get('del_emp') == emp:
                             st.markdown("---")
                             st.warning(f"⚠️ Remove '{st.session_state.del_emp}' from the system?")
@@ -1380,9 +1377,8 @@ if is_admin_unlocked:
                             with dy:
                                 if st.button("Yes", type="primary", key=f"yes_del_{idx}"):
                                     reg_emps = load_registered_employees()
-                                    if st.session_state.del_emp in reg_emps:
-                                        reg_emps.remove(st.session_state.del_emp)
-                                        save_registered_employees(reg_emps)
+                                    reg_emps = [e for e in reg_emps if e != st.session_state.del_emp]
+                                    save_registered_employees(reg_emps)
                                     st.session_state.flash_msg = f"🗑️ '{st.session_state.del_emp}' deleted successfully!"
                                     st.session_state.del_emp = None
                                     st.rerun()
