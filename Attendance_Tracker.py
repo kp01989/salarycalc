@@ -253,27 +253,36 @@ def save_data(df, sheet_name):
 
 current_month_str = get_sheet_name(date.today())
 
+# ==========================================
+# FIX: BULLETPROOF SESSION STATE LOGIC
+# ==========================================
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = "-- Select Employee --"
+if 'admin_auth' not in st.session_state:
+    st.session_state.admin_auth = False
+
+def emp_changed():
+    # Save the selected value to permanent memory
+    val = st.session_state.emp_dropdown_ui
+    st.session_state.current_user = val
+    if val != "Administrator":
+        st.session_state.admin_auth = False
+
+is_admin_unlocked = (st.session_state.current_user == "Administrator" and st.session_state.admin_auth)
+# ==========================================
+
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
-if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
-if 'top_emp_selectbox' not in st.session_state: st.session_state.top_emp_selectbox = "-- Select Employee --"
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
 if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
-if 'admin_auth' not in st.session_state: st.session_state.admin_auth = False
 if 'cached_data' not in st.session_state: st.session_state.cached_data = {}
 if 'cached_holidays' not in st.session_state: st.session_state.cached_holidays = None
 
 if 'edit_row' not in st.session_state: st.session_state.edit_row = None
 if 'del_row' not in st.session_state: st.session_state.del_row = None
-
 if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
 if 'del_emp' not in st.session_state: st.session_state.del_emp = None
 
-def on_top_name_change():
-    val = st.session_state.top_emp_selectbox
-    if val and val != "-- Select Employee --":
-        st.session_state.filter_month_dash = current_month_str 
-    else:
-        st.session_state.filter_month_dash = current_month_str
+if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 
 st.markdown("""
     <style>
@@ -325,6 +334,21 @@ st.markdown("""
             flex-wrap: wrap;
             gap: 5px;
         }
+        div.row-widget.stRadio > div[role="radiogroup"] > label {
+            background-color: #2b3543;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 5px;
+            font-weight: 700;
+        }
+        div.row-widget.stRadio > div[role="radiogroup"] > label[data-checked="true"] {
+            background-color: #ff4c4c;
+            color: white;
+        }
+        div.row-widget.stRadio > div[role="radiogroup"] > label > div:first-child {
+            display: none;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -334,29 +358,18 @@ if st.session_state.flash_msg:
     st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
     st.session_state.flash_msg = "" 
 
-raw_emp_name = st.session_state.top_emp_selectbox
-if raw_emp_name == "-- Select Employee --":
-    formatted_name = ""
-else:
-    formatted_name = raw_emp_name.strip().title()
-
-if formatted_name != "Administrator":
-    st.session_state.admin_auth = False
-
-is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
-
 # ==========================================
-# FIX: REPLACED ST.TABS WITH BULLETPROOF NAVIGATION MENU
+# NAVIGATION MENU (Bulletproof memory)
 # ==========================================
 if is_admin_unlocked:
     nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"]
 else:
     nav_options = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History"]
 
-if 'active_tab' not in st.session_state or st.session_state.active_tab not in nav_options:
-    st.session_state.active_tab = "📝 Add Attendance"
+if 'active_nav_tab' not in st.session_state or st.session_state.active_nav_tab not in nav_options:
+    st.session_state.active_nav_tab = nav_options[0]
 
-selected_tab = st.radio("Navigation Menu", nav_options, horizontal=True, key="active_tab", label_visibility="collapsed")
+selected_tab = st.radio("Navigation Menu", nav_options, horizontal=True, key="active_nav_tab", label_visibility="collapsed")
 st.divider()
 # ==========================================
 
@@ -367,11 +380,17 @@ if selected_tab == "📝 Add Attendance":
     if entry_mode == "✏️ Manual Entry":
         dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
         
-        if formatted_name == "Administrator":
+        # Safely find index based on memory
+        try:
+            curr_idx = dropdown_options.index(st.session_state.current_user)
+        except ValueError:
+            curr_idx = 0
+            
+        if st.session_state.current_user == "Administrator":
             if not st.session_state.admin_auth:
                 col_emp, col_pwd, col_btn, col_blank = st.columns([2, 2, 1, 3])
                 with col_emp:
-                    st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
+                    st.selectbox("Select Employee", options=dropdown_options, index=curr_idx, key="emp_dropdown_ui", on_change=emp_changed)
                 with col_pwd:
                     admin_pwd = st.text_input("🔑 Enter Admin Password", type="password", key="pwd_input")
                 with col_btn:
@@ -387,21 +406,23 @@ if selected_tab == "📝 Add Attendance":
             else:
                 col_emp, col_btn, col_blank = st.columns([2, 1, 5])
                 with col_emp:
-                    st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
+                    st.selectbox("Select Employee", options=dropdown_options, index=curr_idx, key="emp_dropdown_ui", on_change=emp_changed)
                 with col_btn:
                     st.write("")
                     st.write("")
                     if st.button("Lock 🔒", use_container_width=True):
                         st.session_state.admin_auth = False
+                        st.session_state.current_user = "-- Select Employee --"
                         st.rerun()
         else:
             col_emp, col_blank = st.columns([2.5, 5.5])
             with col_emp:
-                st.selectbox("Select Employee", options=dropdown_options, key="top_emp_selectbox", on_change=on_top_name_change)
+                st.selectbox("Select Employee", options=dropdown_options, index=curr_idx, key="emp_dropdown_ui", on_change=emp_changed)
 
         default_date = date.today()
         default_in = time(8, 0)
         default_out = time(18, 0)
+        formatted_name = st.session_state.current_user if st.session_state.current_user != "-- Select Employee --" else ""
         
         if formatted_name and formatted_name != "Administrator":
             if st.session_state.filter_month_dash not in st.session_state.cached_data:
@@ -823,9 +844,10 @@ elif selected_tab == "🌴 Holiday Calendar":
             st.write("No holidays declared yet.")
 
 elif selected_tab == "📊 Dashboard & History":
-    if not formatted_name:
+    if st.session_state.current_user == "-- Select Employee --":
         st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     else:
+        formatted_name = st.session_state.current_user
         all_sheets_raw = get_all_sheet_names()
         if current_month_str not in all_sheets_raw:
             all_sheets_raw.insert(0, current_month_str)
@@ -1356,6 +1378,3 @@ elif selected_tab == "👤 Manage Employees":
                             if st.button("Cancel", key=f"no_del_{idx}"):
                                 st.session_state.del_emp = None
                                 st.rerun()
-
-    else:
-        st.info("No employees found. Please add a new employee above.")
