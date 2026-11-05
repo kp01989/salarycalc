@@ -251,19 +251,11 @@ def save_data(df, sheet_name):
     except Exception:
         pass
 
-def time_to_float(time_str):
-    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
-    try:
-        parts = str(time_str).split(":")
-        h = int(parts[0])
-        m = int(parts[1]) if len(parts) > 1 else 0
-        return h + (m / 60.0)
-    except:
-        return 0.0
-
 current_month_str = get_sheet_name(date.today())
 
-# Variables Initialization
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = "Tab 1"
+
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 if 'top_emp_selectbox' not in st.session_state: st.session_state.top_emp_selectbox = "-- Select Employee --"
@@ -359,23 +351,28 @@ if formatted_name != "Administrator":
 
 is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
 
-# --- DYNAMIC TAB CREATION ---
 if is_admin_unlocked:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📝 Add Attendance", 
-        "👥 Daily Roster", 
-        "🌴 Holiday Calendar", 
-        "📊 Dashboard & History", 
-        "👤 Manage Employees"
-    ])
+    tab_list = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"]
+    try:
+        default_idx = ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5"].index(st.session_state.active_tab)
+    except ValueError:
+        default_idx = 0
+    tabs = st.tabs(tab_list)
+    tab1, tab2, tab3, tab4, tab5 = tabs
 else:
-    tab1, tab3, tab4 = st.tabs([
-        "📝 Add Attendance", 
-        "🌴 Holiday Calendar", 
-        "📊 Dashboard & History"
-    ])
+    tab_list = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History"]
+    try:
+        if st.session_state.active_tab == "Tab 1": default_idx = 0
+        elif st.session_state.active_tab == "Tab 3": default_idx = 1
+        elif st.session_state.active_tab == "Tab 4": default_idx = 2
+        else: default_idx = 0
+    except ValueError:
+        default_idx = 0
+    tabs = st.tabs(tab_list)
+    tab1, tab3, tab4 = tabs
 
 with tab1:
+    st.session_state.active_tab = "Tab 1"
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
     st.divider()
 
@@ -656,6 +653,7 @@ with tab1:
 
 if is_admin_unlocked:
     with tab2:
+        st.session_state.active_tab = "Tab 2"
         st.subheader("👥 Daily Roster (Mark all employees for a day)")
         
         rc1, rc_blank = st.columns([3, 7])
@@ -716,7 +714,6 @@ if is_admin_unlocked:
                                 except:
                                     in_t, out_t = "08:00", "18:00"
                             
-                            # FIX: Pass exact 4 unpacked variables based on calculate_times output
                             tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                             new_records.append({
                                 "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
@@ -732,6 +729,7 @@ if is_admin_unlocked:
                             st.rerun()
 
 with tab3:
+    st.session_state.active_tab = "Tab 3"
     st.subheader("🌴 Holiday Calendar")
     if st.session_state.cached_holidays is None:
         st.session_state.cached_holidays = load_holidays_data()
@@ -840,6 +838,7 @@ with tab3:
             st.write("No holidays declared yet.")
 
 with tab4:
+    st.session_state.active_tab = "Tab 4"
     if not formatted_name:
         st.info("👆 Please select an Employee Name in the 'Add Attendance' tab to view their Dashboard & History.")
     else:
@@ -1133,12 +1132,13 @@ with tab4:
                         else:
                             c_info, c_blank_space = st.columns([7, 1])
                         
+                        # --- FIX: ADDED OT, LATE, AND EARLY OUT DETAILS HERE ---
                         with c_info:
                             st.markdown(f"""
                             <div style="border-left: 5px solid {status_color}; padding: 4px 15px; border-radius: 2px;">
                                 <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
                                 <strong style="font-size: 1.05em; margin-right: 15px; color: #e2e8f0;">{row['Employee Name']}</strong>
-                                <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span></span>
+                                <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> <span style="font-size: 0.9em;">(OT: {row['OT Hours']} | Late: {row['Late Hours']} | Early: {row['Out Hours']})</span></span>
                             </div>
                             """, unsafe_allow_html=True)
                         
@@ -1268,6 +1268,7 @@ with tab4:
 
 if is_admin_unlocked:
     with tab5:
+        st.session_state.active_tab = "Tab 5"
         st.subheader("👤 Manage Employees")
         with st.form("add_new_emp_form"):
             col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
