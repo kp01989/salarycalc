@@ -280,19 +280,27 @@ if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
 if 'del_emp' not in st.session_state: st.session_state.del_emp = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 
+# --- SUPREME MOBILE SCROLL FIX CSS ---
 st.markdown("""
     <style>
-        /* --- Mobile Scroll Fix --- */
-        .stApp, [data-testid="stAppViewContainer"] {
-            overflow-y: scroll !important;
+        /* --- SUPREME MOBILE SCROLL FIX --- */
+        html, body, .stApp, [data-testid="stAppViewContainer"], .main, .block-container {
+            overscroll-behavior-y: auto !important;
             -webkit-overflow-scrolling: touch !important;
-            overscroll-behavior-y: contain !important;
         }
         
-        [data-testid="stDataFrame"], [data-testid="stTable"] {
-            touch-action: pan-x pan-y !important;
+        [data-testid="stAppViewContainer"] {
+            overflow-y: auto !important;
         }
-        /* ------------------------- */
+        
+        /* Force the data grid (tables) to pass touch events */
+        [data-testid="stDataFrame"] canvas, 
+        [data-testid="stDataFrame"] div,
+        [data-testid="stTable"] {
+            touch-action: pan-y pan-x !important;
+            overscroll-behavior: auto !important;
+        }
+        /* --------------------------------- */
         
         @keyframes instantHide {
             to {
