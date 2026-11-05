@@ -254,7 +254,7 @@ def save_data(df, sheet_name):
 current_month_str = get_sheet_name(date.today())
 
 # ==========================================
-# FIX: BULLETPROOF SESSION STATE LOGIC
+# SESSION STATE LOGIC
 # ==========================================
 if 'current_user' not in st.session_state:
     st.session_state.current_user = "-- Select Employee --"
@@ -262,28 +262,25 @@ if 'admin_auth' not in st.session_state:
     st.session_state.admin_auth = False
 
 def emp_changed():
-    # Save the selected value to permanent memory
     val = st.session_state.emp_dropdown_ui
     st.session_state.current_user = val
     if val != "Administrator":
         st.session_state.admin_auth = False
 
 is_admin_unlocked = (st.session_state.current_user == "Administrator" and st.session_state.admin_auth)
-# ==========================================
 
 if 'last_edited' not in st.session_state: st.session_state.last_edited = None
 if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
 if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
 if 'cached_data' not in st.session_state: st.session_state.cached_data = {}
 if 'cached_holidays' not in st.session_state: st.session_state.cached_holidays = None
-
 if 'edit_row' not in st.session_state: st.session_state.edit_row = None
 if 'del_row' not in st.session_state: st.session_state.del_row = None
 if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
 if 'del_emp' not in st.session_state: st.session_state.del_emp = None
-
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 
+# --- FIX: THEME-RESPONSIVE CSS ---
 st.markdown("""
     <style>
         @keyframes instantHide {
@@ -300,7 +297,8 @@ st.markdown("""
         .auto-hide-success {
             background-color: rgba(29, 169, 85, 0.2);
             border: 1px solid rgba(29, 169, 85, 0.5);
-            color: rgb(184, 241, 198);
+            color: var(--text-color);
+            font-weight: 600;
             padding: 16px;
             border-radius: 8px;
             margin-bottom: 1rem;
@@ -310,7 +308,8 @@ st.markdown("""
         .auto-hide-error {
             background-color: rgba(255, 43, 43, 0.2);
             border: 1px solid rgba(255, 43, 43, 0.5);
-            color: rgb(255, 189, 189);
+            color: var(--text-color);
+            font-weight: 600;
             padding: 16px;
             border-radius: 8px;
             margin-bottom: 1rem;
@@ -325,9 +324,8 @@ st.markdown("""
             gap: 15px;
         }
         
-        /* Make Radio Menu look like Tabs */
         div.row-widget.stRadio > div[role="radiogroup"] {
-            background-color: #1e2530;
+            background-color: var(--secondary-background-color);
             padding: 8px;
             border-radius: 10px;
             display: flex;
@@ -335,16 +333,19 @@ st.markdown("""
             gap: 5px;
         }
         div.row-widget.stRadio > div[role="radiogroup"] > label {
-            background-color: #2b3543;
+            background-color: var(--background-color);
+            color: var(--text-color);
             padding: 10px 20px;
             border-radius: 6px;
             cursor: pointer;
             margin-right: 5px;
             font-weight: 700;
+            border: 1px solid var(--secondary-background-color);
         }
         div.row-widget.stRadio > div[role="radiogroup"] > label[data-checked="true"] {
             background-color: #ff4c4c;
             color: white;
+            border-color: #ff4c4c;
         }
         div.row-widget.stRadio > div[role="radiogroup"] > label > div:first-child {
             display: none;
@@ -358,8 +359,14 @@ if st.session_state.flash_msg:
     st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
     st.session_state.flash_msg = "" 
 
+raw_emp_name = st.session_state.top_emp_selectbox if 'top_emp_selectbox' in st.session_state else "-- Select Employee --"
+if raw_emp_name == "-- Select Employee --":
+    formatted_name = ""
+else:
+    formatted_name = raw_emp_name.strip().title()
+
 # ==========================================
-# NAVIGATION MENU (Bulletproof memory)
+# NAVIGATION MENU
 # ==========================================
 if is_admin_unlocked:
     nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"]
@@ -380,7 +387,6 @@ if selected_tab == "📝 Add Attendance":
     if entry_mode == "✏️ Manual Entry":
         dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
         
-        # Safely find index based on memory
         try:
             curr_idx = dropdown_options.index(st.session_state.current_user)
         except ValueError:
@@ -1117,6 +1123,7 @@ elif selected_tab == "📊 Dashboard & History":
             if is_admin_unlocked:
                 st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
+            # --- FIX: THEME-RESPONSIVE INLINE TEXT COLORS ---
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
                 hol_dict_hl = get_flat_holiday_dates()
@@ -1141,9 +1148,9 @@ elif selected_tab == "📊 Dashboard & History":
                         with c_info:
                             st.markdown(f"""
                             <div style="border-left: 5px solid {status_color}; padding: 4px 15px; border-radius: 2px;">
-                                <span style="color: #8b9bb4; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
-                                <strong style="font-size: 1.05em; margin-right: 15px; color: #e2e8f0;">{row['Employee Name']}</strong>
-                                <span style="font-size: 0.95em; color: #94a3b8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="color:white; font-weight:bold;">{row['Total Hours']}</span> <span style="font-size: 0.9em;">(OT: {row['OT Hours']} | Late: {row['Late Hours']} | Out: {row['Out Hours']})</span></span>
+                                <span style="color: var(--text-color); opacity: 0.7; font-size: 0.9em; margin-right: 15px;">{row['Date']} ({row['Day']})</span>
+                                <strong style="font-size: 1.05em; margin-right: 15px; color: var(--text-color);">{row['Employee Name']}</strong>
+                                <span style="font-size: 0.95em; color: var(--text-color); opacity: 0.8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="font-weight:bold;">{row['Total Hours']}</span> <span style="font-size: 0.9em;">(OT: {row['OT Hours']} | Late: {row['Late Hours']} | Out: {row['Out Hours']})</span></span>
                             </div>
                             """, unsafe_allow_html=True)
                         
@@ -1310,15 +1317,16 @@ elif selected_tab == "👤 Manage Employees":
         with hc3: st.markdown("**Actions**")
         st.divider()
         
+        # --- FIX: THEME-RESPONSIVE MANAGE EMPLOYEE TEXT COLORS ---
         for idx, emp in enumerate(current_emps):
             c_emp, c_blank = st.columns([4.5, 4])
             with c_emp:
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([0.5, 3, 0.7, 0.7])
                     with c1:
-                        st.markdown(f"<div style='padding-top: 4px; color: #8b9bb4;'>#{idx + 1}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='padding-top: 4px; color: var(--text-color); opacity: 0.7;'>#{idx + 1}</div>", unsafe_allow_html=True)
                     with c2:
-                        st.markdown(f"<div style='padding-top: 4px;'><strong style='font-size: 1.05em; color: #e2e8f0;'>{emp}</strong></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='padding-top: 4px;'><strong style='font-size: 1.05em; color: var(--text-color);'>{emp}</strong></div>", unsafe_allow_html=True)
                     with c3:
                         if st.button("✏️ Edit", key=f"emp_edit_{idx}", use_container_width=True):
                             st.session_state.edit_emp = emp
@@ -1378,3 +1386,6 @@ elif selected_tab == "👤 Manage Employees":
                             if st.button("Cancel", key=f"no_del_{idx}"):
                                 st.session_state.del_emp = None
                                 st.rerun()
+
+    else:
+        st.info("No employees found. Please add a new employee above.")
