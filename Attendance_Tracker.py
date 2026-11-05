@@ -295,7 +295,69 @@ def on_top_name_change():
     else:
         st.session_state.filter_month_dash = current_month_str
 
-# Admin check before rendering UI CSS
+
+st.markdown("""
+    <style>
+        @keyframes instantHide {
+            to {
+                opacity: 0;
+                max-height: 0;
+                padding: 0;
+                margin: 0;
+                border: none;
+                overflow: hidden;
+            }
+        }
+        
+        .auto-hide-success {
+            background-color: rgba(29, 169, 85, 0.2);
+            border: 1px solid rgba(29, 169, 85, 0.5);
+            color: rgb(184, 241, 198);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            animation: instantHide 0s 5s forwards; 
+        }
+        
+        .auto-hide-error {
+            background-color: rgba(255, 43, 43, 0.2);
+            border: 1px solid rgba(255, 43, 43, 0.5);
+            color: rgb(255, 189, 189);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            animation: instantHide 0s 5s forwards;
+        }
+        
+        div[data-testid="InputInstructions"] { display: none !important; }
+        
+        div[data-testid="stTabs"] button[role="tab"] p {
+            font-size: 28px !important;
+            font-weight: 900 !important;
+        }
+        .stTabs button[data-baseweb="tab"] div[data-testid="stMarkdownContainer"] p {
+            font-size: 28px !important;
+            font-weight: 900 !important;
+        }
+        div[data-testid="stTabs"] button[role="tab"] {
+            padding-top: 15px !important;
+            padding-bottom: 15px !important;
+        }
+        
+        div[data-testid="stForm"] > div:first-child {
+            display: flex;
+            align-items: flex-end;
+            gap: 15px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("📅 Advanced Attendance Tracker")
+
+if st.session_state.flash_msg:
+    st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
+    st.session_state.flash_msg = "" 
+
 raw_emp_name = st.session_state.top_emp_selectbox
 if raw_emp_name == "-- Select Employee --":
     formatted_name = ""
@@ -307,82 +369,24 @@ if formatted_name != "Administrator":
 
 is_admin_unlocked = (formatted_name == "Administrator" and st.session_state.admin_auth)
 
-# --- FIX: SMART TAB HIDING CSS ---
-hide_tabs_css = ""
-if not is_admin_unlocked:
-    hide_tabs_css = """
-    /* Hides 2nd (Daily Roster) and 5th (Manage Employees) tabs */
-    div[data-baseweb="tab-list"] button:nth-child(2),
-    div[data-baseweb="tab-list"] button:nth-child(5) {
-        display: none !important;
-    }
-    """
 
-st.markdown(f"""
-    <style>
-        {hide_tabs_css}
-        
-        @keyframes instantHide {{
-            to {{
-                opacity: 0;
-                max-height: 0;
-                padding: 0;
-                margin: 0;
-                border: none;
-                overflow: hidden;
-            }}
-        }}
-        
-        .auto-hide-success {{
-            background-color: rgba(29, 169, 85, 0.2);
-            border: 1px solid rgba(29, 169, 85, 0.5);
-            color: rgb(184, 241, 198);
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            animation: instantHide 0s 5s forwards; 
-        }}
-        
-        .auto-hide-error {{
-            background-color: rgba(255, 43, 43, 0.2);
-            border: 1px solid rgba(255, 43, 43, 0.5);
-            color: rgb(255, 189, 189);
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            animation: instantHide 0s 5s forwards;
-        }}
-        
-        div[data-testid="InputInstructions"] {{ display: none !important; }}
-        
-        div[data-testid="stTabs"] button[role="tab"] p {{
-            font-size: 28px !important;
-            font-weight: 900 !important;
-        }}
-        .stTabs button[data-baseweb="tab"] div[data-testid="stMarkdownContainer"] p {{
-            font-size: 28px !important;
-            font-weight: 900 !important;
-        }}
-        div[data-testid="stTabs"] button[role="tab"] {{
-            padding-top: 15px !important;
-            padding-bottom: 15px !important;
-        }}
-        
-        div[data-testid="stForm"] > div:first-child {{
-            display: flex;
-            align-items: flex-end;
-            gap: 15px;
-        }}
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("📅 Advanced Attendance Tracker")
-
-if st.session_state.flash_msg:
-    st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
-    st.session_state.flash_msg = "" 
-
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees"])
+# --- DYNAMIC TAB CREATION BASED ON ADMIN STATUS ---
+if is_admin_unlocked:
+    # Admin gets all 5 tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📝 Add Attendance", 
+        "👥 Daily Roster", 
+        "🌴 Holiday Calendar", 
+        "📊 Dashboard & History", 
+        "👤 Manage Employees"
+    ])
+else:
+    # Normal users get exactly 3 tabs. The others don't exist in the UI at all.
+    tab1, tab3, tab4 = st.tabs([
+        "📝 Add Attendance", 
+        "🌴 Holiday Calendar", 
+        "📊 Dashboard & History"
+    ])
 
 with tab1:
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True)
@@ -405,7 +409,7 @@ with tab1:
                     if st.button("Unlock", type="primary", use_container_width=True):
                         if admin_pwd == ADMIN_PASSWORD:
                             st.session_state.admin_auth = True
-                            st.session_state.flash_msg = "✅ Admin Access Granted!"
+                            st.session_state.flash_msg = "✅ Admin Access Granted! You can now access Roster and Manage Employees."
                             st.rerun()
                         else:
                             st.error("❌ Incorrect Password!")
@@ -664,8 +668,9 @@ with tab1:
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
 
-with tab2:
-    if is_admin_unlocked:
+# Only run Tab 2 code if Admin is unlocked
+if is_admin_unlocked:
+    with tab2:
         st.subheader("👥 Daily Roster (Mark all employees for a day)")
         
         rc1, rc_blank = st.columns([3, 7])
@@ -1117,6 +1122,8 @@ with tab4:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True
                 )
+
+            st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
             
             for index, row in df_display.iterrows():
                 status_color = "#5cd65c" 
@@ -1134,7 +1141,6 @@ with tab4:
                 col_rec, col_blank = st.columns([8, 2])
                 with col_rec:
                     with st.container(border=True):
-                        # Show Edit/Delete ONLY if Admin is unlocked
                         if is_admin_unlocked:
                             c_info, c_edit, c_del = st.columns([6, 1, 1])
                         else:
@@ -1273,8 +1279,9 @@ with tab4:
                                         st.session_state.del_row = None
                                         st.rerun()
 
-with tab5:
-    if is_admin_unlocked:
+# Only run Tab 5 code if Admin is unlocked
+if is_admin_unlocked:
+    with tab5:
         st.subheader("👤 Manage Employees")
         with st.form("add_new_emp_form"):
             col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
