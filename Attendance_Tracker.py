@@ -6,6 +6,7 @@ import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 import uuid
+import time as time_module
 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
@@ -45,7 +46,6 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-# --- FIX: SINGLE MASTER LIST LOGIC ---
 def fetch_employees_from_db():
     emps = set()
     try:
@@ -73,7 +73,6 @@ def save_employees_to_db(emp_list):
 
 if 'emp_list' not in st.session_state:
     st.session_state.emp_list = fetch_employees_from_db()
-# -------------------------------------
 
 @st.cache_data
 def load_holidays_data():
@@ -252,6 +251,16 @@ def save_data(df, sheet_name):
     except Exception:
         pass
 
+def time_to_float(time_str):
+    if not time_str or pd.isna(time_str) or str(time_str).strip() == "": return 0.0
+    try:
+        parts = str(time_str).split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        return h + (m / 60.0)
+    except:
+        return 0.0
+
 current_month_str = get_sheet_name(date.today())
 
 # Variables Initialization
@@ -371,7 +380,6 @@ with tab1:
     st.divider()
 
     if entry_mode == "✏️ Manual Entry":
-        # FIX: Directly use the single source of truth for the dropdown
         dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
         
         if formatted_name == "Administrator":
@@ -708,7 +716,8 @@ if is_admin_unlocked:
                                 except:
                                     in_t, out_t = "08:00", "18:00"
                             
-                            tot, late, out_e, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                            # FIX: Pass exact 4 unpacked variables based on calculate_times output
+                            tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                             new_records.append({
                                 "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
                                 "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
