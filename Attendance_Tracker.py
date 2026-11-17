@@ -441,7 +441,7 @@ with header_col2:
         st.rerun()
 
 if is_admin_unlocked:
-    nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees", "🔑 Change Password"]
+    nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "⚙️ Manage Employees", "🔑 Change Password"]
 else:
     nav_options = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History", "🔑 Change Password"]
 
@@ -1381,8 +1381,8 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
     st.divider()
     
     # 🚀 EMERGENCY DATA FIXER 🚀
-    st.subheader("🛠️ Emergency Data Fixer (Restore Old Data)")
-    st.error("⚠️ If an employee name was changed and their historical data is missing from the dashboard, use this tool to restore it.")
+    st.subheader("🛠️ Emergency Data Fixer (Restore Old Data & Delete Duplicate)")
+    st.error("⚠️ If you changed an employee's name (e.g. 'Kp' to 'Krutin Patel'), this tool will update all their past attendance to the new name, migrate their password, and permanently delete the old name from the dropdown list.")
 
     with st.form("fix_data_form"):
         f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
@@ -1393,7 +1393,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
         with f_col3:
             st.write("")
             st.write("")
-            fix_submit = st.form_submit_button("🚀 Fix All Historical Data", type="primary", use_container_width=True)
+            fix_submit = st.form_submit_button("🚀 Fix History & Remove Old Name", type="primary", use_container_width=True)
 
     if fix_submit:
         if not old_name_fix or not new_name_fix:
@@ -1402,6 +1402,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
             success_count = 0
             sheets_to_check = get_all_sheet_names()
             
+            # Step 1: Fix historical sheets
             for sheet in sheets_to_check:
                 url_sheet = f"{FIREBASE_URL}/{sheet}.json"
                 try:
@@ -1430,9 +1431,21 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
                 except Exception:
                     pass
             
+            # Step 2: Migrate password and delete old name from employee_dict
+            clean_old = old_name_fix.strip().title()
+            clean_new = new_name_fix.strip().title()
+            
+            curr_dict = st.session_state.emp_dict.copy()
+            if clean_old in curr_dict:
+                old_details = curr_dict[clean_old]
+                if clean_new not in curr_dict:
+                    curr_dict[clean_new] = old_details
+                del curr_dict[clean_old]
+                save_employee_dict(curr_dict)
+
             st.session_state.cached_data.clear()
             load_data.clear()
-            st.session_state.flash_msg = f"✅ All historical data restored! '{old_name_fix}' has been updated to '{new_name_fix}' across {success_count} months of data."
+            st.session_state.flash_msg = f"✅ Data Restored! '{old_name_fix}' updated to '{new_name_fix}' across {success_count} months. Old name removed from dropdown."
             st.rerun()
 
 # ==========================================
