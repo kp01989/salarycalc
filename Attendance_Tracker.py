@@ -16,7 +16,7 @@ st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page
 # 1. SETTINGS & CONSTANTS
 # ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
-ADMIN_PASSWORD = "3690"  
+ADMIN_PASSWORD = "1234"  
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
@@ -61,6 +61,35 @@ def fetch_employees_from_db():
                     if v: emps.add(str(v).strip().title())
     except Exception:
         pass
+        
+    # 🛡️ AUTO-RECOVERY ENGINE: Rebuild from history if empty
+    if not emps:
+        try:
+            url = f"{FIREBASE_URL}.json?shallow=true"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200 and response.json():
+                sheets = [k for k in response.json().keys() if k not in ["holidays_list", "employee_list"]]
+                for sht in sheets:
+                    s_res = requests.get(f"{FIREBASE_URL}/{sht}.json", timeout=10)
+                    s_data = s_res.json()
+                    if s_data:
+                        if isinstance(s_data, dict):
+                            for row in s_data.values():
+                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+                        elif isinstance(s_data, list):
+                            for row in s_data:
+                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+        except Exception:
+            pass
+        
+        if emps:
+            clean_list = sorted(list([e for e in emps if e != "-"]))
+            try:
+                requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
+            except Exception:
+                pass
+            return clean_list
+            
     return sorted(list([e for e in emps if e != "-"]))
 
 def save_employees_to_db(emp_list):
@@ -280,7 +309,6 @@ if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
 if 'del_emp' not in st.session_state: st.session_state.del_emp = None
 if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = current_month_str 
 
-# --- SUPREME MOBILE SCROLL FIX CSS ---
 st.markdown("""
     <style>
         /* --- SUPREME MOBILE SCROLL FIX --- */
@@ -1298,6 +1326,15 @@ elif selected_tab == "📊 Dashboard & History":
 
 elif selected_tab == "👤 Manage Employees":
     st.subheader("👤 Manage Employees")
+    
+    # 🛡️ NEW RECOVERY BUTTON FOR ADMIN 🛡️
+    rm1, rm2 = st.columns([8, 2])
+    with rm2:
+        if st.button("🔄 Force Sync / Recover", use_container_width=True):
+            st.session_state.emp_list = fetch_employees_from_db()
+            st.session_state.flash_msg = "✅ Master list synced and recovered from database!"
+            st.rerun()
+            
     with st.form("add_new_emp_form"):
         col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
         with col_e1:
