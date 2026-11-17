@@ -500,6 +500,9 @@ if selected_tab == "📝 Add Attendance":
                           default_out = time(18, 0) 
                       else:
                           default_date = latest_date + timedelta(days=1)
+                          holidays_dict = get_flat_holiday_dates()
+                          while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
+                              default_date += timedelta(days=1)
 
         with st.form("entry_form"):
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5])
