@@ -492,7 +492,7 @@ if selected_tab == "📝 Add Attendance":
                       else:
                           default_date = latest_date + timedelta(days=1)
                           
-                          # 🚀 નવું લોજિક: રજાઓ અને રવિવાર ઓટોમેટિક સ્કીપ કરવા
+                          # 🚀 NEW LOGIC: Automatically skip holidays and Sundays
                           holidays_dict = get_flat_holiday_dates()
                           while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
                               default_date += timedelta(days=1)
@@ -541,7 +541,7 @@ if selected_tab == "📝 Add Attendance":
                         curr_out = str(df_month.at[idx, "Out Time"])
                         
                         if check_time_overlap(curr_in, curr_out, in_t_str, out_t_str):
-                            st.error(f"⚠️ Overlap Error: Tame nakhelo time ({in_t_str} thi {out_t_str}) phelathi j add karel time sathe overlap thay che!")
+                            st.error(f"⚠️ Overlap Error: The entered time ({in_t_str} to {out_t_str}) overlaps with an already existing entry!")
                             is_overlapping = True
                         else:
                             if curr_in and curr_in != "00:00":
@@ -1381,15 +1381,15 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
     st.divider()
     
     # 🚀 EMERGENCY DATA FIXER 🚀
-    st.subheader("🛠️ Emergency Data Fixer (જૂનો ડેટા પાછો લાવવા)")
-    st.error("⚠️ જો તમે કોઈનું નામ બદલ્યું હોય અને એનો જૂનો ડેટા ડેશબોર્ડમાં ના દેખાતો હોય, તો આ બટનથી બધો ડેટા પાછો લાવો.")
+    st.subheader("🛠️ Emergency Data Fixer (Restore Old Data)")
+    st.error("⚠️ If an employee name was changed and their historical data is missing from the dashboard, use this tool to restore it.")
 
     with st.form("fix_data_form"):
         f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
         with f_col1:
-            old_name_fix = st.text_input("જૂનું નામ (દા.ત. Kp)")
+            old_name_fix = st.text_input("Old Name (e.g. Kp)")
         with f_col2:
-            new_name_fix = st.text_input("નવું નામ (દા.ત. Krutin Patel)")
+            new_name_fix = st.text_input("New Name (e.g. Krutin Patel)")
         with f_col3:
             st.write("")
             st.write("")
@@ -1397,7 +1397,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
 
     if fix_submit:
         if not old_name_fix or not new_name_fix:
-            st.error("જૂનું અને નવું બંને નામ લખવા જરૂરી છે!")
+            st.error("Both Old Name and New Name are required!")
         else:
             success_count = 0
             sheets_to_check = get_all_sheet_names()
@@ -1432,7 +1432,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
             
             st.session_state.cached_data.clear()
             load_data.clear()
-            st.session_state.flash_msg = f"✅ બધો જૂનો ડેટા પાછો આવી ગયો! {success_count} મહિનાના ડેટામાં '{old_name_fix}' નું '{new_name_fix}' થઈ ગયું છે."
+            st.session_state.flash_msg = f"✅ All historical data restored! '{old_name_fix}' has been updated to '{new_name_fix}' across {success_count} months of data."
             st.rerun()
 
 # ==========================================
@@ -1440,7 +1440,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
 # ==========================================
 elif selected_tab == "🔑 Change Password":
     st.subheader(f"🔑 Update Password for: **{st.session_state.current_user}**")
-    st.markdown("પોતાનો પાસવર્ડ અહીથી જાતે બદલો. તમારો નવો પાસવર્ડ ક્યાંય પણ શેર ન કરવો.")
+    st.markdown("Update your password below. Please do not share your new password with anyone.")
     
     with st.form("change_pwd_form"):
         cp1, cp2, cp3 = st.columns([1, 1, 2])
@@ -1456,12 +1456,12 @@ elif selected_tab == "🔑 Change Password":
             actual_pwd = curr_dict.get(st.session_state.current_user, {}).get("password", "123")
             
             if old_pwd != actual_pwd:
-                st.error("❌ Current Password સાચો નથી!")
+                st.error("❌ Incorrect Current Password!")
             elif len(new_pwd.strip()) < 3:
-                st.error("❌ નવો પાસવર્ડ ઓછામાં ઓછો 3 અક્ષરનો હોવો જોઈએ!")
+                st.error("❌ New password must be at least 3 characters long!")
             elif old_pwd == new_pwd.strip():
-                st.warning("⚠️ નવો પાસવર્ડ જૂના જેવો જ છે. કોઈ બીજો પાસવર્ડ રાખો.")
+                st.warning("⚠️ New password cannot be the same as the current password.")
             else:
                 curr_dict[st.session_state.current_user]["password"] = new_pwd.strip()
                 save_employee_dict(curr_dict)
-                st.success("✅ તમારો નવો પાસવર્ડ સફળતાપૂર્વક સેટ થઈ ગયો છે!")
+                st.success("✅ Your new password has been successfully updated!")
