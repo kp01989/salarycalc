@@ -21,6 +21,13 @@ ADMIN_PASSWORD = "1234"
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
 
+# --- NAME ALIASES FOR FIXING OLD DATA ---
+LEGACY_NAMES = {
+    "Kp": "Krutin Patel",
+    "kp": "Krutin Patel",
+    "KP": "Krutin Patel"
+}
+
 def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
@@ -75,10 +82,16 @@ def fetch_employees_from_db():
                     if s_data:
                         if isinstance(s_data, dict):
                             for row in s_data.values():
-                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+                                if row and "Employee Name" in row: 
+                                    ename = str(row["Employee Name"]).strip().title()
+                                    if ename in LEGACY_NAMES: ename = LEGACY_NAMES[ename]
+                                    emps.add(ename)
                         elif isinstance(s_data, list):
                             for row in s_data:
-                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+                                if row and "Employee Name" in row: 
+                                    ename = str(row["Employee Name"]).strip().title()
+                                    if ename in LEGACY_NAMES: ename = LEGACY_NAMES[ename]
+                                    emps.add(ename)
         except Exception:
             pass
         
@@ -240,6 +253,11 @@ def load_data(sheet_name):
                     if col in ["Late Hours", "Out Hours", "Total Hours", "OT Hours"]: df[col] = "00:00"
                     if col in ["In Time"]: df[col] = "08:00"
                     if col in ["Out Time"]: df[col] = "18:00"
+                    
+            # --- MAGIC NAME FIXER FOR DASHBOARD ---
+            if "Employee Name" in df.columns:
+                df["Employee Name"] = df["Employee Name"].replace(LEGACY_NAMES)
+            # --------------------------------------
                     
             for idx, row in df.iterrows():
                 in_t = str(row.get("In Time", "08:00"))
