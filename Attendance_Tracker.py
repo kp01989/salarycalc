@@ -46,62 +46,8 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
+# 🚀 નવું પરમેનન્ટ લોજિક: દર વખતે સીધું હિસ્ટ્રીમાંથી જ નામ ખેંચો
 def fetch_employees_from_db():
-    emps = set()
-    try:
-        cb = uuid.uuid4().hex
-        res = requests.get(f"{FIREBASE_URL}/employee_list.json?_={cb}", timeout=10)
-        if res.status_code == 200 and res.json():
-            data = res.json()
-            if isinstance(data, list):
-                for r in data:
-                    if r: emps.add(str(r).strip().title())
-            elif isinstance(data, dict):
-                for k, v in data.items():
-                    if v: emps.add(str(v).strip().title())
-    except Exception:
-        pass
-        
-    # 🛡️ AUTO-RECOVERY ENGINE: Rebuild from history if empty
-    if not emps:
-        try:
-            url = f"{FIREBASE_URL}.json?shallow=true"
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200 and response.json():
-                sheets = [k for k in response.json().keys() if k not in ["holidays_list", "employee_list"]]
-                for sht in sheets:
-                    s_res = requests.get(f"{FIREBASE_URL}/{sht}.json", timeout=10)
-                    s_data = s_res.json()
-                    if s_data:
-                        if isinstance(s_data, dict):
-                            for row in s_data.values():
-                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
-                        elif isinstance(s_data, list):
-                            for row in s_data:
-                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
-        except Exception:
-            pass
-        
-        if emps:
-            clean_list = sorted(list([e for e in emps if e != "-"]))
-            try:
-                requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
-            except Exception:
-                pass
-            return clean_list
-            
-    return sorted(list([e for e in emps if e != "-"]))
-
-def save_employees_to_db(emp_list):
-    clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
-    try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
-    except Exception:
-        pass
-    st.session_state.emp_list = clean_list
-
-if 'emp_list' not in st.session_state:
-def get_always_updated_employees():
     emps = set()
     try:
         url = f"{FIREBASE_URL}.json?shallow=true"
@@ -122,7 +68,17 @@ def get_always_updated_employees():
     except Exception:
         pass
     return sorted(list([e for e in emps if e != "-"]))
-st.session_state.emp_list = get_always_updated_employees()
+
+def save_employees_to_db(emp_list):
+    clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
+    except Exception:
+        pass
+    st.session_state.emp_list = clean_list
+
+# દર વખતે એપ રન થાય ત્યારે લિસ્ટ તાજું જ રહે!
+st.session_state.emp_list = fetch_employees_from_db()
 
 @st.cache_data
 def load_holidays_data():
@@ -521,6 +477,8 @@ if selected_tab == "📝 Add Attendance":
                           default_out = time(18, 0) 
                       else:
                           default_date = latest_date + timedelta(days=1)
+                          
+                          # 🚀 નવું લોજિક: રજાઓ અને રવિવાર ઓટોમેટિક સ્કીપ કરવા
                           holidays_dict = get_flat_holiday_dates()
                           while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
                               default_date += timedelta(days=1)
@@ -614,6 +572,9 @@ if selected_tab == "📝 Add Attendance":
                     st.session_state.filter_month_dash = target_sheet
                     st.session_state.last_edited = f"{formatted_name}_{date_str}"
                     st.session_state.form_reset_counter += 1
+                    
+                    # આ લાઈનથી ડ્રોપડાઉન તરત જ અપડેટ થઈ જશે
+                    st.session_state.emp_list = fetch_employees_from_db()
                     st.rerun()
 
     elif entry_mode == "📂 Bulk Upload (Excel/CSV)":
@@ -800,7 +761,7 @@ elif selected_tab == "👥 Daily Roster":
                             except:
                                 in_t, out_t = "08:00", "18:00"
                         
-                        tot, late, out_e, out_e_hrs, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                        tot, late, out_e_hrs, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                         new_records.append({
                             "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
                             "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e_hrs,
@@ -1323,6 +1284,9 @@ elif selected_tab == "📊 Dashboard & History":
                                             
                                             st.session_state.edit_row = None
                                             st.session_state.flash_msg = f"✅ Record updated successfully!"
+                                            
+                                            # ડ્રોપડાઉન તરત જ અપડેટ કરવા
+                                            st.session_state.emp_list = fetch_employees_from_db()
                                             st.rerun()
                                     if btn_cancel:
                                         st.session_state.edit_row = None
@@ -1344,6 +1308,9 @@ elif selected_tab == "📊 Dashboard & History":
                                         
                                         st.session_state.del_row = None
                                         st.session_state.flash_msg = "✅ Entry permanently deleted!"
+                                        
+                                        # ડ્રોપડાઉન તરત જ અપડેટ કરવા
+                                        st.session_state.emp_list = fetch_employees_from_db()
                                         st.rerun()
                                 with col_n:
                                     if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}"):
@@ -1353,7 +1320,7 @@ elif selected_tab == "📊 Dashboard & History":
 elif selected_tab == "👤 Manage Employees":
     st.subheader("👤 Manage Employees")
     
-    # 🛡️ NEW RECOVERY BUTTON FOR ADMIN 🛡️
+    # 🛡️ RECOVERY BUTTON FOR ADMIN 🛡️
     rm1, rm2 = st.columns([8, 2])
     with rm2:
         if st.button("🔄 Force Sync / Recover", use_container_width=True):
@@ -1380,13 +1347,12 @@ elif selected_tab == "👤 Manage Employees":
             st.error("⚠️ You cannot add 'Administrator' as an employee.")
         else:
             all_existing = st.session_state.emp_list.copy()
-            if clean_name in all_existing:
-                st.warning(f"⚠️ Employee '{clean_name}' already exists in the system!")
-            else:
+            if clean_name not in all_existing:
                 all_existing.append(clean_name)
                 save_employees_to_db(all_existing)
-                st.session_state.flash_msg = f"✅ Employee '{clean_name}' successfully added!"
-                st.rerun()
+            st.session_state.emp_list = fetch_employees_from_db()
+            st.session_state.flash_msg = f"✅ Employee '{clean_name}' successfully added!"
+            st.rerun()
     
     st.divider()
     st.write("### 📋 All Registered Employees")
@@ -1445,6 +1411,7 @@ elif selected_tab == "👤 Manage Employees":
                                         curr.append(clean_new)
                                     save_employees_to_db(curr)
                                     st.session_state.flash_msg = f"✅ Updated '{st.session_state.edit_emp}' to '{clean_new}'!"
+                                st.session_state.emp_list = fetch_employees_from_db()
                                 st.session_state.edit_emp = None
                                 st.rerun()
                             if btn_canc:
@@ -1462,6 +1429,7 @@ elif selected_tab == "👤 Manage Employees":
                                     curr.remove(st.session_state.del_emp)
                                 save_employees_to_db(curr)
                                 st.session_state.flash_msg = f"🗑️ '{st.session_state.del_emp}' deleted successfully!"
+                                st.session_state.emp_list = fetch_employees_from_db()
                                 st.session_state.del_emp = None
                                 st.rerun()
                         with dn:
@@ -1474,7 +1442,7 @@ elif selected_tab == "👤 Manage Employees":
         
     st.divider()
     
-    # 🚀 EMERGENCY DATA FIXER: પરમેનન્ટ સોલ્યુશન 🚀
+    # 🚀 EMERGENCY DATA FIXER 🚀
     st.subheader("🛠️ Emergency Data Fixer (જૂનો ડેટા પાછો લાવવા)")
     st.error("⚠️ જો તમે કોઈનું નામ બદલ્યું હોય અને એનો જૂનો ડેટા ડેશબોર્ડમાં ના દેખાતો હોય, તો આ બટનથી બધો ડેટા પાછો લાવો.")
 
@@ -1526,5 +1494,6 @@ elif selected_tab == "👤 Manage Employees":
             
             st.session_state.cached_data.clear()
             load_data.clear()
+            st.session_state.emp_list = fetch_employees_from_db()
             st.session_state.flash_msg = f"✅ બધો જૂનો ડેટા પાછો આવી ગયો! {success_count} મહિનાના ડેટામાં '{old_name_fix}' નું '{new_name_fix}' થઈ ગયું છે."
             st.rerun()
