@@ -101,7 +101,28 @@ def save_employees_to_db(emp_list):
     st.session_state.emp_list = clean_list
 
 if 'emp_list' not in st.session_state:
-    st.session_state.emp_list = fetch_employees_from_db()
+def get_always_updated_employees():
+    emps = set()
+    try:
+        url = f"{FIREBASE_URL}.json?shallow=true"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200 and response.json():
+            sheets = [k for k in response.json().keys() if k not in ["holidays_list", "employee_list"]]
+            for sht in sheets:
+                cb = uuid.uuid4().hex
+                s_res = requests.get(f"{FIREBASE_URL}/{sht}.json?_={cb}", timeout=10)
+                s_data = s_res.json()
+                if s_data:
+                    if isinstance(s_data, dict):
+                        for row in s_data.values():
+                            if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+                    elif isinstance(s_data, list):
+                        for row in s_data:
+                            if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+    except Exception:
+        pass
+    return sorted(list([e for e in emps if e != "-"]))
+st.session_state.emp_list = get_always_updated_employees()
 
 @st.cache_data
 def load_holidays_data():
