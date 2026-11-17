@@ -62,6 +62,7 @@ def fetch_employees_from_db():
     except Exception:
         pass
         
+    # 🛡️ AUTO-RECOVERY ENGINE: Rebuild from history if empty
     if not emps:
         try:
             url = f"{FIREBASE_URL}.json?shallow=true"
@@ -105,7 +106,8 @@ if 'emp_list' not in st.session_state:
 @st.cache_data
 def load_holidays_data():
     try:
-        res = requests.get(f"{FIREBASE_URL}/holidays_list.json", timeout=10)
+        cb = uuid.uuid4().hex
+        res = requests.get(f"{FIREBASE_URL}/holidays_list.json?_={cb}", timeout=10)
         if res.status_code == 200 and res.json():
             return res.json()
     except Exception:
@@ -224,7 +226,8 @@ def load_data(sheet_name):
     holidays_dict = get_flat_holiday_dates()
     
     try:
-        response = requests.get(url, timeout=10)
+        cb = uuid.uuid4().hex
+        response = requests.get(f"{url}?_={cb}", timeout=10)
         data = response.json()
         if data:
             if isinstance(data, dict):
@@ -773,10 +776,10 @@ elif selected_tab == "👥 Daily Roster":
                             except:
                                 in_t, out_t = "08:00", "18:00"
                         
-                        tot, late, out_e, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
+                        tot, late, out_e, out_e_hrs, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                         new_records.append({
                             "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
-                            "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e,
+                            "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e_hrs,
                             "Total Hours": tot, "OT Hours": ot, "Status": stat
                         })
                     
@@ -1326,6 +1329,16 @@ elif selected_tab == "📊 Dashboard & History":
 elif selected_tab == "👤 Manage Employees":
     st.subheader("👤 Manage Employees")
     
+    # 🛡️ NEW RECOVERY BUTTON FOR ADMIN 🛡️
+    rm1, rm2 = st.columns([8, 2])
+    with rm2:
+        if st.button("🔄 Force Sync / Recover", use_container_width=True):
+            st.session_state.emp_list = fetch_employees_from_db()
+            if 'cached_holidays' in st.session_state:
+                del st.session_state.cached_holidays
+            st.session_state.flash_msg = "✅ Master list synced and recovered from database!"
+            st.rerun()
+            
     with st.form("add_new_emp_form"):
         col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
         with col_e1:
