@@ -21,13 +21,6 @@ ADMIN_PASSWORD = "1234"
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
 
-# --- NAME ALIASES FOR FIXING OLD DATA ---
-LEGACY_NAMES = {
-    "Kp": "Krutin Patel",
-    "kp": "Krutin Patel",
-    "KP": "Krutin Patel"
-}
-
 def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
@@ -69,7 +62,6 @@ def fetch_employees_from_db():
     except Exception:
         pass
         
-    # 🛡️ AUTO-RECOVERY ENGINE: Rebuild from history if empty
     if not emps:
         try:
             url = f"{FIREBASE_URL}.json?shallow=true"
@@ -82,16 +74,10 @@ def fetch_employees_from_db():
                     if s_data:
                         if isinstance(s_data, dict):
                             for row in s_data.values():
-                                if row and "Employee Name" in row: 
-                                    ename = str(row["Employee Name"]).strip().title()
-                                    if ename in LEGACY_NAMES: ename = LEGACY_NAMES[ename]
-                                    emps.add(ename)
+                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
                         elif isinstance(s_data, list):
                             for row in s_data:
-                                if row and "Employee Name" in row: 
-                                    ename = str(row["Employee Name"]).strip().title()
-                                    if ename in LEGACY_NAMES: ename = LEGACY_NAMES[ename]
-                                    emps.add(ename)
+                                if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
         except Exception:
             pass
         
@@ -254,11 +240,6 @@ def load_data(sheet_name):
                     if col in ["In Time"]: df[col] = "08:00"
                     if col in ["Out Time"]: df[col] = "18:00"
                     
-            # --- MAGIC NAME FIXER FOR DASHBOARD ---
-            if "Employee Name" in df.columns:
-                df["Employee Name"] = df["Employee Name"].replace(LEGACY_NAMES)
-            # --------------------------------------
-                    
             for idx, row in df.iterrows():
                 in_t = str(row.get("In Time", "08:00"))
                 out_t = str(row.get("Out Time", "18:00"))
@@ -292,9 +273,9 @@ def save_data(df, sheet_name):
     data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data, timeout=10)
-        load_data.clear(sheet_name) 
-        if 'cached_data' in st.session_state and sheet_name in st.session_state.cached_data:
-            del st.session_state.cached_data[sheet_name]
+        load_data.clear() 
+        if 'cached_data' in st.session_state:
+            st.session_state.cached_data.clear()
     except Exception:
         pass
 
@@ -1345,14 +1326,6 @@ elif selected_tab == "📊 Dashboard & History":
 elif selected_tab == "👤 Manage Employees":
     st.subheader("👤 Manage Employees")
     
-    # 🛡️ NEW RECOVERY BUTTON FOR ADMIN 🛡️
-    rm1, rm2 = st.columns([8, 2])
-    with rm2:
-        if st.button("🔄 Force Sync / Recover", use_container_width=True):
-            st.session_state.emp_list = fetch_employees_from_db()
-            st.session_state.flash_msg = "✅ Master list synced and recovered from database!"
-            st.rerun()
-            
     with st.form("add_new_emp_form"):
         col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
         with col_e1:
@@ -1461,3 +1434,60 @@ elif selected_tab == "👤 Manage Employees":
 
     else:
         st.info("No employees found. Please add a new employee above.")
+        
+    st.divider()
+    
+    # 🚀 EMERGENCY DATA FIXER: પરમેનન્ટ સોલ્યુશન 🚀
+    st.subheader("🛠️ Emergency Data Fixer (જૂનો ડેટા પાછો લાવવા)")
+    st.error("⚠️ જો તમે કોઈનું નામ બદલ્યું હોય અને એનો જૂનો ડેટા ડેશબોર્ડમાં ના દેખાતો હોય, તો આ બટનથી બધો ડેટા પાછો લાવો.")
+
+    with st.form("fix_data_form"):
+        f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
+        with f_col1:
+            old_name_fix = st.text_input("જૂનું નામ (દા.ત. Kp)")
+        with f_col2:
+            new_name_fix = st.text_input("નવું નામ (દા.ત. Krutin Patel)")
+        with f_col3:
+            st.write("")
+            st.write("")
+            fix_submit = st.form_submit_button("🚀 Fix All Historical Data", type="primary", use_container_width=True)
+
+    if fix_submit:
+        if not old_name_fix or not new_name_fix:
+            st.error("જૂનું અને નવું બંને નામ લખવા જરૂરી છે!")
+        else:
+            success_count = 0
+            sheets_to_check = get_all_sheet_names()
+            
+            for sheet in sheets_to_check:
+                url_sheet = f"{FIREBASE_URL}/{sheet}.json"
+                try:
+                    res_sheet = requests.get(url_sheet, timeout=10)
+                    if res_sheet.status_code == 200 and res_sheet.json():
+                        sheet_data = res_sheet.json()
+                        updated = False
+                        
+                        if isinstance(sheet_data, dict):
+                            for k, v in sheet_data.items():
+                                if v and str(v.get("Employee Name", "")).strip().lower() == old_name_fix.strip().lower():
+                                    sheet_data[k]["Employee Name"] = new_name_fix.strip().title()
+                                    updated = True
+                            if updated:
+                                requests.put(url_sheet, json=sheet_data, timeout=10)
+                                success_count += 1
+                                
+                        elif isinstance(sheet_data, list):
+                            for i in range(len(sheet_data)):
+                                if sheet_data[i] and str(sheet_data[i].get("Employee Name", "")).strip().lower() == old_name_fix.strip().lower():
+                                    sheet_data[i]["Employee Name"] = new_name_fix.strip().title()
+                                    updated = True
+                            if updated:
+                                requests.put(url_sheet, json=sheet_data, timeout=10)
+                                success_count += 1
+                except Exception:
+                    pass
+            
+            st.session_state.cached_data.clear()
+            load_data.clear()
+            st.session_state.flash_msg = f"✅ બધો જૂનો ડેટા પાછો આવી ગયો! {success_count} મહિનાના ડેટામાં '{old_name_fix}' નું '{new_name_fix}' થઈ ગયું છે."
+            st.rerun()
