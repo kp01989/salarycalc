@@ -47,33 +47,59 @@ def get_all_sheet_names():
     return fallback_sheets
 
 # ==========================================
-# EMPLOYEE LIST LOGIC (SAFE & PERMANENT)
+# EMPLOYEE DICTIONARY LOGIC (NEW SECURITY SYSTEM)
 # ==========================================
-def fetch_employees_from_db():
+def migrate_old_list_to_dict():
+    old_list = []
     try:
-        cb = uuid.uuid4().hex
-        res = requests.get(f"{FIREBASE_URL}/employee_list.json?_={cb}", timeout=10)
+        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
             if isinstance(data, list):
-                return sorted(list(set([str(r).strip().title() for r in data if r])))
+                old_list = [str(r).strip().title() for r in data if r]
             elif isinstance(data, dict):
-                return sorted(list(set([str(v).strip().title() for v in data.values() if v])))
-    except Exception:
+                old_list = [str(v).strip().title() for v in data.values() if v]
+    except:
         pass
-    return []
+    
+    new_dict = {"Administrator": {"password": "1234", "details": "Master Admin"}}
+    for emp in set(old_list):
+        if emp != "Administrator":
+            new_dict[emp] = {"password": "123", "details": ""}
+    return new_dict
 
-def save_employees_to_db(emp_list):
-    clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
+def fetch_employee_dict():
     try:
-        requests.put(f"{FIREBASE_URL}/employee_list.json", json=clean_list, timeout=10)
+        cb = uuid.uuid4().hex
+        res = requests.get(f"{FIREBASE_URL}/employee_dict.json?_={cb}", timeout=10)
+        if res.status_code == 200 and res.json():
+            data = res.json()
+            if isinstance(data, dict):
+                if "Administrator" not in data:
+                    data["Administrator"] = {"password": "1234", "details": "Master Admin"}
+                    save_employee_dict(data)
+                return data
     except Exception:
         pass
-    st.session_state.emp_list = clean_list
+    
+    migrated_dict = migrate_old_list_to_dict()
+    if migrated_dict:
+        save_employee_dict(migrated_dict)
+        return migrated_dict
+    return {"Administrator": {"password": "1234", "details": "Master Admin"}}
 
-if 'emp_list' not in st.session_state or not st.session_state.emp_list:
-    st.session_state.emp_list = fetch_employees_from_db()
+def save_employee_dict(emp_dict):
+    try:
+        requests.put(f"{FIREBASE_URL}/employee_dict.json", json=emp_dict, timeout=10)
+    except Exception:
+        pass
+    st.session_state.emp_dict = emp_dict
+    st.session_state.emp_list = sorted([k for k in emp_dict.keys() if k != "Administrator"])
 
+if 'emp_dict' not in st.session_state or not st.session_state.emp_dict:
+    st.session_state.emp_dict = fetch_employee_dict()
+    st.session_state.emp_list = sorted([k for k in st.session_state.emp_dict.keys() if k != "Administrator"])
+    
 # ==========================================
 # HOLIDAYS LOGIC
 # ==========================================
