@@ -46,28 +46,22 @@ def get_all_sheet_names():
             d = d.replace(month=d.month - 1)
     return fallback_sheets
 
-# 🚀 નવું પરમેનન્ટ લોજિક: દર વખતે સીધું હિસ્ટ્રીમાંથી જ નામ ખેંચો
+# ==========================================
+# EMPLOYEE LIST LOGIC (SAFE & PERMANENT)
+# ==========================================
 def fetch_employees_from_db():
-    emps = set()
     try:
-        url = f"{FIREBASE_URL}.json?shallow=true"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200 and response.json():
-            sheets = [k for k in response.json().keys() if k not in ["holidays_list", "employee_list"]]
-            for sht in sheets:
-                cb = uuid.uuid4().hex
-                s_res = requests.get(f"{FIREBASE_URL}/{sht}.json?_={cb}", timeout=10)
-                s_data = s_res.json()
-                if s_data:
-                    if isinstance(s_data, dict):
-                        for row in s_data.values():
-                            if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
-                    elif isinstance(s_data, list):
-                        for row in s_data:
-                            if row and "Employee Name" in row: emps.add(str(row["Employee Name"]).strip().title())
+        cb = uuid.uuid4().hex
+        res = requests.get(f"{FIREBASE_URL}/employee_list.json?_={cb}", timeout=10)
+        if res.status_code == 200 and res.json():
+            data = res.json()
+            if isinstance(data, list):
+                return sorted(list(set([str(r).strip().title() for r in data if r])))
+            elif isinstance(data, dict):
+                return sorted(list(set([str(v).strip().title() for v in data.values() if v])))
     except Exception:
         pass
-    return sorted(list([e for e in emps if e != "-"]))
+    return []
 
 def save_employees_to_db(emp_list):
     clean_list = sorted(list(set([str(e).strip().title() for e in emp_list if e and str(e).strip() != "-"])))
@@ -77,9 +71,12 @@ def save_employees_to_db(emp_list):
         pass
     st.session_state.emp_list = clean_list
 
-# દર વખતે એપ રન થાય ત્યારે લિસ્ટ તાજું જ રહે!
-st.session_state.emp_list = fetch_employees_from_db()
+if 'emp_list' not in st.session_state or not st.session_state.emp_list:
+    st.session_state.emp_list = fetch_employees_from_db()
 
+# ==========================================
+# HOLIDAYS LOGIC
+# ==========================================
 @st.cache_data
 def load_holidays_data():
     try:
@@ -115,6 +112,9 @@ def get_flat_holiday_dates():
             pass
     return flat_dict
 
+# ==========================================
+# TIME CALCULATIONS
+# ==========================================
 def parse_time(time_val):
     time_str = str(time_val).strip()
     try:
@@ -573,7 +573,7 @@ if selected_tab == "📝 Add Attendance":
                     st.session_state.last_edited = f"{formatted_name}_{date_str}"
                     st.session_state.form_reset_counter += 1
                     
-                    # આ લાઈનથી ડ્રોપડાઉન તરત જ અપડેટ થઈ જશે
+                    # ડ્રોપડાઉન તરત જ અપડેટ કરવા
                     st.session_state.emp_list = fetch_employees_from_db()
                     st.rerun()
 
@@ -1319,16 +1319,6 @@ elif selected_tab == "📊 Dashboard & History":
 
 elif selected_tab == "👤 Manage Employees":
     st.subheader("👤 Manage Employees")
-    
-    # 🛡️ RECOVERY BUTTON FOR ADMIN 🛡️
-    rm1, rm2 = st.columns([8, 2])
-    with rm2:
-        if st.button("🔄 Force Sync / Recover", use_container_width=True):
-            st.session_state.emp_list = fetch_employees_from_db()
-            if 'cached_holidays' in st.session_state:
-                del st.session_state.cached_holidays
-            st.session_state.flash_msg = "✅ Master list synced and recovered from database!"
-            st.rerun()
             
     with st.form("add_new_emp_form"):
         col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
