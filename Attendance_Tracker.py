@@ -894,6 +894,7 @@ elif selected_tab == "🌴 Holiday Calendar":
 
 elif selected_tab == "📊 Dashboard & History":
     formatted_name = st.session_state.current_user
+    current_month_str = get_sheet_name(date.today())
     all_sheets_raw = get_all_sheet_names()
     if current_month_str not in all_sheets_raw:
         all_sheets_raw.insert(0, current_month_str)
