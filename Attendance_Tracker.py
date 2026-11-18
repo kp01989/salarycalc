@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 import io
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
@@ -20,6 +20,12 @@ FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
 
+def get_ist_now():
+    return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+
+def get_ist_today():
+    return get_ist_now().date()
+
 def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
@@ -34,9 +40,9 @@ def get_all_sheet_names():
                 return [k for k in data.keys() if k not in ["holidays_list", "employee_list", "employee_dict"]]
     except Exception:
         pass
-    
+
     fallback_sheets = []
-    d = date.today()
+    d = get_ist_today()
     for _ in range(12):
         fallback_sheets.append(d.strftime("%b'%Y"))
         if d.month == 1:
@@ -46,7 +52,7 @@ def get_all_sheet_names():
     return fallback_sheets
 
 # ==========================================
-# EMPLOYEE DICTIONARY LOGIC (NEW SECURITY SYSTEM)
+# EMPLOYEE DICTIONARY LOGIC (SECURITY SYSTEM)
 # ==========================================
 def migrate_old_list_to_dict():
     old_list = []
@@ -58,9 +64,9 @@ def migrate_old_list_to_dict():
                 old_list = [str(r).strip().title() for r in data if r]
             elif isinstance(data, dict):
                 old_list = [str(v).strip().title() for v in data.values() if v]
-    except:
+    except Exception:
         pass
-    
+
     new_dict = {"Administrator": {"password": "1234", "details": "Master Admin"}}
     for emp in set(old_list):
         if emp != "Administrator":
@@ -80,7 +86,7 @@ def fetch_employee_dict():
                 return data
     except Exception:
         pass
-    
+
     migrated_dict = migrate_old_list_to_dict()
     if migrated_dict:
         save_employee_dict(migrated_dict)
@@ -116,7 +122,7 @@ def load_holidays_data():
 def save_holidays_data(data):
     try:
         requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data, timeout=10)
-        load_holidays_data.clear() 
+        load_holidays_data.clear()
         if 'cached_holidays' in st.session_state:
             del st.session_state.cached_holidays
     except Exception:
@@ -133,7 +139,7 @@ def get_flat_holiday_dates():
             for i in range(delta + 1):
                 d = f_date + timedelta(days=i)
                 flat_dict[d.strftime("%d/%m/%Y")] = hinfo['reason']
-        except:
+        except Exception:
             pass
     return flat_dict
 
@@ -151,20 +157,21 @@ def parse_time(time_val):
             return datetime.strptime("00:00", "%H:%M")
 
 def check_time_overlap(curr_in_str, curr_out_str, new_in_str, new_out_str):
-    if not curr_in_str or curr_in_str == "00:00": return False
-    
+    if not curr_in_str or curr_in_str == "00:00":
+        return False
+
     existing_ins = [parse_time(t) for t in str(curr_in_str).split(',') if t.strip()]
     existing_outs = [parse_time(t) for t in str(curr_out_str).split(',') if t.strip()]
-    
+
     new_in = parse_time(new_in_str)
     new_out = parse_time(new_out_str)
-    
+
     for ein, eout in zip(existing_ins, existing_outs):
         if max(new_in, ein) < min(new_out, eout):
             return True
         if new_in == ein or new_out == eout:
             return True
-            
+
     return False
 
 def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_public_holiday=False):
@@ -173,7 +180,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
 
     in_times = [parse_time(t) for t in str(in_time_str).split(',') if t.strip()]
     out_times = [parse_time(t) for t in str(out_time_str).split(',') if t.strip()]
-    
+
     if not in_times or not out_times:
         return "00:00", "00:00", "00:00", "00:00"
 
@@ -183,7 +190,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
 
     std_in = datetime.strptime(STANDARD_IN, "%H:%M")
     std_out = datetime.strptime(STANDARD_OUT, "%H:%M")
-    
+
     total_worked_mins = 0
     reg_mins = 0
 
@@ -207,7 +214,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
         ot_mins = total_worked_mins - reg_mins
         if ot_mins < 30:
             ot_mins = 0
-            
+
         first_in = min(in_times) if in_times else std_in
         last_out = max(out_times) if out_times else std_out
 
@@ -215,10 +222,11 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
         out_early_mins = max(0, (std_out - last_out).total_seconds() // 60) if last_out < std_out else 0
 
     def mins_to_str(m):
-        if m <= 0: return "00:00"
+        if m <= 0:
+            return "00:00"
         h, m = divmod(int(m), 60)
         return f"{h:02d}:{m:02d}"
-        
+
     return mins_to_str(reg_mins), mins_to_str(late_mins), mins_to_str(out_early_mins), mins_to_str(ot_mins)
 
 @st.cache_data
@@ -226,7 +234,7 @@ def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
     holidays_dict = get_flat_holiday_dates()
-    
+
     try:
         cb = uuid.uuid4().hex
         response = requests.get(f"{url}?_={cb}", timeout=10)
@@ -236,27 +244,31 @@ def load_data(sheet_name):
                 df = pd.DataFrame(list(data.values()))
             else:
                 df = pd.DataFrame([row for row in data if row is not None])
-            
+
             for col in columns:
                 if col not in df.columns:
                     df[col] = ""
-                    if col == "Status": df[col] = "Regular"
-                    if col in ["Late Hours", "Out Hours", "Total Hours", "OT Hours"]: df[col] = "00:00"
-                    if col in ["In Time"]: df[col] = "08:00"
-                    if col in ["Out Time"]: df[col] = "18:00"
-                    
+                    if col == "Status":
+                        df[col] = "Regular"
+                    if col in ["Late Hours", "Out Hours", "Total Hours", "OT Hours"]:
+                        df[col] = "00:00"
+                    if col == "In Time":
+                        df[col] = "08:00"
+                    if col == "Out Time":
+                        df[col] = "18:00"
+
             for idx, row in df.iterrows():
                 in_t = str(row.get("In Time", "08:00"))
                 out_t = str(row.get("Out Time", "18:00"))
                 day_s = str(row.get("Day", "Mon"))
                 status = str(row.get("Status", "Regular"))
                 date_s = str(row.get("Date", ""))
-                
+
                 is_pub_hol = date_s in holidays_dict
-                
+
                 if pd.isna(row.get("In Time")) or in_t.lower() == 'nan':
                     continue
-                    
+
                 try:
                     tot, late, out_e, ot = calculate_times(in_t, out_t, day_s, status, is_pub_hol)
                     df.at[idx, "Total Hours"] = tot
@@ -265,7 +277,7 @@ def load_data(sheet_name):
                     df.at[idx, "OT Hours"] = ot
                 except Exception:
                     pass
-            
+
             return df[columns]
         else:
             return pd.DataFrame(columns=columns)
@@ -278,7 +290,7 @@ def save_data(df, sheet_name):
     data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data, timeout=10)
-        load_data.clear() 
+        load_data.clear()
         if 'cached_data' in st.session_state:
             st.session_state.cached_data.clear()
     except Exception:
@@ -287,9 +299,14 @@ def save_data(df, sheet_name):
 # ==========================================
 # SESSION STATE & AUTHENTICATION LOGIC
 # ==========================================
-if 'current_user' not in st.session_state: st.session_state.current_user = "-- Select Employee --"
-if 'is_logged_in' not in st.session_state: st.session_state.is_logged_in = False
-if 'user_role' not in st.session_state: st.session_state.user_role = None
+current_month_str = get_sheet_name(get_ist_today())
+
+if 'current_user' not in st.session_state:
+    st.session_state.current_user = "-- Select Employee --"
+if 'is_logged_in' not in st.session_state:
+    st.session_state.is_logged_in = False
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
 
 def logout():
     st.session_state.current_user = "-- Select Employee --"
@@ -299,17 +316,30 @@ def logout():
 is_admin_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Admin")
 is_employee_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Employee")
 
-if 'last_edited' not in st.session_state: st.session_state.last_edited = None
-if 'form_reset_counter' not in st.session_state: st.session_state.form_reset_counter = 0
-if 'flash_msg' not in st.session_state: st.session_state.flash_msg = ""
-if 'cached_data' not in st.session_state: st.session_state.cached_data = {}
-if 'cached_holidays' not in st.session_state: st.session_state.cached_holidays = None
-if 'edit_row' not in st.session_state: st.session_state.edit_row = None
-if 'del_row' not in st.session_state: st.session_state.del_row = None
-if 'edit_emp' not in st.session_state: st.session_state.edit_emp = None
-if 'del_emp' not in st.session_state: st.session_state.del_emp = None
-if 'filter_month_dash' not in st.session_state: st.session_state.filter_month_dash = get_sheet_name(date.today()) 
+if 'last_edited' not in st.session_state:
+    st.session_state.last_edited = None
+if 'form_reset_counter' not in st.session_state:
+    st.session_state.form_reset_counter = 0
+if 'flash_msg' not in st.session_state:
+    st.session_state.flash_msg = ""
+if 'cached_data' not in st.session_state:
+    st.session_state.cached_data = {}
+if 'cached_holidays' not in st.session_state:
+    st.session_state.cached_holidays = None
+if 'edit_row' not in st.session_state:
+    st.session_state.edit_row = None
+if 'del_row' not in st.session_state:
+    st.session_state.del_row = None
+if 'edit_emp' not in st.session_state:
+    st.session_state.edit_emp = None
+if 'del_emp' not in st.session_state:
+    st.session_state.del_emp = None
+if 'filter_month_dash' not in st.session_state:
+    st.session_state.filter_month_dash = current_month_str
 
+# ==========================================
+# UI STYLING
+# ==========================================
 st.markdown("""
     <style>
         /* --- SUPREME MOBILE SCROLL FIX --- */
@@ -405,7 +435,7 @@ st.title("📅 Advanced Attendance Tracker")
 
 if st.session_state.flash_msg:
     st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
-    st.session_state.flash_msg = "" 
+    st.session_state.flash_msg = ""
 
 # ==========================================
 # MASTER LOGIN SYSTEM
@@ -415,7 +445,7 @@ if not st.session_state.is_logged_in:
     with st.container(border=True):
         dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
         login_user = st.selectbox("Select Your Profile", options=dropdown_options, key="login_select")
-        
+
         if login_user != "-- Select Employee --":
             pwd = st.text_input("🔑 Enter Password", type="password", key="login_pwd")
             if st.button("Unlock", type="primary"):
@@ -425,9 +455,9 @@ if not st.session_state.is_logged_in:
                     st.session_state.user_role = "Admin" if login_user == "Administrator" else "Employee"
                     st.session_state.current_user = login_user
                     st.rerun()
-                else: 
+                else:
                     st.error("❌ Incorrect Password!")
-    st.stop() # STOP EXECUTION HERE IF NOT LOGGED IN
+    st.stop()
 
 # ==========================================
 # NAVIGATION MENU (LOGGED IN USER)
@@ -441,7 +471,7 @@ with header_col2:
         st.rerun()
 
 if is_admin_unlocked:
-    nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "👤 Manage Employees", "🔑 Change Password"]
+    nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "⚙️ Manage Employees", "🔑 Change Password"]
 else:
     nav_options = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History", "🔑 Change Password"]
 
@@ -451,10 +481,9 @@ if 'active_nav_tab' not in st.session_state or st.session_state.active_nav_tab n
 selected_tab = st.radio("Navigation Menu", nav_options, horizontal=True, key="active_nav_tab", label_visibility="collapsed")
 st.divider()
 
-formatted_name = st.session_state.current_user if st.session_state.current_user != "Administrator" else ""
-
 # ==========================================
-
+# TAB 1: ADD ATTENDANCE
+# ==========================================
 if selected_tab == "📝 Add Attendance":
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True) if is_admin_unlocked else "✏️ Manual Entry"
     st.divider()
@@ -466,47 +495,60 @@ if selected_tab == "📝 Add Attendance":
             target_emp = st.session_state.current_user
             st.markdown(f"### Adding Attendance for: **{target_emp}**")
 
-        default_date = date.today()
+        now_ist = get_ist_now()
+        today_ist = now_ist.date()
+
+        default_date = today_ist
         default_in = time(8, 0)
         default_out = time(18, 0)
-        
+
         if target_emp:
-            if st.session_state.filter_month_dash not in st.session_state.cached_data:
-                st.session_state.cached_data[st.session_state.filter_month_dash] = load_data(st.session_state.filter_month_dash)
-            df_month_check = st.session_state.cached_data[st.session_state.filter_month_dash]
+            check_month = st.session_state.filter_month_dash if st.session_state.filter_month_dash != "All Months" else get_sheet_name(today_ist)
+            if check_month not in st.session_state.cached_data:
+                st.session_state.cached_data[check_month] = load_data(check_month)
+            df_month_check = st.session_state.cached_data[check_month]
 
             if not df_month_check.empty:
-                 df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
-                 if not df_emp.empty:
-                      df_emp = df_emp.copy()
-                      df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
-                      latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
-                      latest_date = latest_date_row['RealDate'].date()
-                      
-                      today_entry = df_emp[df_emp['RealDate'].dt.date == date.today()]
-                      if not today_entry.empty:
-                          default_date = date.today()
-                          now = datetime.now()
-                          default_in = now.time()
-                          default_out = time(18, 0) 
-                      else:
-                          default_date = latest_date + timedelta(days=1)
-                          
-                          # 🚀 NEW LOGIC: Automatically skip holidays and Sundays
-                          holidays_dict = get_flat_holiday_dates()
-                          while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
-                              default_date += timedelta(days=1)
+                df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
+                if not df_emp.empty:
+                    df_emp = df_emp.copy()
+                    df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
+                    latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
+                    latest_date = latest_date_row['RealDate'].date()
+                    latest_status = str(latest_date_row.get("Status", "Regular"))
+                    latest_out_str = str(latest_date_row.get("Out Time", ""))
+
+                    # Parse all Out Times (handles multiple punches like "12:00, 18:00")
+                    out_times_list = [parse_time(t) for t in latest_out_str.split(',') if t.strip()]
+                    max_out_time = max(out_times_list).time() if out_times_list else time(0, 0)
+
+                    # Move to next working date if Out Time >= 18:00 or full-day leave/absent
+                    if latest_status in ["PL", "LWP", "Absent"] or max_out_time >= time(18, 0):
+                        default_date = latest_date + timedelta(days=1)
+                        holidays_dict = get_flat_holiday_dates()
+                        while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
+                            default_date += timedelta(days=1)
+                        default_in = time(8, 0)
+                        default_out = time(18, 0)
+                    else:
+                        # Stay on the same date for a second punch if Out Time < 18:00
+                        default_date = latest_date
+                        if latest_date == today_ist:
+                            default_in = now_ist.time().replace(second=0, microsecond=0)
+                        else:
+                            default_in = max_out_time
+                        default_out = time(18, 0) if default_in < time(18, 0) else default_in
 
         with st.form("entry_form"):
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5])
             with c1:
-                entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY")
+                entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY", key=f"date_{target_emp}_{st.session_state.form_reset_counter}")
             with c2:
-                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"])
+                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"], key=f"stat_{target_emp}_{st.session_state.form_reset_counter}")
             with c3:
-                in_time = st.time_input("In Time", value=default_in, key=f"in_{st.session_state.form_reset_counter}")
+                in_time = st.time_input("In Time", value=default_in, key=f"in_{target_emp}_{st.session_state.form_reset_counter}")
             with c4:
-                out_time = st.time_input("Out Time", value=default_out, key=f"out_{st.session_state.form_reset_counter}")
+                out_time = st.time_input("Out Time", value=default_out, key=f"out_{target_emp}_{st.session_state.form_reset_counter}")
             with c5:
                 st.write("")
                 st.write("")
@@ -519,27 +561,27 @@ if selected_tab == "📝 Add Attendance":
                 st.error("Out Time cannot be before In Time for a single shift!")
             else:
                 target_sheet = get_sheet_name(entry_date)
-                df_month = load_data(target_sheet).copy() 
+                df_month = load_data(target_sheet).copy()
                 day_str = entry_date.strftime("%a")
                 date_str = entry_date.strftime("%d/%m/%Y")
-                
+
                 existing_match = df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()) & (df_month["Date"] == date_str)]
                 holidays_dict = get_flat_holiday_dates()
                 is_pub_hol = date_str in holidays_dict
-                
+
                 if entry_status in ["PL", "LWP", "Absent"]:
                     in_t_str, out_t_str = "00:00", "00:00"
                 else:
                     in_t_str, out_t_str = in_time.strftime("%H:%M"), out_time.strftime("%H:%M")
-                
+
                 is_overlapping = False
-                
+
                 if not existing_match.empty:
                     idx = existing_match.index[0]
                     if entry_status not in ["PL", "LWP", "Absent"]:
                         curr_in = str(df_month.at[idx, "In Time"])
                         curr_out = str(df_month.at[idx, "Out Time"])
-                        
+
                         if check_time_overlap(curr_in, curr_out, in_t_str, out_t_str):
                             st.error(f"⚠️ Overlap Error: The entered time ({in_t_str} to {out_t_str}) overlaps with an already existing entry!")
                             is_overlapping = True
@@ -548,11 +590,11 @@ if selected_tab == "📝 Add Attendance":
                                 in_t_str = curr_in + ", " + in_t_str
                             if curr_out and curr_out != "00:00":
                                 out_t_str = curr_out + ", " + out_t_str
-                
+
                 if not is_overlapping:
                     if not existing_match.empty:
                         tot, late, out_e, ot = calculate_times(in_t_str, out_t_str, day_str, entry_status, is_pub_hol)
-                        
+
                         df_month.at[idx, "In Time"] = in_t_str
                         df_month.at[idx, "Out Time"] = out_t_str
                         df_month.at[idx, "Total Hours"] = tot
@@ -560,7 +602,7 @@ if selected_tab == "📝 Add Attendance":
                         df_month.at[idx, "Out Hours"] = out_e
                         df_month.at[idx, "OT Hours"] = ot
                         df_month.at[idx, "Status"] = entry_status
-                        
+
                         save_data(df_month, target_sheet)
                         st.session_state.flash_msg = f"✅ Additional punch added for {target_emp} on {date_str}!"
                     else:
@@ -571,16 +613,16 @@ if selected_tab == "📝 Add Attendance":
                             "Day": [day_str],
                             "In Time": [in_t_str],
                             "Out Time": [out_t_str],
-                            "Late Hours": [late], 
+                            "Late Hours": [late],
                             "Out Hours": [out_e],
                             "Total Hours": [tot],
                             "OT Hours": [ot],
                             "Status": [entry_status]
                         })
                         df_month = pd.concat([df_month, new_entry], ignore_index=True)
-                        save_data(df_month, target_sheet) 
+                        save_data(df_month, target_sheet)
                         st.session_state.flash_msg = f"✅ Record for {target_emp} on {date_str} saved successfully!"
-                    
+
                     st.session_state.filter_month_dash = target_sheet
                     st.session_state.last_edited = f"{target_emp}_{date_str}"
                     st.session_state.form_reset_counter += 1
@@ -588,7 +630,7 @@ if selected_tab == "📝 Add Attendance":
 
     elif entry_mode == "📂 Bulk Upload (Excel/CSV)" and is_admin_unlocked:
         st.subheader("📂 Upload Monthly Excel/CSV")
-        
+
         col_up1, col_up_blank = st.columns([6, 4])
         with col_up1:
             st.markdown("""
@@ -596,7 +638,7 @@ if selected_tab == "📝 Add Attendance":
             1. File must have columns: `Employee Name`, `Date` (DD/MM/YYYY), `In Time` (HH:MM), `Out Time` (HH:MM), `Status` (Optional).
             2. Overlap Protection is Active: Duplicates or overlapping times will be automatically skipped!
             """)
-            
+
             template_df = pd.DataFrame({
                 "Employee Name": ["Manoj Kumar", "Ramesh Patel", "Suresh Desai"],
                 "Date": ["01/11/2026", "02/11/2026", "03/11/2026"],
@@ -605,7 +647,7 @@ if selected_tab == "📝 Add Attendance":
                 "Status": ["Regular", "Holiday", "PL"]
             })
             csv_template = template_df.to_csv(index=False).encode('utf-8')
-            
+
             st.download_button(
                 label="📥 Download CSV Template",
                 data=csv_template,
@@ -615,69 +657,71 @@ if selected_tab == "📝 Add Attendance":
             st.write("")
 
             uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
-            
+
             if uploaded_file is not None:
                 try:
                     if uploaded_file.name.endswith('.csv'):
                         df_upload = pd.read_csv(uploaded_file)
                     else:
                         df_upload = pd.read_excel(uploaded_file)
-                        
+
                     required_cols = ["Employee Name", "Date", "In Time", "Out Time"]
                     if not all(c in df_upload.columns for c in required_cols):
                         st.error(f"Missing required columns! Required: {required_cols}")
                     else:
                         st.write("Preview of Uploaded Data:")
                         st.dataframe(df_upload.head(3), use_container_width=True)
-                        
+
                         if st.button("🚀 Process & Upload Bulk Data", type="primary"):
                             success_count = 0
                             grouped = df_upload.groupby('Date')
                             holidays_dict = get_flat_holiday_dates()
-                            
+
                             master_emps = st.session_state.emp_list
-                            
+
                             for date_val, group in grouped:
                                 try:
                                     d_obj = pd.to_datetime(date_val, format='%d/%m/%Y', errors='coerce').date()
-                                    if pd.isna(d_obj): continue
-                                    
+                                    if pd.isna(d_obj):
+                                        continue
+
                                     sheet_n = get_sheet_name(d_obj)
                                     day_s = d_obj.strftime("%a")
                                     date_s = d_obj.strftime("%d/%m/%Y")
                                     is_pub_hol = date_s in holidays_dict
-                                    
+
                                     df_db = load_data(sheet_n).copy()
                                     new_rows = []
-                                    
+
                                     for _, r in group.iterrows():
                                         ename = str(r['Employee Name']).strip().title()
-                                        
+
                                         if ename not in master_emps:
                                             continue
-                                            
+
                                         stat = str(r.get('Status', 'Regular')) if pd.notna(r.get('Status')) else 'Regular'
-                                        if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]: stat = "Regular"
-                                            
+                                        if stat not in ["Regular", "Holiday", "PL", "LWP", "Absent"]:
+                                            stat = "Regular"
+
                                         in_val = str(r['In Time']).strip() if pd.notna(r['In Time']) else "08:00"
                                         out_val = str(r['Out Time']).strip() if pd.notna(r['Out Time']) else "18:00"
-                                        
+
                                         existing_match = df_db[(df_db["Employee Name"].str.lower() == ename.lower()) & (df_db["Date"] == date_s)]
-                                        
+
                                         if not existing_match.empty:
                                             idx = existing_match.index[0]
                                             if stat not in ["PL", "LWP", "Absent"]:
                                                 curr_in = str(df_db.at[idx, "In Time"])
                                                 curr_out = str(df_db.at[idx, "Out Time"])
-                                                
+
                                                 if check_time_overlap(curr_in, curr_out, in_val, out_val):
-                                                    continue 
-                                                    
+                                                    continue
+
                                                 if in_val != "00:00" and curr_in != "00:00":
                                                     in_val = curr_in + ", " + in_val
                                                 if out_val != "00:00" and curr_out != "00:00":
                                                     out_val = curr_out + ", " + out_val
-                                            
+
                                             tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
                                             df_db.at[idx, "In Time"] = in_val
                                             df_db.at[idx, "Out Time"] = out_val
@@ -688,7 +732,7 @@ if selected_tab == "📝 Add Attendance":
                                             df_db.at[idx, "Status"] = stat
                                             success_count += 1
                                             continue
-                                            
+
                                         tot, late, out_e, ot = calculate_times(in_val, out_val, day_s, stat, is_pub_hol)
                                         new_rows.append({
                                             "Employee Name": ename, "Date": date_s, "Day": day_s,
@@ -696,26 +740,29 @@ if selected_tab == "📝 Add Attendance":
                                             "Total Hours": tot, "OT Hours": ot, "Status": stat
                                         })
                                         success_count += 1
-                                        
+
                                     if new_rows:
                                         df_db = pd.concat([df_db, pd.DataFrame(new_rows)], ignore_index=True)
                                     save_data(df_db, sheet_n)
-                                        
+
                                 except Exception:
                                     pass
-                                    
+
                             st.session_state.flash_msg = f"✅ Successfully processed {success_count} valid records!"
                             st.rerun()
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
 
+# ==========================================
+# TAB 2: DAILY ROSTER (ADMIN ONLY)
+# ==========================================
 elif selected_tab == "👥 Daily Roster" and is_admin_unlocked:
     st.subheader("👥 Daily Roster (Mark all employees for a day)")
-    
+
     rc1, rc_blank = st.columns([3, 7])
     with rc1:
-        roster_date = st.date_input("Select Date for Roster", value=date.today(), format="DD/MM/YYYY", key="roster_date")
-    
+        roster_date = st.date_input("Select Date for Roster", value=get_ist_today(), format="DD/MM/YYYY", key="roster_date")
+
     all_emp_list = st.session_state.emp_list
     if not all_emp_list:
         st.info("No employees found in the database. Please add them in 'Manage Employees' first.")
@@ -726,10 +773,10 @@ elif selected_tab == "👥 Daily Roster" and is_admin_unlocked:
         df_r_month = st.session_state.cached_data[r_sheet].copy()
         r_date_str = roster_date.strftime("%d/%m/%Y")
         r_day_str = roster_date.strftime("%a")
-        
+
         existing_emps_on_date = df_r_month[df_r_month["Date"] == r_date_str]["Employee Name"].tolist() if not df_r_month.empty else []
         pending_emps = [e for e in all_emp_list if e not in existing_emps_on_date]
-        
+
         if not pending_emps:
             st.markdown(f'<div class="auto-hide-success">✅ All employees are already marked for {r_date_str}.</div>', unsafe_allow_html=True)
         else:
@@ -739,7 +786,7 @@ elif selected_tab == "👥 Daily Roster" and is_admin_unlocked:
                 "In Time": ["08:00"] * len(pending_emps),
                 "Out Time": ["18:00"] * len(pending_emps)
             })
-            
+
             rost_col, rost_blank = st.columns([6, 4])
             with rost_col:
                 edited_roster = st.data_editor(
@@ -751,32 +798,32 @@ elif selected_tab == "👥 Daily Roster" and is_admin_unlocked:
                     hide_index=True,
                     num_rows="dynamic"
                 )
-                
+
                 if st.button("💾 Save Full Roster", type="primary"):
                     new_records = []
                     holidays_dict = get_flat_holiday_dates()
                     is_pub_hol = r_date_str in holidays_dict
-                    
+
                     for _, row in edited_roster.iterrows():
                         emp_n = row["Employee Name"]
                         stat = row["Status"]
-                        
+
                         if stat in ["PL", "LWP", "Absent"]:
                             in_t, out_t = "00:00", "00:00"
                         else:
                             try:
                                 in_t = row["In Time"].strftime("%H:%M") if isinstance(row["In Time"], time) else str(row["In Time"])
                                 out_t = row["Out Time"].strftime("%H:%M") if isinstance(row["Out Time"], time) else str(row["Out Time"])
-                            except:
+                            except Exception:
                                 in_t, out_t = "08:00", "18:00"
-                        
+
                         tot, late, out_e_hrs, ot = calculate_times(in_t, out_t, r_day_str, stat, is_pub_hol)
                         new_records.append({
                             "Employee Name": emp_n, "Date": r_date_str, "Day": r_day_str,
                             "In Time": in_t, "Out Time": out_t, "Late Hours": late, "Out Hours": out_e_hrs,
                             "Total Hours": tot, "OT Hours": ot, "Status": stat
                         })
-                    
+
                     if new_records:
                         df_new_roster = pd.DataFrame(new_records)
                         df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
@@ -784,28 +831,31 @@ elif selected_tab == "👥 Daily Roster" and is_admin_unlocked:
                         st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
                         st.rerun()
 
+# ==========================================
+# TAB 3: HOLIDAY CALENDAR
+# ==========================================
 elif selected_tab == "🌴 Holiday Calendar":
     st.subheader("🌴 Holiday Calendar")
     if st.session_state.cached_holidays is None:
         st.session_state.cached_holidays = load_holidays_data()
     hol_data = st.session_state.cached_holidays
-    
+
     if is_admin_unlocked:
         st.info("🔓 You have Administrator access to manage holidays.")
-        
+
         with st.form("add_holiday_form"):
             hc1, hc2, hc3, hc4, hc_blank = st.columns([1.5, 1.5, 2.5, 1.5, 2])
-            with hc1: 
-                f_date = st.date_input("From Date", format="DD/MM/YYYY")
-            with hc2: 
+            with hc1:
+                f_date = st.date_input("From Date", value=get_ist_today(), format="DD/MM/YYYY")
+            with hc2:
                 t_date = st.date_input("To Date", value=f_date, format="DD/MM/YYYY")
-            with hc3: 
+            with hc3:
                 hol_reason = st.text_input("Occasion / Reason", placeholder="e.g. Diwali Holidays")
             with hc4:
                 st.write("")
                 st.write("")
                 add_hol = st.form_submit_button("➕ Add Holiday", type="primary", use_container_width=True)
-        
+
         if add_hol:
             if t_date < f_date:
                 st.error("⚠️ 'To Date' cannot be before 'From Date'!")
@@ -813,8 +863,8 @@ elif selected_tab == "🌴 Holiday Calendar":
                 st.error("⚠️ Please enter a Reason!")
             else:
                 days_count = (t_date - f_date).days + 1
-                unique_id = str(uuid.uuid4())[:8] 
-                
+                unique_id = str(uuid.uuid4())[:8]
+
                 hol_data[unique_id] = {
                     "from": f_date.strftime("%d/%m/%Y"),
                     "to": t_date.strftime("%d/%m/%Y"),
@@ -824,7 +874,7 @@ elif selected_tab == "🌴 Holiday Calendar":
                 save_holidays_data(hol_data)
                 st.session_state.flash_msg = f"✅ Holiday Range Added! ({days_count} Days)"
                 st.rerun()
-            
+
         if hol_data:
             st.write("### 📅 Existing Holidays")
             hol_col, hol_blank = st.columns([6, 4])
@@ -834,25 +884,28 @@ elif selected_tab == "🌴 Holiday Calendar":
                         c1, c2, c3, c4 = st.columns([3, 3, 1, 1])
                         c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
                         c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
-                        
+
                         if c3.button("✏️ Edit", key=f"edit_{hid}"):
                             st.session_state[f"edit_mode_{hid}"] = not st.session_state.get(f"edit_mode_{hid}", False)
                             st.rerun()
-                            
+
                         if c4.button("🗑️ Delete", key=f"del_{hid}"):
                             del hol_data[hid]
                             save_holidays_data(hol_data)
                             st.session_state.flash_msg = "✅ Holiday entry deleted successfully!"
                             st.rerun()
-                        
+
                         if st.session_state.get(f"edit_mode_{hid}", False):
                             with st.form(f"edit_form_{hid}"):
                                 ec1, ec2, ec3, ec4 = st.columns([1.5, 1.5, 2, 1])
                                 curr_f = datetime.strptime(hinfo['from'], "%d/%m/%Y").date()
                                 curr_t = datetime.strptime(hinfo['to'], "%d/%m/%Y").date()
-                                with ec1: ef_date = st.date_input("From Date", value=curr_f, format="DD/MM/YYYY", key=f"ef_{hid}")
-                                with ec2: et_date = st.date_input("To Date", value=curr_t, format="DD/MM/YYYY", key=f"et_{hid}")
-                                with ec3: ereason = st.text_input("Reason", value=hinfo['reason'], key=f"er_{hid}")
+                                with ec1:
+                                    ef_date = st.date_input("From Date", value=curr_f, format="DD/MM/YYYY", key=f"ef_{hid}")
+                                with ec2:
+                                    et_date = st.date_input("To Date", value=curr_t, format="DD/MM/YYYY", key=f"et_{hid}")
+                                with ec3:
+                                    ereason = st.text_input("Reason", value=hinfo['reason'], key=f"er_{hid}")
                                 with ec4:
                                     st.write("")
                                     st.write("")
@@ -885,26 +938,29 @@ elif selected_tab == "🌴 Holiday Calendar":
             df_hol['SortDate'] = pd.to_datetime(df_hol['From Date'], format='%d/%m/%Y', errors='coerce')
             df_hol = df_hol.sort_values('SortDate').drop(columns=['SortDate']).reset_index(drop=True)
             df_hol.index = range(1, len(df_hol) + 1)
-            
+
             hol_col, _ = st.columns([6, 4])
             with hol_col:
                 st.dataframe(df_hol, use_container_width=True)
         else:
             st.write("No holidays declared yet.")
 
+# ==========================================
+# TAB 4: DASHBOARD & HISTORY
+# ==========================================
 elif selected_tab == "📊 Dashboard & History":
     formatted_name = st.session_state.current_user
-    current_month_str = get_sheet_name(date.today())
+    current_month_str = get_sheet_name(get_ist_today())
     all_sheets_raw = get_all_sheet_names()
     if current_month_str not in all_sheets_raw:
         all_sheets_raw.insert(0, current_month_str)
-    
+
     available_sheets = ["All Months"] + all_sheets_raw
 
     col_f1, col_f2, col_f_blank = st.columns([2, 2, 6])
     with col_f1:
         selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
-    
+
     if is_admin_unlocked:
         with col_f2:
             emp_list = ["All Employees"] + st.session_state.emp_list
@@ -942,33 +998,31 @@ elif selected_tab == "📊 Dashboard & History":
         df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
         df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
         df_display = df_display.reset_index(drop=True)
-        df_display = df_display.fillna("") 
+        df_display = df_display.fillna("")
 
         if selected_emp != "All Employees":
             df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == selected_emp.lower()]
 
         final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status", "_Original_Sheet", "_Original_Index"]
         for c in final_display_columns:
-                if c not in df_display.columns:
-                    df_display[c] = ""
+            if c not in df_display.columns:
+                df_display[c] = ""
         df_display = df_display[final_display_columns]
-        
+
         st.write("")
-        
+
         if is_admin_unlocked and selected_emp == "All Employees":
             filt_c1, filt_c2, filt_blank = st.columns([2, 2, 6])
-            
             with filt_c1:
                 emp_opts = sorted(df_display["Employee Name"].unique().tolist())
                 f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
-            
             if f_emps:
                 df_display = df_display[df_display["Employee Name"].isin(f_emps)]
 
         st.divider()
 
     if df_display.empty:
-        st.warning(f"No records found with the current filters.")
+        st.warning("No records found with the current filters.")
     else:
         total_reg_mins = 0
         for val in df_display["Total Hours"]:
@@ -976,7 +1030,7 @@ elif selected_tab == "📊 Dashboard & History":
                 h, m = map(int, str(val).split(":"))
                 total_reg_mins += h * 60 + m
         reg_hours, reg_mins = divmod(total_reg_mins, 60)
-        
+
         total_ot_mins = 0
         for val in df_display["OT Hours"]:
             if pd.notna(val) and ":" in str(val):
@@ -997,94 +1051,101 @@ elif selected_tab == "📊 Dashboard & History":
                 h, m = map(int, str(val).split(":"))
                 total_out_mins += h * 60 + m
         out_hours, out_mins = divmod(total_out_mins, 60)
-        
+
+        tot_lo_hours, tot_lo_mins = divmod(total_late_mins + total_out_mins, 60)
+
         pl_count = len(df_display[df_display["Status"] == "PL"])
         absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
 
         st.markdown('<div class="summary-container">', unsafe_allow_html=True)
         if selected_emp != "All Employees":
-            st.subheader(f"📊 Summary Data")
+            st.subheader("📊 Summary Data")
         else:
             st.subheader("📊 Master Attendance Data (All Employees)")
-            
+
         m1, m2, m3, m4, m5 = st.columns(5)
-        with m1: st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
-        with m2: st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
-        with m3: st.metric(label="⚠️ Total Late/Out Hrs", value=f"{late_hours+out_hours:02d}:{(late_mins+out_mins):02d}")
-        with m4: st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
-        with m5: st.metric(label="❌ Absent (LWP)", value=absent_count)
+        with m1:
+            st.metric(label="🕒 Total Working Hrs", value=f"{reg_hours:02d}:{reg_mins:02d}")
+        with m2:
+            st.metric(label="🔥 Total OT Hrs", value=f"{ot_hours:02d}:{ot_mins:02d}")
+        with m3:
+            st.metric(label="⚠️ Total Late/Out Hrs", value=f"{tot_lo_hours:02d}:{tot_lo_mins:02d}")
+        with m4:
+            st.metric(label="🌴 Paid Leaves (PL)", value=pl_count)
+        with m5:
+            st.metric(label="❌ Absent (LWP)", value=absent_count)
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.write("")
         st.divider()
-        
-        head_col1, head_col2 = st.columns([3,1])
+
+        head_col1, head_col2 = st.columns([3, 1])
         with head_col1:
             st.subheader("📋 Attendance Records")
         with head_col2:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 export_sheet_name = selected_sheet if selected_sheet != "All Months" else "All_Months"
-                
+
                 if selected_emp != "All Employees":
                     df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index", "Employee Name"], errors='ignore')
                     df_export.to_excel(writer, index=False, startrow=2, sheet_name=export_sheet_name)
                     worksheet = writer.sheets[export_sheet_name]
-                    
+
                     center_align = Alignment(horizontal='center', vertical='center')
                     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-                    
-                    red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid') 
-                    gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid') 
+
+                    red_fill = PatternFill(start_color='FF4C4C', end_color='FF4C4C', fill_type='solid')
+                    gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
                     yellow_fill_name = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
-                    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid') 
-                    holiday_fill = PatternFill(start_color='B3D9FF', end_color='B3D9FF', fill_type='solid') 
-                    
+                    total_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+                    holiday_fill = PatternFill(start_color='B3D9FF', end_color='B3D9FF', fill_type='solid')
+
                     white_bold_font = Font(color="FFFFFF", bold=True)
                     black_bold_font = Font(color="000000", bold=True)
                     header_font = Font(bold=True)
                     total_font = Font(bold=True, size=12)
-                    
+
                     worksheet.merge_cells('A1:B1')
                     worksheet.merge_cells('C1:D1')
-                    
+
                     a1 = worksheet['A1']
                     a1.value = "Employee Name :"
                     a1.fill = gray_fill
                     a1.font = header_font
                     a1.alignment = center_align
-                    
+
                     c1 = worksheet['C1']
                     c1.value = selected_emp
                     c1.fill = yellow_fill_name
                     c1.font = header_font
                     c1.alignment = center_align
-                    
+
                     for r in worksheet['A1:D1']:
                         for c in r:
                             c.border = thin_border
-                            
-                    for col_idx in range(1, 10): 
+
+                    for col_idx in range(1, 10):
                         cell = worksheet.cell(row=3, column=col_idx)
                         cell.fill = gray_fill
                         cell.font = header_font
                         cell.alignment = center_align
                         cell.border = thin_border
-                    
-                    day_col_idx = 2 
+
+                    day_col_idx = 2
                     status_col_idx = 9
                     max_data_row = 3 + len(df_export)
-                    
+
                     holidays_dict_xls = get_flat_holiday_dates()
-                    
+
                     for row_idx in range(4, max_data_row + 1):
                         date_val_xls = worksheet.cell(row=row_idx, column=1).value
                         day_val = worksheet.cell(row=row_idx, column=day_col_idx).value
                         status_val = worksheet.cell(row=row_idx, column=status_col_idx).value
-                        
+
                         is_sunday = (day_val == "Sun")
                         is_holiday = (status_val == "Holiday") or (str(date_val_xls) in holidays_dict_xls)
-                        
+
                         for col_idx in range(1, 10):
                             cell = worksheet.cell(row=row_idx, column=col_idx)
                             cell.alignment = center_align
@@ -1095,16 +1156,16 @@ elif selected_tab == "📊 Dashboard & History":
                             elif is_holiday:
                                 cell.fill = holiday_fill
                                 cell.font = black_bold_font
-                                
+
                     total_row_idx = max_data_row + 2
                     worksheet.merge_cells(start_row=total_row_idx, start_column=3, end_row=total_row_idx, end_column=4)
-                    
+
                     worksheet.cell(row=total_row_idx, column=3, value="TOTAL")
                     worksheet.cell(row=total_row_idx, column=5, value=f"{late_hours:02d}:{late_mins:02d}")
                     worksheet.cell(row=total_row_idx, column=6, value=f"{out_hours:02d}:{out_mins:02d}")
                     worksheet.cell(row=total_row_idx, column=7, value=f"{reg_hours:02d}:{reg_mins:02d}")
                     worksheet.cell(row=total_row_idx, column=8, value=f"{ot_hours:02d}:{ot_mins:02d}")
-                    
+
                     for col_idx in range(1, 10):
                         cell = worksheet.cell(row=total_row_idx, column=col_idx)
                         cell.border = thin_border
@@ -1115,39 +1176,39 @@ elif selected_tab == "📊 Dashboard & History":
                     empty_row_idx = max_data_row + 1
                     for row_idx in range(1, worksheet.max_row + 1):
                         if row_idx == 2 or row_idx == empty_row_idx:
-                            worksheet.row_dimensions[row_idx].height = 6 
+                            worksheet.row_dimensions[row_idx].height = 6
                         else:
                             worksheet.row_dimensions[row_idx].height = 18
-                    
+
                     for col_idx in range(1, worksheet.max_column + 1):
                         max_length = 0
                         col_letter = get_column_letter(col_idx)
-                        for row_idx in range(3, worksheet.max_row + 1): 
+                        for row_idx in range(3, worksheet.max_row + 1):
                             cell_val = worksheet.cell(row=row_idx, column=col_idx).value
                             try:
                                 if cell_val and len(str(cell_val)) > max_length:
                                     max_length = len(str(cell_val))
-                            except:
+                            except Exception:
                                 pass
                         worksheet.column_dimensions[col_letter].width = max_length + 3
                 else:
                     df_export = df_display.drop(columns=["_Original_Sheet", "_Original_Index"], errors='ignore')
                     df_export.to_excel(writer, index=False, sheet_name=export_sheet_name)
                     worksheet = writer.sheets[export_sheet_name]
-                    
+
                     header_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
                     header_font = Font(bold=True)
                     for cell in worksheet[1]:
                         cell.fill = header_fill
                         cell.font = header_font
-                        
+
                     for column_cells in worksheet.columns:
                         length = max(len(str(cell.value)) for cell in column_cells)
                         worksheet.column_dimensions[get_column_letter(column_cells[0].column)].width = length + 2
 
             excel_data = buffer.getvalue()
             file_name_export = f"Attendance_{selected_sheet}.xlsx".replace(" ", "_")
-            
+
             st.download_button(
                 label="⬇️ Download Excel",
                 data=excel_data,
@@ -1157,23 +1218,23 @@ elif selected_tab == "📊 Dashboard & History":
             )
 
         st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
-        
+
+        hol_dict_hl = get_flat_holiday_dates()
         for index, row in df_display.iterrows():
-            status_color = "#5cd65c" 
-            hol_dict_hl = get_flat_holiday_dates()
-            
-            if row['Day'] == 'Sun': 
+            status_color = "#5cd65c"
+
+            if row['Day'] == 'Sun':
                 status_color = "#ff4c4c"
-            elif row['Status'] == 'Holiday' or row['Date'] in hol_dict_hl: 
+            elif row['Status'] == 'Holiday' or row['Date'] in hol_dict_hl:
                 status_color = "#4da6ff"
-            elif row['Status'] in ['PL', 'LWP', 'Absent']: 
+            elif row['Status'] in ['PL', 'LWP', 'Absent']:
                 status_color = "#ffb366"
-            elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}": 
+            elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
                 status_color = "#ffff66"
-            
-            # 🛡️ SECURITY LOGIC: Own records or Admin can edit
-            can_edit = is_admin_unlocked or (is_employee_unlocked and row['Employee Name'] == st.session_state.current_user)
-            
+
+            # Security: Admins can edit all; Employees can edit their own records
+            can_edit = is_admin_unlocked or (is_employee_unlocked and row['Employee Name'].strip().lower() == st.session_state.current_user.strip().lower())
+
             col_rec, col_blank = st.columns([8, 2])
             with col_rec:
                 with st.container(border=True):
@@ -1181,7 +1242,7 @@ elif selected_tab == "📊 Dashboard & History":
                         c_info, c_edit, c_del = st.columns([6, 1, 1])
                     else:
                         c_info, c_blank_space = st.columns([7, 1])
-                    
+
                     with c_info:
                         st.markdown(f"""
                         <div style="border-left: 5px solid {status_color}; padding: 4px 15px; border-radius: 2px;">
@@ -1190,26 +1251,26 @@ elif selected_tab == "📊 Dashboard & History":
                             <span style="font-size: 0.95em; color: var(--text-color); opacity: 0.8;">{row['Status']} | In: {row['In Time']} - Out: {row['Out Time']} | Total: <span style="font-weight:bold;">{row['Total Hours']}</span> <span style="font-size: 0.9em;">(OT: {row['OT Hours']} | Late: {row['Late Hours']} | Out: {row['Out Hours']})</span></span>
                         </div>
                         """, unsafe_allow_html=True)
-                    
+
                     if can_edit:
                         with c_edit:
                             if st.button("✏️ Edit", key=f"e_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
                                 st.session_state.edit_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                                 st.session_state.del_row = None
                                 st.rerun()
-                        
+
                         with c_del:
                             if st.button("🗑️ Del", key=f"d_{row['_Original_Index']}_{row['_Original_Sheet']}", use_container_width=True):
                                 st.session_state.del_row = {"index": row['_Original_Index'], "sheet": row['_Original_Sheet'], "data": row}
                                 st.session_state.edit_row = None
                                 st.rerun()
-                                
+
                         if st.session_state.edit_row and st.session_state.edit_row["index"] == row['_Original_Index'] and st.session_state.edit_row["sheet"] == row['_Original_Sheet']:
                             st.markdown("---")
                             row_data = st.session_state.edit_row["data"]
                             selected_idx = st.session_state.edit_row["index"]
                             selected_sheet_orig = st.session_state.edit_row["sheet"]
-                            
+
                             with st.form(f"edit_form_hist_{selected_idx}_{selected_sheet_orig}"):
                                 ce1, ce2, ce3, ce4, ce5, ce6 = st.columns([1.5, 1.5, 1, 1, 0.8, 0.8])
                                 with ce1:
@@ -1217,12 +1278,13 @@ elif selected_tab == "📊 Dashboard & History":
                                     e_date = st.date_input("Date", value=d_obj, format="DD/MM/YYYY")
                                 with ce2:
                                     def_status = ["Regular", "Holiday", "PL", "LWP", "Absent"]
-                                    e_stat = st.selectbox("Status", def_status, index=def_status.index(row_data.get("Status", "Regular")))
+                                    curr_stat = row_data.get("Status", "Regular")
+                                    e_stat = st.selectbox("Status", def_status, index=def_status.index(curr_stat) if curr_stat in def_status else 0)
                                 with ce3:
                                     e_in = st.text_input("In Time", value=row_data["In Time"])
                                 with ce4:
                                     e_out = st.text_input("Out Time", value=row_data["Out Time"])
-                                    
+
                                 with ce5:
                                     st.write("")
                                     st.write("")
@@ -1231,16 +1293,16 @@ elif selected_tab == "📊 Dashboard & History":
                                     st.write("")
                                     st.write("")
                                     btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
-                                    
+
                                 if btn_update:
                                     formatted_e_name = row_data["Employee Name"].strip().title()
                                     date_str_e = e_date.strftime("%d/%m/%Y")
                                     new_sheet = get_sheet_name(e_date)
-                                    
+
                                     if selected_sheet_orig not in st.session_state.cached_data:
                                         st.session_state.cached_data[selected_sheet_orig] = load_data(selected_sheet_orig)
                                     df_orig = st.session_state.cached_data[selected_sheet_orig].copy()
-                                    
+
                                     if new_sheet == selected_sheet_orig:
                                         temp_check = df_orig.drop(selected_idx, errors='ignore')
                                         is_dup = not temp_check[(temp_check["Employee Name"].astype(str).str.strip().str.lower() == formatted_e_name.lower()) & (temp_check["Date"] == date_str_e)].empty
@@ -1257,7 +1319,7 @@ elif selected_tab == "📊 Dashboard & History":
                                         holidays_dict = get_flat_holiday_dates()
                                         is_pub_hol = date_str_e in holidays_dict
                                         t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
-                                        
+
                                         if e_stat in ["PL", "LWP", "Absent"]:
                                             in_t_str, out_t_str = "00:00", "00:00"
                                         else:
@@ -1275,7 +1337,7 @@ elif selected_tab == "📊 Dashboard & History":
                                             "OT Hours": [ot_hrs],
                                             "Status": [e_stat]
                                         })
-                                        
+
                                         if new_sheet == selected_sheet_orig:
                                             updated_row.index = [selected_idx]
                                             df_orig.update(updated_row)
@@ -1285,9 +1347,9 @@ elif selected_tab == "📊 Dashboard & History":
                                             save_data(df_orig, selected_sheet_orig)
                                             df_new = pd.concat([df_new, updated_row], ignore_index=True)
                                             save_data(df_new, new_sheet)
-                                        
+
                                         st.session_state.edit_row = None
-                                        st.session_state.flash_msg = f"✅ Record updated successfully!"
+                                        st.session_state.flash_msg = "✅ Record updated successfully!"
                                         st.rerun()
                                 if btn_cancel:
                                     st.session_state.edit_row = None
@@ -1298,7 +1360,7 @@ elif selected_tab == "📊 Dashboard & History":
                             st.warning(f"Are you sure you want to delete this record for {row['Employee Name']}?")
                             col_y, col_n = st.columns([1, 10])
                             with col_y:
-                                if st.button("Yes", type="primary", key=f"conf_d_{row['_Original_Index']}"):
+                                if st.button("Yes", type="primary", key=f"conf_d_{row['_Original_Index']}_{row['_Original_Sheet']}"):
                                     sht = st.session_state.del_row["sheet"]
                                     idx = st.session_state.del_row["index"]
                                     if sht not in st.session_state.cached_data:
@@ -1306,28 +1368,33 @@ elif selected_tab == "📊 Dashboard & History":
                                     df_orig = st.session_state.cached_data[sht].copy()
                                     df_orig = df_orig.drop(idx, errors='ignore')
                                     save_data(df_orig, sht)
-                                    
+
                                     st.session_state.del_row = None
                                     st.session_state.flash_msg = "✅ Entry permanently deleted!"
                                     st.rerun()
                             with col_n:
-                                if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}"):
+                                if st.button("Cancel", key=f"canc_d_{row['_Original_Index']}_{row['_Original_Sheet']}"):
                                     st.session_state.del_row = None
                                     st.rerun()
 
-elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
+# ==========================================
+# TAB 5: MANAGE EMPLOYEES (ADMIN ONLY)
+# ==========================================
+elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
     st.subheader("⚙️ Master Employee Control (Passwords & Details)")
-    st.info("💡 Edit passwords directly in the table below and click 'Save Master Data' at the bottom.")
-            
+    st.info("💡 Edit employee names, passwords, or details directly in the table below and click 'Save Master Data' at the bottom.")
+
     with st.form("add_new_emp_form"):
-        col_e1, col_e2, col_e_blank = st.columns([2.5, 1.2, 4.3])
+        col_e1, col_e2, col_e3, col_e_blank = st.columns([2.5, 1.5, 1.5, 2.5])
         with col_e1:
             new_emp_name = st.text_input("Enter New Employee Name", placeholder="e.g. Rahul Patel")
         with col_e2:
+            new_emp_pwd = st.text_input("Initial Password", value="123")
+        with col_e3:
             st.write("")
             st.write("")
             add_emp_btn = st.form_submit_button("➕ Add Employee", type="primary", use_container_width=True)
-    
+
     if add_emp_btn:
         clean_name = new_emp_name.strip().title()
         if not clean_name:
@@ -1337,52 +1404,63 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
         else:
             curr_dict = st.session_state.emp_dict.copy()
             if clean_name not in curr_dict:
-                curr_dict[clean_name] = {"password": "123", "details": ""}
+                curr_dict[clean_name] = {"password": new_emp_pwd.strip() or "123", "details": ""}
                 save_employee_dict(curr_dict)
                 st.session_state.flash_msg = f"✅ Employee '{clean_name}' successfully added!"
                 st.rerun()
             else:
-                st.error("Employee already exists!")
-    
+                st.error("⚠️ Employee already exists!")
+
     st.divider()
-    
-    if st.session_state.emp_dict:
-        emp_records = []
-        for name, data in st.session_state.emp_dict.items():
-            if name != "Administrator": # Hide Admin from regular employee table
-                emp_records.append({"Employee Name": name, "Password": data.get("password", "123"), "Details/Phone": data.get("details", "")})
-        
+
+    emp_records = []
+    for name, data in st.session_state.emp_dict.items():
+        if name != "Administrator":
+            emp_records.append({
+                "Employee Name": name,
+                "Password": data.get("password", "123"),
+                "Details/Phone": data.get("details", "")
+            })
+
+    if emp_records:
         emp_df = pd.DataFrame(emp_records)
-        
-        edited_emp_df = st.data_editor(
-            emp_df, 
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "Employee Name": st.column_config.TextColumn("Employee Name", required=True),
-                "Password": st.column_config.TextColumn("Password (Required)", required=True),
-                "Details/Phone": st.column_config.TextColumn("Details/Phone")
-            }
-        )
-        
-        if st.button("💾 Save Master Data", type="primary"):
-            new_emp_dict = {"Administrator": st.session_state.emp_dict.get("Administrator", {"password": "1234", "details": "Master Admin"})}
-            for _, r in edited_emp_df.iterrows():
-                ename = str(r["Employee Name"]).strip().title()
-                if ename and ename != "Administrator":
-                    new_emp_dict[ename] = {
-                        "password": str(r["Password"]).strip(),
-                        "details": str(r.get("Details/Phone", "")).strip()
-                    }
-            save_employee_dict(new_emp_dict)
-            st.session_state.flash_msg = "✅ All passwords and details saved successfully!"
-            st.rerun()
-        
+    else:
+        emp_df = pd.DataFrame(columns=["Employee Name", "Password", "Details/Phone"])
+
+    edited_emp_df = st.data_editor(
+        emp_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Employee Name": st.column_config.TextColumn("Employee Name", required=True),
+            "Password": st.column_config.TextColumn("Password (Required)", required=True),
+            "Details/Phone": st.column_config.TextColumn("Details/Phone")
+        }
+    )
+
+    if st.button("💾 Save Master Data", type="primary"):
+        new_emp_dict = {"Administrator": st.session_state.emp_dict.get("Administrator", {"password": "1234", "details": "Master Admin"})}
+        for _, r in edited_emp_df.iterrows():
+            raw_name = r.get("Employee Name", "")
+            if pd.isna(raw_name):
+                continue
+            ename = str(raw_name).strip().title()
+            if ename and ename != "Administrator":
+                raw_pwd = r.get("Password", "123")
+                raw_det = r.get("Details/Phone", "")
+                new_emp_dict[ename] = {
+                    "password": "123" if pd.isna(raw_pwd) or not str(raw_pwd).strip() else str(raw_pwd).strip(),
+                    "details": "" if pd.isna(raw_det) else str(raw_det).strip()
+                }
+        save_employee_dict(new_emp_dict)
+        st.session_state.flash_msg = "✅ All passwords and details saved successfully!"
+        st.rerun()
+
     st.divider()
-    
-    # 🚀 EMERGENCY DATA FIXER 🚀
-    st.subheader("🛠️ Emergency Data Fixer (Restore Old Data)")
-    st.error("⚠️ If an employee name was changed and their historical data is missing from the dashboard, use this tool to restore it.")
+
+    # Emergency Data Fixer
+    st.subheader("🛠️ Emergency Data Fixer (Restore Old Data & Remove Duplicate)")
+    st.error("⚠️ If you changed an employee's name (e.g. 'Kp' to 'Krutin Patel'), this tool updates all their past attendance to the new name, migrates their password, and permanently removes the old name from the dropdown.")
 
     with st.form("fix_data_form"):
         f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
@@ -1393,7 +1471,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
         with f_col3:
             st.write("")
             st.write("")
-            fix_submit = st.form_submit_button("🚀 Fix All Historical Data", type="primary", use_container_width=True)
+            fix_submit = st.form_submit_button("🚀 Fix History & Remove Old Name", type="primary", use_container_width=True)
 
     if fix_submit:
         if not old_name_fix or not new_name_fix:
@@ -1401,7 +1479,8 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
         else:
             success_count = 0
             sheets_to_check = get_all_sheet_names()
-            
+
+            # Step 1: Fix historical sheets
             for sheet in sheets_to_check:
                 url_sheet = f"{FIREBASE_URL}/{sheet}.json"
                 try:
@@ -1409,7 +1488,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
                     if res_sheet.status_code == 200 and res_sheet.json():
                         sheet_data = res_sheet.json()
                         updated = False
-                        
+
                         if isinstance(sheet_data, dict):
                             for k, v in sheet_data.items():
                                 if v and str(v.get("Employee Name", "")).strip().lower() == old_name_fix.strip().lower():
@@ -1418,7 +1497,7 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
                             if updated:
                                 requests.put(url_sheet, json=sheet_data, timeout=10)
                                 success_count += 1
-                                
+
                         elif isinstance(sheet_data, list):
                             for i in range(len(sheet_data)):
                                 if sheet_data[i] and str(sheet_data[i].get("Employee Name", "")).strip().lower() == old_name_fix.strip().lower():
@@ -1429,32 +1508,47 @@ elif selected_tab == "👤 Manage Employees" and is_admin_unlocked:
                                 success_count += 1
                 except Exception:
                     pass
-            
+
+            # Step 2: Migrate password and remove old name from employee_dict (case-insensitive match)
+            clean_new = new_name_fix.strip().title()
+            curr_dict = st.session_state.emp_dict.copy()
+            matched_old_keys = [k for k in curr_dict.keys() if k.strip().lower() == old_name_fix.strip().lower() and k != "Administrator"]
+            for old_key in matched_old_keys:
+                old_details = curr_dict[old_key]
+                if clean_new not in curr_dict:
+                    curr_dict[clean_new] = old_details
+                if old_key != clean_new:
+                    del curr_dict[old_key]
+            if matched_old_keys:
+                save_employee_dict(curr_dict)
+
             st.session_state.cached_data.clear()
             load_data.clear()
-            st.session_state.flash_msg = f"✅ All historical data restored! '{old_name_fix}' has been updated to '{new_name_fix}' across {success_count} months of data."
+            st.session_state.flash_msg = f"✅ Data Restored! '{old_name_fix}' updated to '{new_name_fix}' across {success_count} months. Old name removed from dropdown."
             st.rerun()
 
 # ==========================================
-# 🔑 CHANGE PASSWORD (FOR EVERYONE)
+# TAB 6: CHANGE PASSWORD (FOR EVERYONE)
 # ==========================================
 elif selected_tab == "🔑 Change Password":
     st.subheader(f"🔑 Update Password for: **{st.session_state.current_user}**")
     st.markdown("Update your password below. Please do not share your new password with anyone.")
-    
+
     with st.form("change_pwd_form"):
         cp1, cp2, cp3 = st.columns([1, 1, 2])
-        with cp1: old_pwd = st.text_input("Current Password", type="password")
-        with cp2: new_pwd = st.text_input("New Password", type="password")
+        with cp1:
+            old_pwd = st.text_input("Current Password", type="password")
+        with cp2:
+            new_pwd = st.text_input("New Password", type="password")
         with cp3:
             st.write("")
             st.write("")
             btn_update_pwd = st.form_submit_button("Update Password", type="primary")
-            
+
         if btn_update_pwd:
             curr_dict = st.session_state.emp_dict.copy()
             actual_pwd = curr_dict.get(st.session_state.current_user, {}).get("password", "123")
-            
+
             if old_pwd != actual_pwd:
                 st.error("❌ Incorrect Current Password!")
             elif len(new_pwd.strip()) < 3:
