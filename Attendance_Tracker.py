@@ -880,7 +880,7 @@ elif selected_tab == "🌴 Holiday Calendar":
             with hol_col:
                 for hid, hinfo in list(hol_data.items()):
                     with st.container(border=True):
-                        c1, c2, c3, c4 = st.columns([3, 3, 1, 1])
+                        c1, c2, c3, c4 = st.columns([3, 3, 1, 1], vertical_alignment="bottom")
                         c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
                         c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
 
