@@ -854,7 +854,7 @@ elif selected_tab == "🌴 Holiday Calendar":
             with hc4:
                 st.write("")
                 st.write("")
-                add_hol = st.form_submit_button("➕ Add Holiday", type="primary", use_container_width=True)
+                add_hol = st.form_submit_button("➕ Add Holiday", type="primary")
 
         if add_hol:
             if t_date < f_date:
