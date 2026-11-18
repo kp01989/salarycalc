@@ -425,18 +425,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📅 Advanced Attendance Tracker")
-
-if st.session_state.flash_msg:
-    st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
-    st.session_state.flash_msg = ""
-
 # ==========================================
 # MASTER LOGIN SYSTEM
 # ==========================================
 if not st.session_state.is_logged_in:
-    st.markdown("### 🔒 Please Login to Continue")
-    col_login, _ = st.columns([4, 6])
+    st.markdown("<h1 style='text-align: center;'>📅 Advanced Attendance Tracker</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>🔒 Please Login to Continue</h3>", unsafe_allow_html=True)
+    st.write("")
+
+    _, col_login, _ = st.columns([3, 4, 3])
     with col_login:
         with st.container(border=True):
             dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
@@ -454,6 +451,12 @@ if not st.session_state.is_logged_in:
                     else:
                         st.error("❌ Incorrect Password!")
     st.stop()
+
+st.title("📅 Advanced Attendance Tracker")
+
+if st.session_state.flash_msg:
+    st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
+    st.session_state.flash_msg = ""
 
 # ==========================================
 # NAVIGATION MENU (LOGGED IN USER)
