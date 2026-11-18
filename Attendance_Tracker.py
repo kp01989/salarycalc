@@ -462,11 +462,11 @@ if not st.session_state.is_logged_in:
 # ==========================================
 # NAVIGATION MENU (LOGGED IN USER)
 # ==========================================
-header_col1, header_col2 = st.columns([8, 2])
+header_col1, header_col2 = st.columns([9, 1])
 with header_col1:
     st.markdown(f"👤 Logged in as: **{st.session_state.current_user}** ({st.session_state.user_role})")
 with header_col2:
-    if st.button("🚪 Logout", use_container_width=True):
+    if st.button("🚪 Logout"):
         logout()
         st.rerun()
 
