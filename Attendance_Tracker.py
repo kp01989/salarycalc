@@ -394,7 +394,17 @@ st.markdown("""
             animation: instantHide 0s 5s forwards;
         }
         
-        div[data-testid="InputInstructions"] { display: none !important; }
+        div[data-testid="InputInstructions"] { 
+            display: none !important; 
+        }
+
+        div[data-testid="stFormSubmitButton"] {
+            margin-bottom: 4px !important;
+        }
+        div[data-testid="stFormSubmitButton"] button {
+            height: 40px !important;
+            min-height: 40px !important;
+        }
         
         div[data-testid="stForm"] > div:first-child {
             display: flex;
