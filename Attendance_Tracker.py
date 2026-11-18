@@ -844,7 +844,7 @@ elif selected_tab == "🌴 Holiday Calendar":
         st.info("🔓 You have Administrator access to manage holidays.")
 
         with st.form("add_holiday_form"):
-            hc1, hc2, hc3, hc4, hc_blank = st.columns([1.5, 1.5, 2.5, 1.5, 2])
+            hc1, hc2, hc3, hc4, hc_blank = st.columns([1.5, 1.5, 2.5, 1.5, 2], vertical_alignment="bottom")
             with hc1:
                 f_date = st.date_input("From Date", value=get_ist_today(), format="DD/MM/YYYY")
             with hc2:
@@ -852,7 +852,6 @@ elif selected_tab == "🌴 Holiday Calendar":
             with hc3:
                 hol_reason = st.text_input("Occasion / Reason", placeholder="e.g. Diwali Holidays")
             with hc4:
-                st.write("")
                 st.write("")
                 add_hol = st.form_submit_button("➕ Add Holiday", type="primary")
 
