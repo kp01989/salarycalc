@@ -1537,8 +1537,7 @@ elif selected_tab == "🔑 Change Password":
             new_pwd = st.text_input("New Password", type="password")
         with cp3:
             st.write("")
-            st.write("")
-            btn_update_pwd = st.form_submit_button("Update Password", type="primary")
+            btn_update_pwd = st.form_submit_button("Update Password", type="primary", vertical_alignment="bottom")
 
         if btn_update_pwd:
             curr_dict = st.session_state.emp_dict.copy()
