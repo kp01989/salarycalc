@@ -394,23 +394,7 @@ st.markdown("""
             animation: instantHide 0s 5s forwards;
         }
         
-        div[data-testid="InputInstructions"] { 
-            display: none !important; 
-        }
-
-        div[data-testid="stFormSubmitButton"] {
-            margin-bottom: 4px !important;
-        }
-        div[data-testid="stFormSubmitButton"] button {
-            height: 40px !important;
-            min-height: 40px !important;
-        }
-        
-        div[data-testid="stForm"] > div:first-child {
-            display: flex;
-            align-items: flex-end;
-            gap: 15px;
-        }
+        div[data-testid="InputInstructions"] { display: none !important; }
         
         div.row-widget.stRadio > div[role="radiogroup"] {
             background-color: var(--secondary-background-color);
@@ -452,27 +436,29 @@ if st.session_state.flash_msg:
 # ==========================================
 if not st.session_state.is_logged_in:
     st.markdown("### 🔒 Please Login to Continue")
-    with st.container(border=True):
-        dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
-        login_user = st.selectbox("Select Your Profile", options=dropdown_options, key="login_select")
+    col_login, _ = st.columns([4, 6])
+    with col_login:
+        with st.container(border=True):
+            dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
+            login_user = st.selectbox("Select Your Profile", options=dropdown_options, key="login_select")
 
-        if login_user != "-- Select Employee --":
-            pwd = st.text_input("🔑 Enter Password", type="password", key="login_pwd")
-            if st.button("Unlock", type="primary"):
-                correct_pwd = st.session_state.emp_dict.get(login_user, {}).get("password", "123")
-                if pwd == correct_pwd:
-                    st.session_state.is_logged_in = True
-                    st.session_state.user_role = "Admin" if login_user == "Administrator" else "Employee"
-                    st.session_state.current_user = login_user
-                    st.rerun()
-                else:
-                    st.error("❌ Incorrect Password!")
+            if login_user != "-- Select Employee --":
+                pwd = st.text_input("🔑 Enter Password", type="password", key="login_pwd")
+                if st.button("Unlock", type="primary"):
+                    correct_pwd = st.session_state.emp_dict.get(login_user, {}).get("password", "123")
+                    if pwd == correct_pwd:
+                        st.session_state.is_logged_in = True
+                        st.session_state.user_role = "Admin" if login_user == "Administrator" else "Employee"
+                        st.session_state.current_user = login_user
+                        st.rerun()
+                    else:
+                        st.error("❌ Incorrect Password!")
     st.stop()
 
 # ==========================================
 # NAVIGATION MENU (LOGGED IN USER)
 # ==========================================
-header_col1, header_col2 = st.columns([9, 1])
+header_col1, header_col2 = st.columns([9, 1], vertical_alignment="center")
 with header_col1:
     st.markdown(f"👤 Logged in as: **{st.session_state.current_user}** ({st.session_state.user_role})")
 with header_col2:
@@ -500,7 +486,9 @@ if selected_tab == "📝 Add Attendance":
 
     if entry_mode == "✏️ Manual Entry":
         if is_admin_unlocked:
-            target_emp = st.selectbox("Select Employee to Add Attendance", options=st.session_state.emp_list)
+            col_sel, _ = st.columns([3, 7])
+            with col_sel:
+                target_emp = st.selectbox("Select Employee to Add Attendance", options=st.session_state.emp_list)
         else:
             target_emp = st.session_state.current_user
             st.markdown(f"### Adding Attendance for: **{target_emp}**")
@@ -560,7 +548,6 @@ if selected_tab == "📝 Add Attendance":
             with c4:
                 out_time = st.time_input("Out Time", value=default_out, key=f"out_{target_emp}_{st.session_state.form_reset_counter}")
             with c5:
-                st.write("")
                 submit = st.form_submit_button("Save Entry", type="primary")
 
         if submit:
@@ -861,7 +848,6 @@ elif selected_tab == "🌴 Holiday Calendar":
             with hc3:
                 hol_reason = st.text_input("Occasion / Reason", placeholder="e.g. Diwali Holidays")
             with hc4:
-                st.write("")
                 add_hol = st.form_submit_button("➕ Add Holiday", type="primary")
 
         if add_hol:
@@ -889,15 +875,15 @@ elif selected_tab == "🌴 Holiday Calendar":
             with hol_col:
                 for hid, hinfo in list(hol_data.items()):
                     with st.container(border=True):
-                        c1, c2, c3, c4 = st.columns([3, 3, 1, 1], vertical_alignment="bottom")
+                        c1, c2, c3, c4 = st.columns([3, 3, 1, 1], vertical_alignment="center")
                         c1.write(f"🗓️ **{hinfo['from']}** to **{hinfo['to']}**")
                         c2.write(f"✨ {hinfo['reason']} ({hinfo['days']} Days)")
 
-                        if c3.button("✏️ Edit", key=f"edit_{hid}"):
+                        if c3.button("✏️ Edit", key=f"edit_{hid}", use_container_width=True):
                             st.session_state[f"edit_mode_{hid}"] = not st.session_state.get(f"edit_mode_{hid}", False)
                             st.rerun()
 
-                        if c4.button("🗑️ Delete", key=f"del_{hid}"):
+                        if c4.button("🗑️ Delete", key=f"del_{hid}", use_container_width=True):
                             del hol_data[hid]
                             save_holidays_data(hol_data)
                             st.session_state.flash_msg = "✅ Holiday entry deleted successfully!"
@@ -905,7 +891,7 @@ elif selected_tab == "🌴 Holiday Calendar":
 
                         if st.session_state.get(f"edit_mode_{hid}", False):
                             with st.form(f"edit_form_{hid}"):
-                                ec1, ec2, ec3, ec4 = st.columns([1.5, 1.5, 2, 1])
+                                ec1, ec2, ec3, ec4 = st.columns([1.5, 1.5, 2, 1], vertical_alignment="bottom")
                                 curr_f = datetime.strptime(hinfo['from'], "%d/%m/%Y").date()
                                 curr_t = datetime.strptime(hinfo['to'], "%d/%m/%Y").date()
                                 with ec1:
@@ -915,8 +901,6 @@ elif selected_tab == "🌴 Holiday Calendar":
                                 with ec3:
                                     ereason = st.text_input("Reason", value=hinfo['reason'], key=f"er_{hid}")
                                 with ec4:
-                                    st.write("")
-                                    st.write("")
                                     update_btn = st.form_submit_button("💾 Save", type="primary")
 
                             if update_btn:
@@ -1087,7 +1071,7 @@ elif selected_tab == "📊 Dashboard & History":
         st.write("")
         st.divider()
 
-        head_col1, head_col2 = st.columns([3, 1])
+        head_col1, head_col2 = st.columns([8, 2], vertical_alignment="center")
         with head_col1:
             st.subheader("📋 Attendance Records")
         with head_col2:
@@ -1221,8 +1205,7 @@ elif selected_tab == "📊 Dashboard & History":
                 label="⬇️ Download Excel",
                 data=excel_data,
                 file_name=file_name_export,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
         st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
@@ -1247,9 +1230,9 @@ elif selected_tab == "📊 Dashboard & History":
             with col_rec:
                 with st.container(border=True):
                     if can_edit:
-                        c_info, c_edit, c_del = st.columns([6, 1, 1])
+                        c_info, c_edit, c_del = st.columns([6, 1, 1], vertical_alignment="center")
                     else:
-                        c_info, c_blank_space = st.columns([7, 1])
+                        c_info, c_blank_space = st.columns([7, 1], vertical_alignment="center")
 
                     with c_info:
                         st.markdown(f"""
@@ -1280,7 +1263,7 @@ elif selected_tab == "📊 Dashboard & History":
                             selected_sheet_orig = st.session_state.edit_row["sheet"]
 
                             with st.form(f"edit_form_hist_{selected_idx}_{selected_sheet_orig}"):
-                                ce1, ce2, ce3, ce4, ce5, ce6 = st.columns([1.5, 1.5, 1, 1, 0.8, 0.8])
+                                ce1, ce2, ce3, ce4, ce5, ce6 = st.columns([1.5, 1.5, 1, 1, 0.8, 0.8], vertical_alignment="bottom")
                                 with ce1:
                                     d_obj = datetime.strptime(row_data["Date"], "%d/%m/%Y").date()
                                     e_date = st.date_input("Date", value=d_obj, format="DD/MM/YYYY")
@@ -1292,13 +1275,10 @@ elif selected_tab == "📊 Dashboard & History":
                                     e_in = st.text_input("In Time", value=row_data["In Time"])
                                 with ce4:
                                     e_out = st.text_input("Out Time", value=row_data["Out Time"])
-
                                 with ce5:
-                                    st.write("")
-                                    btn_update = st.form_submit_button("Save", type="primary")
+                                    btn_update = st.form_submit_button("Save", type="primary", use_container_width=True)
                                 with ce6:
-                                    st.write("")
-                                    btn_cancel = st.form_submit_button("Cancel")
+                                    btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
 
                                 if btn_update:
                                     formatted_e_name = row_data["Employee Name"].strip().title()
@@ -1391,14 +1371,13 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
     st.info("💡 Edit employee names, passwords, or details directly in the table below and click 'Save Master Data' at the bottom.")
 
     with st.form("add_new_emp_form"):
-        col_e1, col_e2, col_e3, col_e_blank = st.columns([2.5, 1.5, 1.5, 2.5])
+        col_e1, col_e2, col_e3, col_e_blank = st.columns([2.5, 1.5, 1.5, 2.5], vertical_alignment="bottom")
         with col_e1:
             new_emp_name = st.text_input("Enter New Employee Name", placeholder="e.g. Rahul Patel")
         with col_e2:
             new_emp_pwd = st.text_input("Initial Password", value="123")
         with col_e3:
-            st.write("")
-            add_emp_btn = st.form_submit_button("➕ Add Employee")
+            add_emp_btn = st.form_submit_button("➕ Add Employee", type="primary")
 
     if add_emp_btn:
         clean_name = new_emp_name.strip().title()
@@ -1468,15 +1447,13 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
     st.error("⚠️ If you changed an employee's name (e.g. 'Kp' to 'Krutin Patel'), this tool updates all their past attendance to the new name, migrates their password, and permanently removes the old name from the dropdown.")
 
     with st.form("fix_data_form"):
-        f_col1, f_col2, f_col3 = st.columns([2, 2, 2])
+        f_col1, f_col2, f_col3, f_blank = st.columns([2, 2, 2.5, 1.5], vertical_alignment="bottom")
         with f_col1:
             old_name_fix = st.text_input("Old Name (e.g. Kp)")
         with f_col2:
             new_name_fix = st.text_input("New Name (e.g. Krutin Patel)")
         with f_col3:
-            st.write("")
-            st.write("")
-            fix_submit = st.form_submit_button("🚀 Fix History & Remove Old Name", type="primary", use_container_width=True)
+            fix_submit = st.form_submit_button("🚀 Fix History & Remove Old Name", type="primary")
 
     if fix_submit:
         if not old_name_fix or not new_name_fix:
@@ -1540,14 +1517,12 @@ elif selected_tab == "🔑 Change Password":
     st.markdown("Update your password below. Please do not share your new password with anyone.")
 
     with st.form("change_pwd_form"):
-        cp1, cp2, cp3 = st.columns([1, 1, 2])
+        cp1, cp2, cp3 = st.columns([1.5, 1.5, 3], vertical_alignment="bottom")
         with cp1:
             old_pwd = st.text_input("Current Password", type="password")
         with cp2:
             new_pwd = st.text_input("New Password", type="password")
         with cp3:
-            st.write("")
-            st.write("")
             btn_update_pwd = st.form_submit_button("Update Password", type="primary")
 
         if btn_update_pwd:
