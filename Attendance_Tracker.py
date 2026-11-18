@@ -540,7 +540,7 @@ if selected_tab == "📝 Add Attendance":
                         default_out = time(18, 0) if default_in < time(18, 0) else default_in
 
         with st.form("entry_form"):
-            c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5], Vertical_alignment="bottom")
+            c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5], vertical_alignment="bottom")
             with c1:
                 entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY", key=f"date_{target_emp}_{st.session_state.form_reset_counter}")
             with c2:
