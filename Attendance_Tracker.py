@@ -429,13 +429,27 @@ st.markdown("""
 # MASTER LOGIN SYSTEM
 # ==========================================
 if not st.session_state.is_logged_in:
-    st.markdown("<h1 style='text-align: center;'>📅 Advanced Attendance Tracker</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center;'>🔒 Please Login to Continue</h3>", unsafe_allow_html=True)
-    st.write("")
+    st.markdown("""
+        <style>
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.login-card-marker):not(:has(div[data-testid="stVerticalBlockBorderWrapper"] .login-card-marker)),
+            div[data-testid="stVerticalBlock"]:has(.login-card-marker):not(:has(div[data-testid="stVerticalBlock"] .login-card-marker)):not([data-testid="stVerticalBlockBorderWrapper"] div) {
+                border-radius: 20px !important;
+                border: 1px solid rgba(255, 255, 255, 0.2) !important;
+                padding: 35px 30px !important;
+                background-color: rgba(255, 255, 255, 0.03) !important;
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45) !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
-    _, col_login, _ = st.columns([3, 4, 3])
+    st.write("")
+    st.write("")
+    _, col_login, _ = st.columns([2.5, 5, 2.5])
     with col_login:
         with st.container(border=True):
+            st.markdown("<h2 class='login-card-marker' style='text-align: center; margin-top: 0;'>📅 Advanced Attendance Tracker</h2>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; font-size: 1.1rem; opacity: 0.85; margin-bottom: 20px;'>🔒 Please Login to Continue</p>", unsafe_allow_html=True)
+
             dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
             login_user = st.selectbox("Select Your Profile", options=dropdown_options, key="login_select")
 
