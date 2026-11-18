@@ -551,8 +551,7 @@ if selected_tab == "📝 Add Attendance":
                 out_time = st.time_input("Out Time", value=default_out, key=f"out_{target_emp}_{st.session_state.form_reset_counter}")
             with c5:
                 st.write("")
-                st.write("")
-                submit = st.form_submit_button("Save Entry", type="primary", use_container_width=True)
+                submit = st.form_submit_button("Save Entry", type="primary")
 
         if submit:
             if not target_emp:
@@ -1286,12 +1285,10 @@ elif selected_tab == "📊 Dashboard & History":
 
                                 with ce5:
                                     st.write("")
-                                    st.write("")
-                                    btn_update = st.form_submit_button("Save", type="primary", use_container_width=True)
+                                    btn_update = st.form_submit_button("Save", type="primary")
                                 with ce6:
                                     st.write("")
-                                    st.write("")
-                                    btn_cancel = st.form_submit_button("Cancel", use_container_width=True)
+                                    btn_cancel = st.form_submit_button("Cancel")
 
                                 if btn_update:
                                     formatted_e_name = row_data["Employee Name"].strip().title()
@@ -1391,8 +1388,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
             new_emp_pwd = st.text_input("Initial Password", value="123")
         with col_e3:
             st.write("")
-            st.write("")
-            add_emp_btn = st.form_submit_button("➕ Add Employee", type="primary", use_container_width=True)
+            add_emp_btn = st.form_submit_button("➕ Add Employee")
 
     if add_emp_btn:
         clean_name = new_emp_name.strip().title()
