@@ -396,6 +396,13 @@ st.markdown("""
         
         div[data-testid="InputInstructions"] { display: none !important; }
         
+        div[data-testid="stFormSubmitButton"] button {
+            position: relative !important;
+            top: -5px !important;
+            height: 40px !important;
+            min-height: 40px !important;
+        }
+        
         div.row-widget.stRadio > div[role="radiogroup"] {
             background-color: var(--secondary-background-color);
             padding: 8px;
@@ -501,7 +508,7 @@ if selected_tab == "📝 Add Attendance":
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True) if is_admin_unlocked else "✏️ Manual Entry"
     st.divider()
 
-if entry_mode == "✏️ Manual Entry":
+    if entry_mode == "✏️ Manual Entry":
         if is_admin_unlocked:
             col_sel, _ = st.columns([3, 7])
             with col_sel:
@@ -1548,29 +1555,32 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 # TAB 6: CHANGE PASSWORD (FOR EVERYONE)
 # ==========================================
 elif selected_tab == "🔑 Change Password":
-    st.subheader(f"🔑 Update Password for: **{st.session_state.current_user}**")
-    st.markdown("Update your password below. Please do not share your new password with anyone.")
+    st.markdown(f"<h3 style='text-align: center;'>🔑 Update Password for: {st.session_state.current_user}</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; opacity: 0.8;'>Update your password below. Please do not share your new password with anyone.</p>", unsafe_allow_html=True)
+    st.write("")
 
-    with st.form("change_pwd_form"):
-        cp1, cp2, cp3 = st.columns([1.5, 1.5, 3], vertical_alignment="bottom")
-        with cp1:
-            old_pwd = st.text_input("Current Password", type="password")
-        with cp2:
-            new_pwd = st.text_input("New Password", type="password")
-        with cp3:
-            btn_update_pwd = st.form_submit_button("Update Password", type="primary")
+    _, col_cp, _ = st.columns([2, 6, 2])
+    with col_cp:
+        with st.form("change_pwd_form"):
+            cp1, cp2, cp3 = st.columns([2, 2, 1.5], vertical_alignment="bottom")
+            with cp1:
+                old_pwd = st.text_input("Current Password", type="password")
+            with cp2:
+                new_pwd = st.text_input("New Password", type="password")
+            with cp3:
+                btn_update_pwd = st.form_submit_button("Update Password", type="primary")
 
-        if btn_update_pwd:
-            curr_dict = st.session_state.emp_dict.copy()
-            actual_pwd = curr_dict.get(st.session_state.current_user, {}).get("password", "123")
+            if btn_update_pwd:
+                curr_dict = st.session_state.emp_dict.copy()
+                actual_pwd = curr_dict.get(st.session_state.current_user, {}).get("password", "123")
 
-            if old_pwd != actual_pwd:
-                st.error("❌ Incorrect Current Password!")
-            elif len(new_pwd.strip()) < 3:
-                st.error("❌ New password must be at least 3 characters long!")
-            elif old_pwd == new_pwd.strip():
-                st.warning("⚠️ New password cannot be the same as the current password.")
-            else:
-                curr_dict[st.session_state.current_user]["password"] = new_pwd.strip()
-                save_employee_dict(curr_dict)
-                st.success("✅ Your new password has been successfully updated!")
+                if old_pwd != actual_pwd:
+                    st.error("❌ Incorrect Current Password!")
+                elif len(new_pwd.strip()) < 3:
+                    st.error("❌ New password must be at least 3 characters long!")
+                elif old_pwd == new_pwd.strip():
+                    st.warning("⚠️ New password cannot be the same as the current password.")
+                else:
+                    curr_dict[st.session_state.current_user]["password"] = new_pwd.strip()
+                    save_employee_dict(curr_dict)
+                    st.success("✅ Your new password has been successfully updated!")
