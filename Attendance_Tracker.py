@@ -522,15 +522,15 @@ if selected_tab == "📝 Add Attendance":
         now_ist = get_ist_now()
         today_ist = now_ist.date()
 
-        # 1. Sync default Date whenever Employee changes or a new entry is saved
+        # 1. Sync default Date: always default to Today unless today's (or a future) shift is already finished
         emp_sig = (target_emp, st.session_state.form_reset_counter)
         if st.session_state.get("synced_emp_sig") != emp_sig:
             default_date = today_ist
             if target_emp:
-                check_month = st.session_state.filter_month_dash if st.session_state.filter_month_dash != "All Months" else get_sheet_name(today_ist)
-                if check_month not in st.session_state.cached_data:
-                    st.session_state.cached_data[check_month] = load_data(check_month)
-                df_month_check = st.session_state.cached_data[check_month]
+                today_sheet = get_sheet_name(today_ist)
+                if today_sheet not in st.session_state.cached_data:
+                    st.session_state.cached_data[today_sheet] = load_data(today_sheet)
+                df_month_check = st.session_state.cached_data[today_sheet]
 
                 if not df_month_check.empty:
                     df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
@@ -545,13 +545,16 @@ if selected_tab == "📝 Add Attendance":
                         out_times_list = [parse_time(t) for t in latest_out_str.split(',') if t.strip()]
                         max_out_time = max(out_times_list).time() if out_times_list else time(0, 0)
 
-                        if latest_status in ["PL", "LWP", "Absent"] or max_out_time >= time(18, 0):
-                            default_date = latest_date + timedelta(days=1)
-                            holidays_dict = get_flat_holiday_dates()
-                            while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
-                                default_date += timedelta(days=1)
+                        if latest_date >= today_ist:
+                            if latest_status in ["PL", "LWP", "Absent"] or max_out_time >= time(18, 0):
+                                default_date = latest_date + timedelta(days=1)
+                                holidays_dict = get_flat_holiday_dates()
+                                while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
+                                    default_date += timedelta(days=1)
+                            else:
+                                default_date = latest_date
                         else:
-                            default_date = latest_date
+                            default_date = today_ist
 
             st.session_state["manual_entry_date"] = default_date
             st.session_state["synced_emp_sig"] = emp_sig
@@ -561,7 +564,7 @@ if selected_tab == "📝 Add Attendance":
             with c1:
                 entry_date = st.date_input("Date", format="DD/MM/YYYY", key="manual_entry_date")
 
-            # 2. Sync In Time, Out Time & Status whenever Date or Employee changes
+            # 2. Sync In Time & Out Time for whichever date is currently selected
             date_sig = (target_emp, entry_date, st.session_state.form_reset_counter)
             if st.session_state.get("synced_date_sig") != date_sig:
                 calc_in = time(8, 0)
@@ -580,19 +583,18 @@ if selected_tab == "📝 Add Attendance":
                             (df_sel_month["Date"] == sel_date_str)
                         ]
                         if not df_date_emp.empty:
-                            date_row = df_date_emp.iloc[0]
-                            date_stat = str(date_row.get("Status", "Regular"))
-                            date_out_str = str(date_row.get("Out Time", ""))
-                            out_list_for_date = [parse_time(t) for t in date_out_str.split(',') if t.strip()]
-                            last_out_for_date = max(out_list_for_date).time() if out_list_for_date else time(0, 0)
+                            out_list_for_date = []
+                            for _, dr in df_date_emp.iterrows():
+                                date_stat = str(dr.get("Status", "Regular"))
+                                if date_stat not in ["PL", "LWP", "Absent"]:
+                                    date_out_str = str(dr.get("Out Time", ""))
+                                    out_list_for_date.extend([parse_time(t) for t in date_out_str.split(',') if t.strip()])
 
-                            if date_stat not in ["PL", "LWP", "Absent"] and last_out_for_date > time(0, 0):
-                                if entry_date == today_ist:
-                                    now_t = now_ist.time().replace(second=0, microsecond=0)
-                                    calc_in = max(now_t, last_out_for_date)
-                                else:
+                            if out_list_for_date:
+                                last_out_for_date = max(out_list_for_date).time()
+                                if last_out_for_date > time(0, 0):
                                     calc_in = last_out_for_date
-                                calc_out = time(18, 0) if calc_in < time(18, 0) else calc_in
+                                    calc_out = time(18, 0) if calc_in < time(18, 0) else calc_in
 
                 st.session_state["manual_in_time"] = calc_in
                 st.session_state["manual_out_time"] = calc_out
@@ -802,6 +804,7 @@ if selected_tab == "📝 Add Attendance":
                                 except Exception:
                                     pass
 
+                            st.session_state.form_reset_counter += 1
                             st.session_state.flash_msg = f"✅ Successfully processed {success_count} valid records!"
                             st.rerun()
                 except Exception as e:
@@ -882,6 +885,7 @@ elif selected_tab == "👥 Daily Roster" and is_admin_unlocked:
                         df_new_roster = pd.DataFrame(new_records)
                         df_r_month = pd.concat([df_r_month, df_new_roster], ignore_index=True)
                         save_data(df_r_month, r_sheet)
+                        st.session_state.form_reset_counter += 1
                         st.session_state.flash_msg = f"✅ Daily Roster for {r_date_str} saved successfully!"
                         st.rerun()
 
@@ -1393,6 +1397,7 @@ elif selected_tab == "📊 Dashboard & History":
                                             save_data(df_new, new_sheet)
 
                                         st.session_state.edit_row = None
+                                        st.session_state.form_reset_counter += 1
                                         st.session_state.flash_msg = "✅ Record updated successfully!"
                                         st.rerun()
                                 if btn_cancel:
@@ -1414,6 +1419,7 @@ elif selected_tab == "📊 Dashboard & History":
                                     save_data(df_orig, sht)
 
                                     st.session_state.del_row = None
+                                    st.session_state.form_reset_counter += 1
                                     st.session_state.flash_msg = "✅ Entry permanently deleted!"
                                     st.rerun()
                             with col_n:
@@ -1564,6 +1570,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
             st.session_state.cached_data.clear()
             load_data.clear()
+            st.session_state.form_reset_counter += 1
             st.session_state.flash_msg = f"✅ Data Restored! '{old_name_fix}' updated to '{new_name_fix}' across {success_count} months. Old name removed from dropdown."
             st.rerun()
 
