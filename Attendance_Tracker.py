@@ -501,7 +501,7 @@ if selected_tab == "📝 Add Attendance":
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True) if is_admin_unlocked else "✏️ Manual Entry"
     st.divider()
 
-    if entry_mode == "✏️ Manual Entry":
+if entry_mode == "✏️ Manual Entry":
         if is_admin_unlocked:
             col_sel, _ = st.columns([3, 7])
             with col_sel:
@@ -514,8 +514,6 @@ if selected_tab == "📝 Add Attendance":
         today_ist = now_ist.date()
 
         default_date = today_ist
-        default_in = time(8, 0)
-        default_out = time(18, 0)
 
         if target_emp:
             check_month = st.session_state.filter_month_dash if st.session_state.filter_month_dash != "All Months" else get_sheet_name(today_ist)
@@ -533,39 +531,59 @@ if selected_tab == "📝 Add Attendance":
                     latest_status = str(latest_date_row.get("Status", "Regular"))
                     latest_out_str = str(latest_date_row.get("Out Time", ""))
 
-                    # Parse all Out Times (handles multiple punches like "12:00, 18:00")
                     out_times_list = [parse_time(t) for t in latest_out_str.split(',') if t.strip()]
                     max_out_time = max(out_times_list).time() if out_times_list else time(0, 0)
 
-                    # Move to next working date if Out Time >= 18:00 or full-day leave/absent
                     if latest_status in ["PL", "LWP", "Absent"] or max_out_time >= time(18, 0):
                         default_date = latest_date + timedelta(days=1)
                         holidays_dict = get_flat_holiday_dates()
                         while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
                             default_date += timedelta(days=1)
-                        default_in = time(8, 0)
-                        default_out = time(18, 0)
                     else:
-                        # Stay on the same date for a second punch if Out Time < 18:00
                         default_date = latest_date
-                        if latest_date == today_ist:
-                            default_in = now_ist.time().replace(second=0, microsecond=0)
-                        else:
-                            default_in = max_out_time
-                        default_out = time(18, 0) if default_in < time(18, 0) else default_in
 
-        with st.form("entry_form"):
+        with st.container(border=True):
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5], vertical_alignment="bottom")
             with c1:
                 entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY", key=f"date_{target_emp}_{st.session_state.form_reset_counter}")
+
+            # Automatically detect In Time & Out Time for whichever date is currently selected
+            calc_in = time(8, 0)
+            calc_out = time(18, 0)
+            if target_emp and entry_date:
+                sel_sheet = get_sheet_name(entry_date)
+                if sel_sheet not in st.session_state.cached_data:
+                    st.session_state.cached_data[sel_sheet] = load_data(sel_sheet)
+                df_sel_month = st.session_state.cached_data[sel_sheet]
+
+                if not df_sel_month.empty:
+                    sel_date_str = entry_date.strftime("%d/%m/%Y")
+                    df_date_emp = df_sel_month[
+                        (df_sel_month["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()) &
+                        (df_sel_month["Date"] == sel_date_str)
+                    ]
+                    if not df_date_emp.empty:
+                        date_row = df_date_emp.iloc[0]
+                        date_out_str = str(date_row.get("Out Time", ""))
+                        out_list_for_date = [parse_time(t) for t in date_out_str.split(',') if t.strip()]
+                        last_out_for_date = max(out_list_for_date).time() if out_list_for_date else time(0, 0)
+
+                        if entry_date == today_ist:
+                            now_t = now_ist.time().replace(second=0, microsecond=0)
+                            calc_in = max(now_t, last_out_for_date) if last_out_for_date > time(0, 0) else now_t
+                        elif last_out_for_date > time(0, 0):
+                            calc_in = last_out_for_date
+                        calc_out = time(18, 0) if calc_in < time(18, 0) else calc_in
+
+            date_key_str = entry_date.strftime("%Y%m%d")
             with c2:
-                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"], key=f"stat_{target_emp}_{st.session_state.form_reset_counter}")
+                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"], key=f"stat_{target_emp}_{date_key_str}_{st.session_state.form_reset_counter}")
             with c3:
-                in_time = st.time_input("In Time", value=default_in, key=f"in_{target_emp}_{st.session_state.form_reset_counter}")
+                in_time = st.time_input("In Time", value=calc_in, key=f"in_{target_emp}_{date_key_str}_{st.session_state.form_reset_counter}")
             with c4:
-                out_time = st.time_input("Out Time", value=default_out, key=f"out_{target_emp}_{st.session_state.form_reset_counter}")
+                out_time = st.time_input("Out Time", value=calc_out, key=f"out_{target_emp}_{date_key_str}_{st.session_state.form_reset_counter}")
             with c5:
-                submit = st.form_submit_button("Save Entry", type="primary")
+                submit = st.button("Save Entry", type="primary", key=f"save_btn_{st.session_state.form_reset_counter}")
 
         if submit:
             if not target_emp:
