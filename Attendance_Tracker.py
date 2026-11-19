@@ -312,6 +312,8 @@ def logout():
     st.session_state.current_user = "-- Select Employee --"
     st.session_state.is_logged_in = False
     st.session_state.user_role = None
+    st.session_state.pop("synced_emp_sig", None)
+    st.session_state.pop("synced_date_sig", None)
 
 is_admin_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Admin")
 is_employee_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Employee")
@@ -520,75 +522,89 @@ if selected_tab == "📝 Add Attendance":
         now_ist = get_ist_now()
         today_ist = now_ist.date()
 
-        default_date = today_ist
+        # 1. Sync default Date whenever Employee changes or a new entry is saved
+        emp_sig = (target_emp, st.session_state.form_reset_counter)
+        if st.session_state.get("synced_emp_sig") != emp_sig:
+            default_date = today_ist
+            if target_emp:
+                check_month = st.session_state.filter_month_dash if st.session_state.filter_month_dash != "All Months" else get_sheet_name(today_ist)
+                if check_month not in st.session_state.cached_data:
+                    st.session_state.cached_data[check_month] = load_data(check_month)
+                df_month_check = st.session_state.cached_data[check_month]
 
-        if target_emp:
-            check_month = st.session_state.filter_month_dash if st.session_state.filter_month_dash != "All Months" else get_sheet_name(today_ist)
-            if check_month not in st.session_state.cached_data:
-                st.session_state.cached_data[check_month] = load_data(check_month)
-            df_month_check = st.session_state.cached_data[check_month]
+                if not df_month_check.empty:
+                    df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
+                    if not df_emp.empty:
+                        df_emp = df_emp.copy()
+                        df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
+                        latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
+                        latest_date = latest_date_row['RealDate'].date()
+                        latest_status = str(latest_date_row.get("Status", "Regular"))
+                        latest_out_str = str(latest_date_row.get("Out Time", ""))
 
-            if not df_month_check.empty:
-                df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
-                if not df_emp.empty:
-                    df_emp = df_emp.copy()
-                    df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y")
-                    latest_date_row = df_emp.loc[df_emp['RealDate'].idxmax()]
-                    latest_date = latest_date_row['RealDate'].date()
-                    latest_status = str(latest_date_row.get("Status", "Regular"))
-                    latest_out_str = str(latest_date_row.get("Out Time", ""))
+                        out_times_list = [parse_time(t) for t in latest_out_str.split(',') if t.strip()]
+                        max_out_time = max(out_times_list).time() if out_times_list else time(0, 0)
 
-                    out_times_list = [parse_time(t) for t in latest_out_str.split(',') if t.strip()]
-                    max_out_time = max(out_times_list).time() if out_times_list else time(0, 0)
+                        if latest_status in ["PL", "LWP", "Absent"] or max_out_time >= time(18, 0):
+                            default_date = latest_date + timedelta(days=1)
+                            holidays_dict = get_flat_holiday_dates()
+                            while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
+                                default_date += timedelta(days=1)
+                        else:
+                            default_date = latest_date
 
-                    if latest_status in ["PL", "LWP", "Absent"] or max_out_time >= time(18, 0):
-                        default_date = latest_date + timedelta(days=1)
-                        holidays_dict = get_flat_holiday_dates()
-                        while default_date.strftime("%d/%m/%Y") in holidays_dict or default_date.weekday() == 6:
-                            default_date += timedelta(days=1)
-                    else:
-                        default_date = latest_date
+            st.session_state["manual_entry_date"] = default_date
+            st.session_state["synced_emp_sig"] = emp_sig
 
         with st.container(border=True):
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5], vertical_alignment="bottom")
             with c1:
-                entry_date = st.date_input("Date", value=default_date, format="DD/MM/YYYY", key=f"date_{target_emp}_{st.session_state.form_reset_counter}")
+                entry_date = st.date_input("Date", format="DD/MM/YYYY", key="manual_entry_date")
 
-            # Automatically detect In Time & Out Time for whichever date is currently selected
-            calc_in = time(8, 0)
-            calc_out = time(18, 0)
-            if target_emp and entry_date:
-                sel_sheet = get_sheet_name(entry_date)
-                if sel_sheet not in st.session_state.cached_data:
-                    st.session_state.cached_data[sel_sheet] = load_data(sel_sheet)
-                df_sel_month = st.session_state.cached_data[sel_sheet]
+            # 2. Sync In Time, Out Time & Status whenever Date or Employee changes
+            date_sig = (target_emp, entry_date, st.session_state.form_reset_counter)
+            if st.session_state.get("synced_date_sig") != date_sig:
+                calc_in = time(8, 0)
+                calc_out = time(18, 0)
 
-                if not df_sel_month.empty:
-                    sel_date_str = entry_date.strftime("%d/%m/%Y")
-                    df_date_emp = df_sel_month[
-                        (df_sel_month["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()) &
-                        (df_sel_month["Date"] == sel_date_str)
-                    ]
-                    if not df_date_emp.empty:
-                        date_row = df_date_emp.iloc[0]
-                        date_out_str = str(date_row.get("Out Time", ""))
-                        out_list_for_date = [parse_time(t) for t in date_out_str.split(',') if t.strip()]
-                        last_out_for_date = max(out_list_for_date).time() if out_list_for_date else time(0, 0)
+                if target_emp and entry_date:
+                    sel_sheet = get_sheet_name(entry_date)
+                    if sel_sheet not in st.session_state.cached_data:
+                        st.session_state.cached_data[sel_sheet] = load_data(sel_sheet)
+                    df_sel_month = st.session_state.cached_data[sel_sheet]
 
-                        if entry_date == today_ist:
-                            now_t = now_ist.time().replace(second=0, microsecond=0)
-                            calc_in = max(now_t, last_out_for_date) if last_out_for_date > time(0, 0) else now_t
-                        elif last_out_for_date > time(0, 0):
-                            calc_in = last_out_for_date
-                        calc_out = time(18, 0) if calc_in < time(18, 0) else calc_in
+                    if not df_sel_month.empty:
+                        sel_date_str = entry_date.strftime("%d/%m/%Y")
+                        df_date_emp = df_sel_month[
+                            (df_sel_month["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()) &
+                            (df_sel_month["Date"] == sel_date_str)
+                        ]
+                        if not df_date_emp.empty:
+                            date_row = df_date_emp.iloc[0]
+                            date_stat = str(date_row.get("Status", "Regular"))
+                            date_out_str = str(date_row.get("Out Time", ""))
+                            out_list_for_date = [parse_time(t) for t in date_out_str.split(',') if t.strip()]
+                            last_out_for_date = max(out_list_for_date).time() if out_list_for_date else time(0, 0)
 
-            date_key_str = entry_date.strftime("%Y%m%d")
+                            if date_stat not in ["PL", "LWP", "Absent"] and last_out_for_date > time(0, 0):
+                                if entry_date == today_ist:
+                                    now_t = now_ist.time().replace(second=0, microsecond=0)
+                                    calc_in = max(now_t, last_out_for_date)
+                                else:
+                                    calc_in = last_out_for_date
+                                calc_out = time(18, 0) if calc_in < time(18, 0) else calc_in
+
+                st.session_state["manual_in_time"] = calc_in
+                st.session_state["manual_out_time"] = calc_out
+                st.session_state["manual_status"] = "Regular"
+                st.session_state["synced_date_sig"] = date_sig
+
             with c2:
-                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"], key=f"stat_{target_emp}_{date_key_str}_{st.session_state.form_reset_counter}")
+                entry_status = st.selectbox("Status", ["Regular", "Holiday", "PL", "LWP", "Absent"], key="manual_status")
             with c3:
-                in_time = st.time_input("In Time", value=calc_in, key=f"in_{target_emp}_{date_key_str}_{st.session_state.form_reset_counter}")
+                in_time = st.time_input("In Time", key="manual_in_time")
             with c4:
-                out_time = st.time_input("Out Time", value=calc_out, key=f"out_{target_emp}_{date_key_str}_{st.session_state.form_reset_counter}")
+                out_time = st.time_input("Out Time", key="manual_out_time")
             with c5:
                 submit = st.button("Save Entry", type="primary", key=f"save_btn_{st.session_state.form_reset_counter}")
 
