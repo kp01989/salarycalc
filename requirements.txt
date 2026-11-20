@@ -2,7 +2,7 @@ streamlit
 pandas
 st-gsheets-connection
 plotly
-xlsxwriter
 openpyxl
 requests
+xlsxwriter
 fpdf
