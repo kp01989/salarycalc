@@ -524,7 +524,7 @@ if selected_tab == "📝 Add Attendance":
 
         # 1. Sync default Date: always default to Today unless today's (or a future) shift is already finished
         emp_sig = (target_emp, st.session_state.form_reset_counter)
-        if st.session_state.get("synced_emp_sig") != emp_sig:
+        if st.session_state.get("synced_emp_sig") != emp_sig or "manual_entry_date" not in st.session_state:
             default_date = today_ist
             if target_emp:
                 today_sheet = get_sheet_name(today_ist)
@@ -566,7 +566,7 @@ if selected_tab == "📝 Add Attendance":
 
             # 2. Sync In Time & Out Time for whichever date is currently selected
             date_sig = (target_emp, entry_date, st.session_state.form_reset_counter)
-            if st.session_state.get("synced_date_sig") != date_sig:
+            if st.session_state.get("synced_date_sig") != date_sig or "manual_in_time" not in st.session_state or "manual_out_time" not in st.session_state:
                 calc_in = time(8, 0)
                 calc_out = time(18, 0)
 
@@ -1011,10 +1011,10 @@ elif selected_tab == "📊 Dashboard & History":
 
     available_sheets = ["All Months"] + all_sheets_raw
 
-col_f1, col_f2, col_f_blank = st.columns([2, 3.5, 4.5])
-    
-with col_f1:
+    col_f1, col_f2, col_f_blank = st.columns([2, 3.5, 4.5])
+    with col_f1:
         selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
+
     if is_admin_unlocked:
         with col_f2:
             selected_emps = st.multiselect(
@@ -1071,52 +1071,6 @@ with col_f1:
         df_display = df_display[final_display_columns]
 
         st.divider()
-            if not df_temp.empty:
-                df_temp = df_temp.copy()
-                df_temp["_Original_Sheet"] = sht
-                df_temp["_Original_Index"] = df_temp.index
-                df_list.append(df_temp)
-        if df_list:
-            df_display = pd.concat(df_list, ignore_index=True)
-        else:
-            df_display = pd.DataFrame()
-    else:
-        if selected_sheet not in st.session_state.cached_data:
-            st.session_state.cached_data[selected_sheet] = load_data(selected_sheet)
-        df_temp = st.session_state.cached_data[selected_sheet]
-        if not df_temp.empty:
-            df_display = df_temp.copy()
-            df_display["_Original_Sheet"] = selected_sheet
-            df_display["_Original_Index"] = df_display.index
-        else:
-            df_display = pd.DataFrame()
-
-    if not df_display.empty:
-        df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
-        df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
-        df_display = df_display.reset_index(drop=True)
-        df_display = df_display.fillna("")
-
-        if selected_emp != "All Employees":
-            df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower() == selected_emp.lower()]
-
-        final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status", "_Original_Sheet", "_Original_Index"]
-        for c in final_display_columns:
-            if c not in df_display.columns:
-                df_display[c] = ""
-        df_display = df_display[final_display_columns]
-
-        st.write("")
-
-        if is_admin_unlocked and selected_emp == "All Employees":
-            filt_c1, filt_c2, filt_blank = st.columns([2, 2, 6])
-            with filt_c1:
-                emp_opts = sorted(df_display["Employee Name"].unique().tolist())
-                f_emps = st.multiselect("👤 Filter by Employee(s)", emp_opts, placeholder="Select 1 or more...")
-            if f_emps:
-                df_display = df_display[df_display["Employee Name"].isin(f_emps)]
-
-        st.divider()
 
     if df_display.empty:
         st.warning("No records found with the current filters.")
@@ -1155,8 +1109,10 @@ with col_f1:
         absent_count = len(df_display[df_display["Status"].isin(["LWP", "Absent"])])
 
         st.markdown('<div class="summary-container">', unsafe_allow_html=True)
-        if selected_emp != "All Employees":
-            st.subheader("📊 Summary Data")
+        if len(selected_emps) == 1:
+            st.subheader(f"📊 Summary Data ({selected_emps[0]})")
+        elif len(selected_emps) > 1:
+            st.subheader(f"📊 Summary Data ({len(selected_emps)} Employees Selected)")
         else:
             st.subheader("📊 Master Attendance Data (All Employees)")
 
