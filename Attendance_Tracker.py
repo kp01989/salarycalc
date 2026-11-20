@@ -3,13 +3,28 @@ import pandas as pd
 import requests
 from datetime import datetime, date, time, timedelta, timezone
 import io
+import os
+import json
+import calendar
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 import uuid
 import time as time_module
 
+try:
+    import xlsxwriter
+    HAS_XLSXWRITER = True
+except ImportError:
+    HAS_XLSXWRITER = False
+
+try:
+    from fpdf import FPDF
+    HAS_FPDF = True
+except ImportError:
+    HAS_FPDF = False
+
 # ---------------------------------------------------------
-st.set_page_config(page_title="Advanced Attendance Tracker", layout="wide", page_icon="📅")
+st.set_page_config(page_title="Advanced Attendance & Salary System", layout="wide", page_icon="📅")
 # ---------------------------------------------------------
 
 # ==========================================
@@ -20,6 +35,9 @@ FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
 
+MONTH_ORDER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+MONTH_DICT = {m: i + 1 for i, m in enumerate(MONTH_ORDER)}
+
 def get_ist_now():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
 
@@ -29,15 +47,21 @@ def get_ist_today():
 def get_sheet_name(selected_date):
     return selected_date.strftime("%b'%Y")
 
-@st.cache_data
+def get_emp_key(name):
+    if not name:
+        return "Unknown"
+    return str(name).replace(".", "").replace("#", "").replace("$", "").replace("[", "").replace("]", "").strip()
+
+@st.cache_data(ttl=300, show_spinner=False)
 def get_all_sheet_names():
     url = f"{FIREBASE_URL}.json?shallow=true"
+    excluded = {"holidays_list", "employee_list", "employee_dict", "profiles", "salary_history"}
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
-                return [k for k in data.keys() if k not in ["holidays_list", "employee_list", "employee_dict"]]
+                return [k for k in data.keys() if k not in excluded]
     except Exception:
         pass
 
@@ -108,7 +132,7 @@ if 'emp_dict' not in st.session_state or not st.session_state.emp_dict:
 # ==========================================
 # HOLIDAYS LOGIC
 # ==========================================
-@st.cache_data
+@st.cache_data(ttl=300, show_spinner=False)
 def load_holidays_data():
     try:
         cb = uuid.uuid4().hex
@@ -155,6 +179,17 @@ def parse_time(time_val):
             return datetime.strptime(time_str, "%H:%M:%S")
         except ValueError:
             return datetime.strptime("00:00", "%H:%M")
+
+def parse_hm_tuple(time_str):
+    if pd.isna(time_str) or str(time_str).strip() == "":
+        return 0, 0
+    try:
+        parts = str(time_str).strip().split(':')
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        return h, m
+    except Exception:
+        return 0, 0
 
 def check_time_overlap(curr_in_str, curr_out_str, new_in_str, new_out_str):
     if not curr_in_str or curr_in_str == "00:00":
@@ -229,7 +264,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
 
     return mins_to_str(reg_mins), mins_to_str(late_mins), mins_to_str(out_early_mins), mins_to_str(ot_mins)
 
-@st.cache_data
+@st.cache_data(ttl=300, show_spinner=False)
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
     url = f"{FIREBASE_URL}/{sheet_name}.json"
@@ -291,10 +326,536 @@ def save_data(df, sheet_name):
     try:
         requests.put(url, json=data, timeout=10)
         load_data.clear()
+        get_all_sheet_names.clear()
         if 'cached_data' in st.session_state:
             st.session_state.cached_data.clear()
     except Exception:
         pass
+
+# ==========================================
+# SALARY & HRIS CLOUD HELPERS
+# ==========================================
+@st.cache_data(ttl=300, show_spinner=False)
+def load_profiles():
+    try:
+        res = requests.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
+        if res.status_code == 200 and isinstance(res.json(), dict):
+            return res.json()
+    except Exception:
+        pass
+    return {}
+
+def find_profile_data(all_profiles, emp_name):
+    if not emp_name or not isinstance(all_profiles, dict):
+        return emp_name, {}
+    if emp_name in all_profiles:
+        return emp_name, all_profiles[emp_name]
+    target_lower = emp_name.strip().lower()
+    for k, v in all_profiles.items():
+        if str(k).strip().lower() == target_lower:
+            return k, v
+    return emp_name, {}
+
+def save_profiles(profiles):
+    try:
+        requests.put(f"{FIREBASE_URL}/profiles.json", json=profiles, timeout=10)
+        load_profiles.clear()
+    except Exception as e:
+        st.error(f"Failed to save profile to cloud: {e}")
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_salary_history_keys():
+    try:
+        res = requests.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
+        if res.status_code == 200 and isinstance(res.json(), dict):
+            return list(res.json().keys())
+    except Exception:
+        pass
+    return []
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_salary_history(emp_name):
+    if not emp_name:
+        return pd.DataFrame()
+    emp_key = get_emp_key(emp_name)
+    try:
+        res = requests.get(f"{FIREBASE_URL}/salary_history/{emp_key}.json", timeout=10)
+        if res.status_code == 200 and res.json():
+            return pd.DataFrame(res.json())
+        for k in load_salary_history_keys():
+            if str(k).strip().lower() == emp_key.lower():
+                res2 = requests.get(f"{FIREBASE_URL}/salary_history/{k}.json", timeout=10)
+                if res2.status_code == 200 and res2.json():
+                    return pd.DataFrame(res2.json())
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+def save_salary_history(emp_name, df):
+    emp_key = get_emp_key(emp_name)
+    try:
+        records = json.loads(df.to_json(orient='records'))
+        requests.put(f"{FIREBASE_URL}/salary_history/{emp_key}.json", json=records, timeout=10)
+        load_salary_history.clear()
+        load_salary_history_keys.clear()
+    except Exception as e:
+        st.error(f"Error saving salary history to cloud: {e}")
+
+def delete_salary_history(emp_name):
+    emp_key = get_emp_key(emp_name)
+    try:
+        requests.delete(f"{FIREBASE_URL}/salary_history/{emp_key}.json", timeout=10)
+        for k in load_salary_history_keys():
+            if str(k).strip().lower() == emp_key.lower() and k != emp_key:
+                requests.delete(f"{FIREBASE_URL}/salary_history/{k}.json", timeout=10)
+        load_salary_history.clear()
+        load_salary_history_keys.clear()
+    except Exception as e:
+        st.error(f"Error deleting salary history: {e}")
+
+def format_mins_to_hrs(val):
+    try:
+        if pd.isna(val):
+            return "0:00"
+        v = int(float(val))
+        return f"{v // 60}:{v % 60:02d}"
+    except Exception:
+        return str(val)
+
+def reorder_salary_columns(df):
+    if df.empty:
+        return df
+    desired_cols = [
+        "Date", "Name", "Month", "Year", "CTC", "Working Hrs", "Present Hrs",
+        "Late Hrs", "Out Hrs", "OT Hrs", "Final Present Hrs", "Total Pay Hrs",
+        "Opening PL", "PL Used", "PL Balance", "OT Salary", "Net Salary",
+        "In Hand Salary", "Food", "Gratuity", "PT", "TDS", "ESIC",
+        "Advance", "Bonus", "Difference"
+    ]
+    existing_cols = [col for col in desired_cols if col in df.columns]
+    remaining_cols = [col for col in df.columns if col not in existing_cols]
+    return df[existing_cols + remaining_cols]
+
+def clean_legacy_salary_columns(df):
+    if df.empty:
+        return df
+    df = df.copy()
+    if 'Std Hrs' in df.columns:
+        if 'Working Hrs' in df.columns:
+            df['Working Hrs'] = df['Working Hrs'].fillna(df['Std Hrs'])
+            df['Working Hrs'] = df.apply(lambda r: r['Std Hrs'] if pd.isna(r.get('Working Hrs')) or r.get('Working Hrs') == 0 else r['Working Hrs'], axis=1)
+            df = df.drop(columns=['Std Hrs'])
+        else:
+            df = df.rename(columns={'Std Hrs': 'Working Hrs'})
+
+    rename_map = {'Late Mins': 'Late Hrs', 'Early Mins': 'Out Hrs', 'OT Mins': 'OT Hrs'}
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    for col in ['Late Hrs', 'Out Hrs', 'OT Hrs']:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: format_mins_to_hrs(x) if str(x).replace('.0', '').isdigit() else str(x))
+
+    if 'Final Present Hrs' in df.columns:
+        df['Final Present Hrs'] = df['Final Present Hrs'].astype(str).str.replace('h ', ':').str.replace('m', '')
+
+    if 'Opening PL' not in df.columns:
+        df['Opening PL'] = 0.0
+    if 'In Hand Salary' not in df.columns:
+        df['In Hand Salary'] = 0.0
+    if 'Total Pay Hrs' not in df.columns:
+        df['Total Pay Hrs'] = ""
+    if 'LWP' not in df.columns:
+        df['LWP'] = 0.0
+
+    df = df.loc[:, ~df.columns.duplicated()]
+    return reorder_salary_columns(df)
+
+def recalculate_future_pl(df, start_index):
+    for i in range(start_index + 1, len(df)):
+        prev_balance = int(float(df.at[df.index[i - 1], 'PL Balance']))
+        used_pl_current = int(float(df.at[df.index[i], 'PL Used']))
+        new_opening = prev_balance + 1
+        new_balance = new_opening - used_pl_current
+        df.at[df.index[i], 'Opening PL'] = new_opening
+        df.at[df.index[i], 'PL Balance'] = new_balance
+    return df
+
+def fetch_attendance_totals_for_salary(emp_name, month_name, year):
+    sheet_name = f"{month_name}'{year}"
+    if sheet_name not in st.session_state.cached_data:
+        st.session_state.cached_data[sheet_name] = load_data(sheet_name)
+    df_att = st.session_state.cached_data[sheet_name]
+
+    total_reg_mins, total_ot_mins, total_late_mins, total_out_mins_att, pl_days = 0, 0, 0, 0, 0
+
+    if not df_att.empty and emp_name:
+        df_emp = df_att[df_att["Employee Name"].astype(str).str.strip().str.lower() == emp_name.strip().lower()]
+        for _, row in df_emp.iterrows():
+            h, m = parse_hm_tuple(row.get("Total Hours", "00:00"))
+            total_reg_mins += (h * 60) + m
+
+            h, m = parse_hm_tuple(row.get("OT Hours", "00:00"))
+            total_ot_mins += (h * 60) + m
+
+            h, m = parse_hm_tuple(row.get("Late Hours", "00:00"))
+            total_late_mins += (h * 60) + m
+
+            h, m = parse_hm_tuple(row.get("Out Hours", "00:00"))
+            total_out_mins_att += (h * 60) + m
+
+            if str(row.get("Status", "")).strip() == "PL":
+                pl_days += 1
+
+    return {
+        "reg_h": total_reg_mins // 60, "reg_m": total_reg_mins % 60,
+        "ot_h": total_ot_mins // 60, "ot_m": total_ot_mins % 60,
+        "late_h": total_late_mins // 60, "late_m": total_late_mins % 60,
+        "out_h": total_out_mins_att // 60, "out_m": total_out_mins_att % 60,
+        "pl_days": pl_days
+    }
+
+@st.cache_data(show_spinner=False)
+def get_company_logo_path():
+    logo_url = "https://www.laxmidiamond.com/images/logo.png"
+    logo_path = "temp_logo.png"
+    if not os.path.exists(logo_path):
+        try:
+            res = requests.get(logo_url, timeout=4)
+            if res.status_code == 200:
+                with open(logo_path, "wb") as f:
+                    f.write(res.content)
+        except Exception:
+            return None
+    return logo_path if os.path.exists(logo_path) else None
+
+@st.cache_data(show_spinner=False)
+def generate_excel_slip(slip_data, emp_name, month_str, year_val):
+    if not HAS_XLSXWRITER:
+        return None
+    sd = slip_data
+    slip_df = pd.DataFrame({
+        "Label": [
+            "CTC Salary", "Gratuity", "Bonus", "Actual Salary",
+            "Working Hrs", "Pay Hrs", "PL Used",
+            "OT Hrs", "Late Hrs", "Out Hrs", "Total Pay Hrs",
+            "PT", "PF", "ESI", "TDS", "Loan", "Food", "LWP",
+            "PL Balance", "Pay Salary", "OT Salary", "In Hand Salary", "Bank Salary", "Diff"
+        ],
+        "Value": [
+            sd['ctc'], sd['gratuity'], sd['bonus'], sd['actual_salary'],
+            sd['work_hrs_str'], sd['present_hrs'], sd['pl_used'],
+            sd['ot_hrs'], sd['late_hrs'], sd['out_hrs'], sd['pay_hrs'],
+            sd['pt'], "-", sd['esic'] if sd['esic'] else "-", sd['tds'] if sd['tds'] else "-",
+            sd['advance'], sd['food'], sd.get('lwp_val', 0.0), sd['pl_balance'],
+            sd['pay_salary_val'], sd['ot_sal'], sd['in_hand_salary'], sd['bank_salary_val'], sd['difference']
+        ]
+    })
+
+    header_row = pd.DataFrame({"Label": [f"{month_str}'{year_val}"], "Value": [f"{emp_name}"]})
+    slip_df = pd.concat([header_row, slip_df], ignore_index=True)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        slip_df.to_excel(writer, index=False, header=False, sheet_name='Salary_Slip')
+        workbook = writer.book
+        worksheet = writer.sheets['Salary_Slip']
+
+        base_header_left = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_header_center = {'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'align': 'center', 'valign': 'vcenter'}
+        base_label_left = {'bold': True, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_val_text = {'align': 'center', 'valign': 'vcenter'}
+
+        base_val_curr = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+        base_val_curr_tds = {'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0.00'}
+
+        base_val_yellow = {'bg_color': '#FFFF00', 'align': 'center', 'valign': 'vcenter'}
+        base_val_green = {'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter'}
+
+        base_pay_label_left = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_pay_val_center = {'bold': True, 'bg_color': '#C6E0B4', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+
+        base_ot_label_left = {'bold': True, 'bg_color': '#F4B084', 'align': 'left', 'valign': 'vcenter', 'indent': 1}
+        base_ot_val_center = {'bold': True, 'bg_color': '#F4B084', 'align': 'center', 'valign': 'vcenter', 'num_format': '₹ #,##0'}
+
+        base_diff_pos_red = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#FF0000', 'num_format': '₹ #,##0'}
+        base_diff_neg_green = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#228B22', 'num_format': '₹ #,##0'}
+        base_diff_zero = {'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#000000', 'num_format': '₹ #,##0'}
+
+        worksheet.set_column('A:A', 22)
+        worksheet.set_column('B:B', 25)
+
+        for i in range(len(slip_df)):
+            worksheet.set_row(i, 18)
+
+        currency_labels = ["CTC Salary", "Bonus", "Gratuity", "Actual Salary", "PT", "PF", "ESI", "Loan", "Food", "LWP", "Bank Salary", "Diff"]
+        total_rows = len(slip_df)
+
+        for row_num, (lbl, val) in enumerate(zip(slip_df['Label'], slip_df['Value'])):
+            if row_num == 0:
+                dict_col0 = base_header_left.copy()
+            elif lbl in ["Pay Salary", "In Hand Salary"]:
+                dict_col0 = base_pay_label_left.copy()
+            elif lbl == "OT Salary":
+                dict_col0 = base_ot_label_left.copy()
+            else:
+                dict_col0 = base_label_left.copy()
+
+            dict_col0['border'] = 1
+            if row_num == 0:
+                dict_col0['top'] = 2
+            if row_num == total_rows - 1:
+                dict_col0['bottom'] = 2
+            dict_col0['left'] = 2
+            worksheet.write(row_num, 0, lbl, workbook.add_format(dict_col0))
+
+            if row_num == 0:
+                dict_col1 = base_header_center.copy()
+            elif lbl == "Working Hrs":
+                dict_col1 = base_val_yellow.copy()
+            elif lbl in ["Pay Hrs", "PL Used", "Total Pay Hrs"]:
+                dict_col1 = base_val_green.copy()
+            elif lbl in ["Pay Salary", "In Hand Salary"]:
+                dict_col1 = base_pay_val_center.copy()
+            elif lbl == "OT Salary":
+                dict_col1 = base_ot_val_center.copy()
+            elif lbl == "Diff":
+                diff_val = float(val) if val != "-" else 0
+                if diff_val > 0:
+                    dict_col1 = base_diff_pos_red.copy()
+                elif diff_val < 0:
+                    dict_col1 = base_diff_neg_green.copy()
+                else:
+                    dict_col1 = base_diff_zero.copy()
+            elif lbl == "TDS" and val != "-":
+                dict_col1 = base_val_curr_tds.copy()
+            elif lbl in currency_labels and val != "-":
+                dict_col1 = base_val_curr.copy()
+            else:
+                dict_col1 = base_val_text.copy()
+
+            dict_col1['border'] = 1
+            if row_num == 0:
+                dict_col1['top'] = 2
+            if row_num == total_rows - 1:
+                dict_col1['bottom'] = 2
+            dict_col1['right'] = 2
+            worksheet.write(row_num, 1, val, workbook.add_format(dict_col1))
+
+    return output.getvalue()
+
+@st.cache_data(show_spinner=False)
+def generate_pdf_slip(slip_data, emp_name, month_str, year_val, profile=None):
+    if not HAS_FPDF:
+        return None
+    sd = slip_data
+    if profile is None:
+        profile = {}
+
+    emp_code = profile.get("emp_code", "-")
+    department = profile.get("department", "-")
+    designation = profile.get("designation", "-")
+    doj = profile.get("doj", "-")
+    dob = profile.get("dob", "-")
+    pan_no = profile.get("pan_no", "-")
+    pf_no = profile.get("pf_no", "-")
+    uan_no = profile.get("uan", "-")
+    esi_no = profile.get("esi_no", "-")
+    bank_name = profile.get("bank_name", "-")
+    bank_ac = profile.get("bank_ac", "-")
+
+    month_num = MONTH_DICT.get(month_str, 1)
+    month_days_val = calendar.monthrange(int(year_val), month_num)[1]
+    sundays = sum(1 for week in calendar.monthcalendar(int(year_val), month_num) if week[6] != 0)
+
+    paid_holiday_val = 0
+    working_days_val = month_days_val - sundays - paid_holiday_val
+
+    try:
+        h = int(sd['present_hrs'].split(':')[0])
+        m = int(sd['present_hrs'].split(':')[1])
+        total_present_hrs = h + (m / 60.0)
+        days_present_val = total_present_hrs / 10.0
+        days_present_str = f"{days_present_val:g}"
+    except Exception:
+        days_present_val = 0.0
+        days_present_str = "0"
+
+    days_absent_val = max(0, working_days_val - int(days_present_val))
+
+    basic_salary = sd['ctc'] * 0.60
+    da, hra, ca, ea, ma = 0.00, 0.00, 0.00, 0.00, 0.00
+    gross_salary = sd['actual_salary'] + sd['ot_sal']
+
+    pf_fund = 0.00
+    esi_cont = 0.00
+    lwp_fund = sd.get('lwp_val', 0.0)
+
+    total_deduct = sd['pt'] + sd['tds'] + sd['advance'] + sd['food'] + pf_fund + esi_cont + lwp_fund
+    net_salary = gross_salary - total_deduct
+
+    sr_no = f"{year_val}{month_str}-12345"
+    adv_bonus = 0.00
+
+    pdf = FPDF(orientation='L', unit='mm', format='A4')
+    pdf.add_page()
+    pdf.set_margins(10, 10, 10)
+
+    logo_path = get_company_logo_path()
+    if logo_path:
+        try:
+            pdf.image(logo_path, x=10, y=10, w=35)
+        except Exception:
+            pdf.set_xy(10, 10)
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(35, 15, "LAXMI", border=1, align='C')
+    else:
+        pdf.set_xy(10, 10)
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(35, 15, "LAXMI", border=1, align='C')
+
+    pdf.set_xy(45, 10)
+    pdf.set_font("Arial", 'B', 18)
+    pdf.cell(192, 7, "LAXMI DIAMOND PVT. LTD.(SURAT)", ln=1, align='C')
+
+    pdf.set_font("Arial", '', 10)
+    pdf.set_x(45)
+    pdf.cell(192, 5, "Nr. Gajera Circle, Katargam Fulpada Road, Katargam, Surat.", ln=1, align='C')
+    pdf.set_font("Arial", 'B', 10)
+    pdf.set_x(45)
+    pdf.cell(192, 5, "(Minimum Wages Act. Rule 25-2)", ln=1, align='C')
+
+    pdf.set_xy(237, 10)
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(40, 5, "(S)", border=0, align='C', ln=1)
+    pdf.set_x(237)
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(40, 4, "SIGHTHOLDER", border=0, align='C', ln=1)
+    pdf.set_x(237)
+    pdf.set_font("Arial", '', 4.5)
+    pdf.cell(40, 3, "OF THE DE BEERS GROUP OF COMPANIES", border=0, align='C', ln=1)
+
+    pdf.ln(2)
+    pdf.rect(10, 9, 277, 18)
+
+    pdf.set_xy(10, 27)
+    pdf.set_font("Arial", 'B', 10)
+
+    emp_display = f"Employee's Name : {emp_name.upper()}"
+    if emp_code != "-":
+        emp_display += f" ({emp_code})"
+
+    pdf.cell(277, 7, emp_display, border=1, ln=1)
+    pdf.cell(138.5, 7, f"Department : {department}", border='L', align='L')
+    pdf.cell(138.5, 7, f"Designation : {designation}", border='R', align='L', ln=1)
+
+    y = pdf.get_y()
+    pdf.line(10, y, 287, y)
+
+    pdf.cell(92, 7, f"Date of Joining : {doj}", border='L')
+    pdf.cell(92, 7, f"Date of Birth : {dob}", border=0)
+    pdf.cell(93, 7, f"PAN : {pan_no}", border='R', ln=1)
+
+    y = pdf.get_y()
+    pdf.line(10, y, 287, y)
+
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(50, 7, "Section : Pricing", border='LRT')
+    pdf.cell(85, 7, "Earning", border='LRT')
+    pdf.cell(85, 7, "Deduction", border='LRT')
+    pdf.cell(57, 7, "", border='LRT', ln=1)
+
+    row_h = 7.5
+
+    def draw_row(c1_lbl, c1_val, c2_lbl, c2_val, c3_lbl, c3_val, c4_lbl, c4_val, is_bold=False, c3_subtext=None):
+        curr_y = pdf.get_y()
+        pdf.set_font("Arial", 'B' if is_bold else '', 10 if is_bold else 9)
+
+        pdf.cell(32, row_h, c1_lbl, border=1)
+        pdf.cell(18, row_h, c1_val, border=1, align='R')
+
+        pdf.cell(55, row_h, c2_lbl, border=1)
+        pdf.cell(30, row_h, c2_val, border=1, align='R')
+
+        c3_x = pdf.get_x()
+        pdf.cell(55, row_h, "", border=1)
+        pdf.set_xy(c3_x, curr_y + 1)
+        pdf.cell(55, 3.5, c3_lbl, border=0, align='L')
+        if c3_subtext:
+            pdf.set_xy(c3_x, curr_y + 4.5)
+            pdf.set_font("Arial", '', 4.5)
+            pdf.cell(55, 3, c3_subtext, border=0, align='L')
+            if not is_bold:
+                pdf.set_font("Arial", '', 9)
+        pdf.set_xy(c3_x + 55, curr_y)
+        pdf.cell(30, row_h, c3_val, border=1, align='R')
+
+        if c4_lbl != "MERGE_DISCLAIMER":
+            pdf.cell(27, row_h, c4_lbl, border=1)
+            c4_val_x = pdf.get_x()
+
+            if c4_lbl == "Sr No":
+                pdf.set_font("Arial", '', 8.5)
+                pdf.cell(30, row_h, c4_val, border=1, align='C')
+                if not is_bold:
+                    pdf.set_font("Arial", '', 9)
+            elif c4_lbl == "Bank Name":
+                name_str = str(c4_val).strip()
+                pdf.cell(30, row_h, "", border=1)
+                if len(name_str) > 13:
+                    pdf.set_font("Arial", '', 5.5)
+                    pdf.set_xy(c4_val_x, curr_y + 1.5)
+                    pdf.multi_cell(30, 2.5, name_str, border=0, align='C')
+                else:
+                    pdf.set_font("Arial", '', 8)
+                    pdf.set_xy(c4_val_x, curr_y)
+                    pdf.cell(30, row_h, name_str, border=0, align='R')
+                if not is_bold:
+                    pdf.set_font("Arial", '', 9)
+            elif c4_lbl == "Bank A/c. No.":
+                pdf.set_font("Arial", '', 8)
+                pdf.set_xy(c4_val_x, curr_y)
+                pdf.cell(30, row_h, c4_val, border=1, align='R')
+                if not is_bold:
+                    pdf.set_font("Arial", '', 9)
+            else:
+                pdf.set_xy(c4_val_x, curr_y)
+                pdf.cell(30, row_h, c4_val, border=1, align='R')
+
+        pdf.set_xy(10, curr_y + row_h)
+
+    draw_row("Working Days", str(working_days_val), "Basic Salary", f"{basic_salary:,.2f}", "Provident Fund", f"{pf_fund:,.2f}", "Sr No", sr_no)
+    draw_row("Present Days", days_present_str, "D.A.", f"{da:,.2f}", "E.S.I Contribution", f"{esi_cont:,.2f}", "Month", f"{month_str}-{year_val}")
+    draw_row("Paid Holiday", str(paid_holiday_val), "HRA", f"{hra:,.2f}", "Professional Tax", f"{sd['pt']:,.2f}", "P.F. No.", pf_no)
+    draw_row("Week Off", str(sundays), "C.A.", f"{ca:,.2f}", "T.D.S", f"{sd['tds']:,.2f}", "UAN", uan_no)
+    draw_row("Days Absent", str(days_absent_val), "E.A.", f"{ea:,.2f}", "LWP", f"{lwp_fund:,.2f}", "E.S.I. No.", esi_no, c3_subtext="(Leave Without Pay)")
+    draw_row("PL", str(sd['pl_used']), "M.A.", f"{ma:,.2f}", "Other/Adv./Loan", f"{sd['advance']:,.2f}", "Bank Name", bank_name)
+    draw_row("Month Days", str(month_days_val), "OT Salary", f"{sd['ot_sal']:,.2f}", "Food Charge", f"{sd['food']:,.2f}", "Bank A/c. No.", bank_ac)
+    draw_row("Actual Salary", f"{sd['actual_salary']:,.2f}", "Gross Salary", f"{gross_salary:,.2f}", "Total Deduction", f"{total_deduct:,.2f}", "Net Salary", f"{net_salary:,.2f}", is_bold=True)
+
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(50, row_h, "", border=1)
+    pdf.cell(85, row_h, "", border=1)
+    pdf.cell(85, row_h, "", border=1)
+    pdf.cell(27, row_h, "Adv agst Bonus", border=1)
+    pdf.cell(30, row_h, f"{adv_bonus:,.2f}", border=1, align='R')
+    pdf.ln()
+
+    curr_y = pdf.get_y()
+    pdf.set_xy(230, curr_y)
+    pdf.set_font("Arial", 'I', 7.5)
+    pdf.set_text_color(150, 150, 150)
+    pdf.multi_cell(57, 4.5, "This is computer generated slip hence signature is not required.", border=1, align='C')
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_y(curr_y + 12)
+    pdf.set_font("Arial", 'B', 8)
+    pdf.cell(277, 5, "Company's Details : P.F Code : GJ/SRT/30549      E.S.I.C Code : 39000207770000910    PAN : AABCL1815G    TAN : SRTL00591D", border=0, align='L')
+    pdf.ln(4.5)
+    pdf.set_font("Arial", '', 7)
+    pdf.cell(277, 4, "DA - Dearness Allowance, HRA - House Rent Allowance, CA - Conveyance Allowance, EA - Education Allowance, WA - Washing Allowance, TDS - Tax Deducted At Source", border=0, align='L')
+
+    pdf_out = pdf.output(dest='S')
+    return bytes(pdf_out) if isinstance(pdf_out, (bytes, bytearray)) else pdf_out.encode('latin1')
 
 # ==========================================
 # SESSION STATE & AUTHENTICATION LOGIC
@@ -314,6 +875,7 @@ def logout():
     st.session_state.user_role = None
     st.session_state.pop("synced_emp_sig", None)
     st.session_state.pop("synced_date_sig", None)
+    st.session_state['sal_calc_result'] = None
 
 is_admin_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Admin")
 is_employee_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Employee")
@@ -322,6 +884,10 @@ if 'last_edited' not in st.session_state:
     st.session_state.last_edited = None
 if 'form_reset_counter' not in st.session_state:
     st.session_state.form_reset_counter = 0
+if 'sal_form_key' not in st.session_state:
+    st.session_state.sal_form_key = 0
+if 'sal_calc_result' not in st.session_state:
+    st.session_state.sal_calc_result = None
 if 'flash_msg' not in st.session_state:
     st.session_state.flash_msg = ""
 if 'cached_data' not in st.session_state:
@@ -354,14 +920,12 @@ st.markdown("""
             overflow-y: auto !important;
         }
         
-        /* Force the data grid (tables) to pass touch events */
         [data-testid="stDataFrame"] canvas, 
         [data-testid="stDataFrame"] div,
         [data-testid="stTable"] {
             touch-action: pan-y pan-x !important;
             overscroll-behavior: auto !important;
         }
-        /* --------------------------------- */
         
         @keyframes instantHide {
             to {
@@ -456,7 +1020,7 @@ if not st.session_state.is_logged_in:
     _, col_login, _ = st.columns([2.5, 5, 2.5])
     with col_login:
         with st.container(border=True):
-            st.markdown("<h2 class='login-card-marker' style='text-align: center; margin-top: 0;'>📅 Advanced Attendance Tracker</h2>", unsafe_allow_html=True)
+            st.markdown("<h2 class='login-card-marker' style='text-align: center; margin-top: 0;'>📅 Advanced Attendance & Salary</h2>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; font-size: 1.1rem; opacity: 0.85; margin-bottom: 20px;'>🔒 Please Login to Continue</p>", unsafe_allow_html=True)
 
             dropdown_options = ["-- Select Employee --", "Administrator"] + st.session_state.emp_list
@@ -475,7 +1039,7 @@ if not st.session_state.is_logged_in:
                         st.error("❌ Incorrect Password!")
     st.stop()
 
-st.title("📅 Advanced Attendance Tracker")
+st.title("📅 Advanced Attendance & Salary Tracker")
 
 if st.session_state.flash_msg:
     st.markdown(f'<div class="auto-hide-success">{st.session_state.flash_msg}</div>', unsafe_allow_html=True)
@@ -484,18 +1048,27 @@ if st.session_state.flash_msg:
 # ==========================================
 # NAVIGATION MENU (LOGGED IN USER)
 # ==========================================
-header_col1, header_col2 = st.columns([9, 1], vertical_alignment="center")
+header_col1, header_col2, header_col3 = st.columns([8, 1, 1], vertical_alignment="center")
 with header_col1:
     st.markdown(f"👤 Logged in as: **{st.session_state.current_user}** ({st.session_state.user_role})")
 with header_col2:
-    if st.button("🚪 Logout"):
+    if st.button("🔄 Sync", use_container_width=True):
+        st.cache_data.clear()
+        st.session_state.cached_data.clear()
+        st.session_state.cached_holidays = None
+        st.session_state.emp_dict = fetch_employee_dict()
+        st.session_state.emp_list = sorted([k for k in st.session_state.emp_dict.keys() if k != "Administrator"])
+        st.session_state.flash_msg = "✅ Cloud data synced!"
+        st.rerun()
+with header_col3:
+    if st.button("🚪 Logout", use_container_width=True):
         logout()
         st.rerun()
 
 if is_admin_unlocked:
-    nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "⚙️ Manage Employees", "🔑 Change Password"]
+    nav_options = ["📝 Add Attendance", "👥 Daily Roster", "🌴 Holiday Calendar", "📊 Dashboard & History", "💰 Salary & Payroll", "⚙️ Manage Employees", "🔑 Change Password"]
 else:
-    nav_options = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History", "🔑 Change Password"]
+    nav_options = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History", "💰 Salary & Payroll", "🔑 Change Password"]
 
 if 'active_nav_tab' not in st.session_state or st.session_state.active_nav_tab not in nav_options:
     st.session_state.active_nav_tab = nav_options[0]
@@ -522,7 +1095,6 @@ if selected_tab == "📝 Add Attendance":
         now_ist = get_ist_now()
         today_ist = now_ist.date()
 
-        # 1. Sync default Date: always default to Today unless today's (or a future) shift is already finished
         emp_sig = (target_emp, st.session_state.form_reset_counter)
         if st.session_state.get("synced_emp_sig") != emp_sig or "manual_entry_date" not in st.session_state:
             default_date = today_ist
@@ -564,7 +1136,6 @@ if selected_tab == "📝 Add Attendance":
             with c1:
                 entry_date = st.date_input("Date", format="DD/MM/YYYY", key="manual_entry_date")
 
-            # 2. Sync In Time & Out Time for whichever date is currently selected
             date_sig = (target_emp, entry_date, st.session_state.form_reset_counter)
             if st.session_state.get("synced_date_sig") != date_sig or "manual_in_time" not in st.session_state or "manual_out_time" not in st.session_state:
                 calc_in = time(8, 0)
@@ -732,7 +1303,6 @@ if selected_tab == "📝 Add Attendance":
                             success_count = 0
                             grouped = df_upload.groupby('Date')
                             holidays_dict = get_flat_holiday_dates()
-
                             master_emps = st.session_state.emp_list
 
                             for date_val, group in grouped:
@@ -751,7 +1321,6 @@ if selected_tab == "📝 Add Attendance":
 
                                     for _, r in group.iterrows():
                                         ename = str(r['Employee Name']).strip().title()
-
                                         if ename not in master_emps:
                                             continue
 
@@ -1188,7 +1757,6 @@ elif selected_tab == "📊 Dashboard & History":
                     day_col_idx = 2
                     status_col_idx = 9
                     max_data_row = 3 + len(df_export)
-
                     holidays_dict_xls = get_flat_holiday_dates()
 
                     for row_idx in range(4, max_data_row + 1):
@@ -1284,7 +1852,6 @@ elif selected_tab == "📊 Dashboard & History":
             elif st.session_state.last_edited == f"{row['Employee Name']}_{row['Date']}":
                 status_color = "#ffff66"
 
-            # Security: Admins can edit all; Employees can edit their own records
             can_edit = is_admin_unlocked or (is_employee_unlocked and row['Employee Name'].strip().lower() == st.session_state.current_user.strip().lower())
 
             col_rec, col_blank = st.columns([8, 2])
@@ -1427,7 +1994,537 @@ elif selected_tab == "📊 Dashboard & History":
                                     st.rerun()
 
 # ==========================================
-# TAB 5: MANAGE EMPLOYEES (ADMIN ONLY)
+# TAB 5: SALARY & PAYROLL (INTEGRATED HRIS)
+# ==========================================
+elif selected_tab == "💰 Salary & Payroll":
+    all_profiles = load_profiles()
+    hist_keys_all = load_salary_history_keys()
+
+    money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "ESIC", "Advance", "Bonus", "Difference"]
+    sal_table_config = {col: st.column_config.NumberColumn(format="₹ %,.0f") for col in money_cols}
+    sal_table_config["TDS"] = st.column_config.NumberColumn(format="₹ %,.2f")
+    for pl_c in ["Opening PL", "PL Used", "PL Balance"]:
+        sal_table_config[pl_c] = st.column_config.NumberColumn(format="%d")
+
+    sal_mode = "🧾 Salary Calculator & History"
+    if is_admin_unlocked:
+        sal_mode = st.radio(
+            "Salary Section",
+            ["🧾 Salary Calculator & History", "👥 All Employee Profiles (Master)"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="sal_sub_mode"
+        )
+        st.divider()
+
+    # --- SUB-MODE A: ADMIN MASTER PROFILES ---
+    if sal_mode == "👥 All Employee Profiles (Master)" and is_admin_unlocked:
+        st.subheader("👥 All Employee Master Profiles (Cloud Data)")
+        if all_profiles:
+            df_profs = pd.DataFrame.from_dict(all_profiles, orient='index').reset_index()
+            df_profs = df_profs.rename(columns={
+                'index': 'Employee Name', 'emp_code': 'Emp Code', 'base_salary': 'Fixed CTC',
+                'department': 'Department', 'designation': 'Designation', 'doj': 'DOJ',
+                'dob': 'DOB', 'pan_no': 'PAN No', 'pf_no': 'PF No', 'uan': 'UAN',
+                'esi_no': 'ESI No', 'bank_name': 'Bank Name', 'bank_ac': 'Bank A/c No'
+            })
+            st.dataframe(df_profs, use_container_width=True)
+            csv_profs = df_profs.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Profile Data (CSV)",
+                data=csv_profs,
+                file_name="employee_master_data.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info("⚠️ No employee profiles found in Cloud Database.")
+
+        st.divider()
+        st.subheader("📝 Add / Edit Employee Profile")
+        merged_names = sorted(list(set(st.session_state.emp_list + list(all_profiles.keys()))))
+        with st.container(border=True):
+            c_pe, _ = st.columns([3, 7])
+            with c_pe:
+                target_prof_emp = st.selectbox("Select Employee to Edit Profile:", options=["-- Select Employee --"] + merged_names, key="sal_admin_prof_sel")
+
+            if target_prof_emp != "-- Select Employee --":
+                t_key, t_data = find_profile_data(all_profiles, target_prof_emp)
+                with st.form("sal_admin_profile_form"):
+                    col_s1, col_s2, col_s3 = st.columns(3)
+                    with col_s1:
+                        p_code = st.text_input("Emp Code", value=t_data.get("emp_code", ""))
+                        p_dept = st.text_input("Department", value=t_data.get("department", ""))
+                        p_pan = st.text_input("PAN No", value=t_data.get("pan_no", ""))
+                        p_bank = st.text_input("Bank Name", value=t_data.get("bank_name", ""))
+                    with col_s2:
+                        p_salary = st.number_input("Fixed CTC (₹)", value=float(t_data.get("base_salary", 0.0)), step=500.0)
+                        p_desig = st.text_input("Designation", value=t_data.get("designation", ""))
+                        p_uan = st.text_input("UAN", value=t_data.get("uan", ""))
+                        p_ac = st.text_input("Bank A/c No", value=t_data.get("bank_ac", ""))
+                    with col_s3:
+                        p_doj = st.text_input("Date of Joining", value=t_data.get("doj", ""))
+                        p_dob = st.text_input("Date of Birth", value=t_data.get("dob", ""))
+                        p_pf = st.text_input("PF No", value=t_data.get("pf_no", ""))
+                        p_esi = st.text_input("ESI No", value=t_data.get("esi_no", ""))
+
+                    if st.form_submit_button("💾 Save Profile to Cloud", type="primary"):
+                        updated_profiles = dict(all_profiles)
+                        if t_key != target_prof_emp and t_key in updated_profiles:
+                            del updated_profiles[t_key]
+                        updated_profiles[target_prof_emp] = {
+                            "emp_code": p_code, "base_salary": p_salary, "department": p_dept, "designation": p_desig,
+                            "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
+                            "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
+                        }
+                        save_profiles(updated_profiles)
+                        st.session_state.flash_msg = f"✅ Cloud Profile for {target_prof_emp} saved successfully!"
+                        st.rerun()
+
+    # --- SUB-MODE B: SALARY CALCULATOR, SLIPS & HISTORY ---
+    else:
+        if is_admin_unlocked:
+            sal_emp_opts = sorted(list(set(st.session_state.emp_list + list(all_profiles.keys()) + hist_keys_all)))
+            sal_emp_opts = [e for e in sal_emp_opts if str(e).strip().lower() != "administrator"]
+            c_se1, c_se2 = st.columns([3, 7], vertical_alignment="bottom")
+            with c_se1:
+                sal_emp_name = st.selectbox("👤 Select Employee for Salary", options=sal_emp_opts, key="sal_emp_select") if sal_emp_opts else ""
+        else:
+            sal_emp_name = st.session_state.current_user
+
+        if not sal_emp_name:
+            st.info("No employees found. Please add employees in 'Manage Employees' first.")
+        else:
+            matched_prof_key, emp_profile_data = find_profile_data(all_profiles, sal_emp_name)
+            df_sal_raw = load_salary_history(sal_emp_name)
+            has_sal_history = not df_sal_raw.empty
+
+            # Employee Profile Details Expander
+            with st.expander(f"📝 Profile Details — {sal_emp_name}", expanded=False):
+                with st.form(f"sal_emp_profile_form_{sal_emp_name}"):
+                    p1, p2, p3, p4 = st.columns(4)
+                    with p1:
+                        p_code = st.text_input("Emp Code", value=emp_profile_data.get("emp_code", ""))
+                        p_doj = st.text_input("Date of Joining", value=emp_profile_data.get("doj", ""))
+                        p_pf = st.text_input("PF No", value=emp_profile_data.get("pf_no", ""))
+                    with p2:
+                        p_salary = st.number_input("Fixed CTC (₹)", value=float(emp_profile_data.get("base_salary", 0.0)), step=500.0)
+                        p_dob = st.text_input("Date of Birth", value=emp_profile_data.get("dob", ""))
+                        p_esi = st.text_input("ESI No", value=emp_profile_data.get("esi_no", ""))
+                    with p3:
+                        p_dept = st.text_input("Department", value=emp_profile_data.get("department", ""))
+                        p_pan = st.text_input("PAN No", value=emp_profile_data.get("pan_no", ""))
+                        p_bank = st.text_input("Bank Name", value=emp_profile_data.get("bank_name", ""))
+                    with p4:
+                        p_desig = st.text_input("Designation", value=emp_profile_data.get("designation", ""))
+                        p_uan = st.text_input("UAN", value=emp_profile_data.get("uan", ""))
+                        p_ac = st.text_input("Bank A/c No", value=emp_profile_data.get("bank_ac", ""))
+
+                    if st.form_submit_button("💾 Save Profile Details", type="primary"):
+                        updated_profiles = dict(all_profiles)
+                        if matched_prof_key != sal_emp_name and matched_prof_key in updated_profiles:
+                            del updated_profiles[matched_prof_key]
+                        updated_profiles[sal_emp_name] = {
+                            "emp_code": p_code, "base_salary": p_salary, "department": p_dept, "designation": p_desig,
+                            "doj": p_doj, "dob": p_dob, "pan_no": p_pan, "pf_no": p_pf,
+                            "uan": p_uan, "esi_no": p_esi, "bank_name": p_bank, "bank_ac": p_ac
+                        }
+                        save_profiles(updated_profiles)
+                        st.session_state.flash_msg = f"✅ Profile updated for {sal_emp_name}!"
+                        st.rerun()
+
+            is_new_sal_emp = True
+            df_sal_sorted = pd.DataFrame()
+            if has_sal_history:
+                df_clean = clean_legacy_salary_columns(df_sal_raw)
+                if not df_clean.empty:
+                    is_new_sal_emp = False
+                    df_clean['Month_Num'] = df_clean['Month'].astype(str).str.strip().map(MONTH_DICT)
+                    df_sal_sorted = df_clean.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
+
+            now_ist_sal = get_ist_now()
+            current_m_name = now_ist_sal.strftime("%b")
+            current_yr = now_ist_sal.year
+
+            default_m = current_m_name
+            default_yr = current_yr
+
+            if not is_new_sal_emp and not df_sal_sorted.empty:
+                last_r = df_sal_sorted.iloc[-1]
+                last_m = str(last_r.get("Month", "")).strip()
+                if last_m in MONTH_ORDER:
+                    l_idx = MONTH_ORDER.index(last_m)
+                    if l_idx < 11:
+                        default_m = MONTH_ORDER[l_idx + 1]
+                        default_yr = int(last_r.get("Year", current_yr))
+                    else:
+                        default_m = 'Jan'
+                        default_yr = int(last_r.get("Year", current_yr)) + 1
+
+            def_m_idx = MONTH_ORDER.index(default_m) if default_m in MONTH_ORDER else 0
+            kb = f"{st.session_state.sal_form_key}_{sal_emp_name.strip()}"
+
+            with st.container(border=True):
+                col_m, col_y, col_unlock, col_emp = st.columns([1.2, 1.2, 1.3, 2.3], vertical_alignment="bottom")
+                with col_unlock:
+                    unlock_my = st.checkbox("🔓 Edit Any Month", value=False, key=f"sal_unlock_{kb}") if not is_new_sal_emp else True
+                with col_m:
+                    selected_month = st.selectbox("📅 Month", MONTH_ORDER, index=def_m_idx, disabled=(not is_new_sal_emp and not unlock_my), key=f"sal_m_{kb}")
+                with col_y:
+                    selected_year = st.number_input("🗓️ Year", min_value=2024, max_value=2030, value=default_yr, disabled=(not is_new_sal_emp and not unlock_my), key=f"sal_y_{kb}")
+                with col_emp:
+                    st.text_input("Employee Name", value=sal_emp_name, disabled=True)
+
+            prof_ctc = float(emp_profile_data.get("base_salary", 0.0))
+            form_data = {
+                "CTC": prof_ctc, "Working_Hrs": 0.0, "Food": 0.0, "Gratuity": 0.0,
+                "PT": 200.0, "Bonus": 0.0, "Advance": 0.0, "Difference": 0.0,
+                "TDS": 0.0, "ESIC": 0.0, "PL_Used": 0
+            }
+            opening_pl = 0
+            is_editing_past = False
+
+            if not is_new_sal_emp and not df_sal_sorted.empty:
+                existing_row = df_sal_sorted[
+                    (df_sal_sorted['Month'].astype(str).str.strip() == selected_month) &
+                    (df_sal_sorted['Year'] == selected_year)
+                ]
+                if not existing_row.empty:
+                    is_editing_past = True
+                    r_ex = existing_row.iloc[0]
+                    form_data["CTC"] = float(r_ex.get("CTC", 0.0))
+                    form_data["Working_Hrs"] = float(r_ex.get("Working Hrs", 0.0))
+                    form_data["Food"] = float(r_ex.get("Food", 0.0))
+                    form_data["Gratuity"] = float(r_ex.get("Gratuity", 0.0))
+                    form_data["PT"] = float(r_ex.get("PT", 200.0))
+                    form_data["Bonus"] = float(r_ex.get("Bonus", 0.0))
+                    form_data["Advance"] = float(r_ex.get("Advance", 0.0))
+                    form_data["Difference"] = float(r_ex.get("Difference", 0.0))
+                    form_data["TDS"] = float(r_ex.get("TDS", 0.0))
+                    form_data["ESIC"] = float(r_ex.get("ESIC", 0.0))
+                    form_data["PL_Used"] = int(float(r_ex.get("PL Used", 0)))
+                    opening_pl = int(float(r_ex.get("Opening PL", 0)))
+                else:
+                    last_r = df_sal_sorted.iloc[-1]
+                    form_data["CTC"] = prof_ctc if prof_ctc > 0 else float(last_r.get("CTC", 0.0))
+                    form_data["Working_Hrs"] = float(last_r.get("Working Hrs", 0.0))
+                    form_data["PT"] = float(last_r.get("PT", 200.0))
+                    form_data["TDS"] = float(last_r.get("TDS", 0.0))
+                    form_data["ESIC"] = float(last_r.get("ESIC", 0.0))
+                    opening_pl = int(float(last_r.get("PL Balance", 0))) + 1
+
+            # Auto-fetch hours & PL directly from Attendance sheets!
+            att_data = fetch_attendance_totals_for_salary(sal_emp_name, selected_month, selected_year)
+            default_pl_used = form_data["PL_Used"] if is_editing_past else att_data["pl_days"]
+
+            # --- MAIN SALARY FORM ---
+            with st.form(key=f"salary_calc_form_{kb}_{selected_month}_{selected_year}"):
+                col1, col_line, col2 = st.columns([1, 0.04, 1])
+
+                with col1:
+                    st.subheader("💰 Basic Details (Auto-Synced from Attendance)")
+                    c1_1, c1_2 = st.columns(2)
+                    with c1_1:
+                        ctc_salary = st.number_input("CTC Salary (₹)", value=float(form_data["CTC"]), format="%.0f")
+
+                        p_h_col, p_m_col = st.columns(2)
+                        with p_h_col:
+                            present_hrs_input = st.number_input("Present Hrs", value=int(att_data["reg_h"]), step=1)
+                        with p_m_col:
+                            present_mins_input = st.number_input("Present Mins", value=int(att_data["reg_m"]), min_value=0, max_value=59, step=1)
+
+                        if is_new_sal_emp:
+                            opening_pl = st.number_input("Opening PL Balance", value=0, step=1)
+                        else:
+                            st.text_input("Opening PL Balance (Auto)", value=str(int(opening_pl)), disabled=True)
+
+                        used_pl = st.number_input("PL Used", value=int(default_pl_used), step=1)
+
+                    with c1_2:
+                        work_hrs = st.number_input("Working Hrs", value=float(form_data["Working_Hrs"]), format="%.0f")
+
+                        l_h_col, l_m_col = st.columns(2)
+                        with l_h_col:
+                            late_hrs_input = st.number_input("Late Hrs", value=int(att_data["late_h"]), step=1)
+                        with l_m_col:
+                            late_mins_input = st.number_input("Late Mins", value=int(att_data["late_m"]), min_value=0, max_value=59, step=1)
+
+                        e_h_col, e_m_col = st.columns(2)
+                        with e_h_col:
+                            out_hrs_input = st.number_input("Out Hrs", value=int(att_data["out_h"]), step=1)
+                        with e_m_col:
+                            out_mins_input = st.number_input("Out Mins", value=int(att_data["out_m"]), min_value=0, max_value=59, step=1)
+
+                        o_h_col, o_m_col = st.columns(2)
+                        with o_h_col:
+                            ot_hrs_input = st.number_input("OT Hrs", value=int(att_data["ot_h"]), step=1)
+                        with o_m_col:
+                            ot_mins_input = st.number_input("OT Mins", value=int(att_data["ot_m"]), min_value=0, max_value=59, step=1)
+
+                with col_line:
+                    st.markdown("""
+                        <style>
+                            .sal-vline {
+                                width: 2px;
+                                background-color: rgba(255, 255, 255, 0.2);
+                                height: 390px;
+                                margin: 30px auto 0 auto;
+                                border-radius: 2px;
+                            }
+                            @media (max-width: 768px) { .sal-vline { display: none; } }
+                        </style>
+                        <div class="sal-vline"></div>
+                    """, unsafe_allow_html=True)
+
+                with col2:
+                    st.subheader("📉 Deductions & Additions")
+                    c2_1, c2_2 = st.columns(2)
+                    with c2_1:
+                        food = st.number_input("Food (₹)", value=float(form_data["Food"]), format="%.0f")
+                        pt_tax = st.number_input("PT Tax (₹)", value=float(form_data["PT"]), format="%.0f")
+                        tds = st.number_input("TDS (₹)", value=float(form_data["TDS"]), format="%.2f")
+                        bonus = st.number_input("Bonus (₹)", value=float(form_data["Bonus"]), format="%.0f")
+                    with c2_2:
+                        gratuity = st.number_input("Gratuity (₹)", value=float(form_data["Gratuity"]), format="%.0f")
+                        advance = st.number_input("Loan/Advance (₹)", value=float(form_data["Advance"]), format="%.0f")
+                        esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f")
+                        difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
+
+                st.write("")
+                _, sal_btn_col, _ = st.columns([1, 2, 1])
+                with sal_btn_col:
+                    sal_save_clicked = st.form_submit_button("💾 Calculate & Save Salary to Cloud", type="primary", use_container_width=True)
+
+            if sal_save_clicked:
+                final_pl_balance = int(opening_pl) - int(used_pl)
+                pl_hours_to_add = int(used_pl) * 10
+
+                total_late_mins = (late_hrs_input * 60) + late_mins_input
+                total_out_mins = (out_hrs_input * 60) + out_mins_input
+                total_ot_mins = (ot_hrs_input * 60) + ot_mins_input
+                total_pay_mins = (present_hrs_input * 60) + present_mins_input
+                total_min = max(0, total_pay_mins + int(pl_hours_to_add * 60))
+
+                calc_final_hrs = f"{total_min // 60}:{total_min % 60:02d}"
+                late_hrs_str = f"{total_late_mins // 60}:{total_late_mins % 60:02d}"
+                early_hrs_str = f"{total_out_mins // 60}:{total_out_mins % 60:02d}"
+                ot_hrs_str = f"{total_ot_mins // 60}:{total_ot_mins % 60:02d}"
+
+                total_late_out_mins = total_late_mins + total_out_mins
+                deductible_mins = max(0, total_late_out_mins - 120)
+
+                total_pay_hrs_mins = max(0, (total_min + total_ot_mins) - deductible_mins)
+                total_pay_hrs_str = f"{total_pay_hrs_mins // 60}:{total_pay_hrs_mins % 60:02d}"
+
+                actual_salary_val = ctc_salary - gratuity - bonus
+                hr_rate = actual_salary_val / work_hrs if work_hrs > 0 else 0
+                min_rate = hr_rate / 60.0 if work_hrs > 0 else 0
+
+                lwp_val = round(((deductible_mins // 60) * hr_rate) + ((deductible_mins % 60) * min_rate))
+                ot_salary = round((total_ot_mins / 60.0) * hr_rate)
+
+                gross_salary_calc = actual_salary_val + ot_salary
+                total_deductions_calc = lwp_val + pt_tax + tds + esic + advance + food
+
+                in_hand_salary = round(gross_salary_calc - total_deductions_calc)
+                pay_salary_val = in_hand_salary - ot_salary
+                bank_salary_val = in_hand_salary + difference
+
+                st.session_state.sal_calc_result = {
+                    "name": sal_emp_name, "month": selected_month, "year": selected_year,
+                    "in_hand": in_hand_salary, "ot_sal": ot_salary, "pl": final_pl_balance,
+                    "slip_data": {
+                        "work_hrs_str": f"{int(work_hrs)}:00",
+                        "ctc": ctc_salary, "bonus": bonus, "gratuity": gratuity,
+                        "actual_salary": actual_salary_val,
+                        "present_hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
+                        "pl_used": used_pl, "pl_balance": final_pl_balance,
+                        "ot_hrs": ot_hrs_str, "late_hrs": late_hrs_str, "out_hrs": early_hrs_str,
+                        "pay_hrs": total_pay_hrs_str,
+                        "pt": pt_tax, "tds": tds, "esic": esic, "advance": advance, "food": food,
+                        "lwp_val": lwp_val, "difference": difference,
+                        "pay_salary_val": pay_salary_val, "ot_sal": ot_salary,
+                        "in_hand_salary": in_hand_salary, "bank_salary_val": bank_salary_val
+                    }
+                }
+
+                new_rec_dict = {
+                    "Date": get_ist_now().strftime("%d-%m-%Y"), "Name": sal_emp_name, "Month": selected_month, "Year": selected_year,
+                    "CTC": ctc_salary, "Working Hrs": work_hrs, "Present Hrs": f"{int(present_hrs_input)}:{int(present_mins_input):02d}",
+                    "Late Hrs": late_hrs_str, "Out Hrs": early_hrs_str, "OT Hrs": ot_hrs_str,
+                    "Final Present Hrs": calc_final_hrs, "Total Pay Hrs": total_pay_hrs_str,
+                    "Opening PL": opening_pl, "PL Used": used_pl, "PL Balance": final_pl_balance,
+                    "OT Salary": ot_salary, "Net Salary": bank_salary_val, "In Hand Salary": in_hand_salary,
+                    "Food": food, "Gratuity": gratuity, "PT": pt_tax, "TDS": tds, "ESIC": esic,
+                    "Advance": advance, "Bonus": bonus, "Difference": difference, "LWP": lwp_val
+                }
+                new_rec = reorder_salary_columns(pd.DataFrame([new_rec_dict]))
+
+                df_existing = load_salary_history(sal_emp_name)
+                if not df_existing.empty:
+                    df_existing = clean_legacy_salary_columns(df_existing)
+                    df_existing = df_existing[~((df_existing['Month'].astype(str).str.strip() == selected_month) & (df_existing['Year'] == selected_year))]
+                    df_combined = pd.concat([df_existing, new_rec], ignore_index=True)
+                    df_combined['Month_Num'] = df_combined['Month'].astype(str).str.strip().map(MONTH_DICT)
+                    df_combined = df_combined.sort_values(by=['Year', 'Month_Num']).reset_index(drop=True)
+
+                    updated_idx = df_combined.index[(df_combined['Month'] == selected_month) & (df_combined['Year'] == selected_year)].tolist()[0]
+                    if updated_idx < len(df_combined) - 1:
+                        df_combined = recalculate_future_pl(df_combined, updated_idx)
+
+                    df_combined = reorder_salary_columns(df_combined.drop(columns=['Month_Num']))
+                    save_salary_history(sal_emp_name, df_combined)
+                else:
+                    save_salary_history(sal_emp_name, new_rec)
+
+                st.session_state.sal_form_key += 1
+                st.session_state.flash_msg = f"✅ Salary Saved! {sal_emp_name} ({selected_month}'{selected_year}) | PL Bal: {final_pl_balance} | OT: ₹ {int(ot_salary):,} | LWP: ₹ {int(lwp_val):,} | In Hand: ₹ {int(in_hand_salary):,}"
+                st.rerun()
+
+            # --- JUST-SAVED SLIP DOWNLOADS ---
+            if st.session_state.get('sal_calc_result') and st.session_state.sal_calc_result['name'] == sal_emp_name:
+                res_s = st.session_state.sal_calc_result
+                _, dl_c1, dl_c2, _ = st.columns([1, 1, 1, 1])
+                with dl_c1:
+                    if HAS_XLSXWRITER:
+                        excel_slip = generate_excel_slip(res_s['slip_data'], res_s['name'], res_s['month'], res_s['year'])
+                        st.download_button(
+                            label="📄 Download Excel Slip",
+                            data=excel_slip,
+                            file_name=f"{res_s['name']}_Salary_Slip_{res_s['month']}_{res_s['year']}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("⚠️ Add `xlsxwriter` to requirements.txt for Excel Slip.")
+                with dl_c2:
+                    if HAS_FPDF:
+                        _, prof_pdf = find_profile_data(all_profiles, res_s['name'])
+                        pdf_slip = generate_pdf_slip(res_s['slip_data'], res_s['name'], res_s['month'], res_s['year'], prof_pdf)
+                        st.download_button(
+                            label="📕 Download PDF Slip",
+                            data=pdf_slip,
+                            file_name=f"{res_s['name']}_Salary_Slip_{res_s['month']}_{res_s['year']}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("⚠️ Add `fpdf` to requirements.txt for PDF Slip.")
+
+            # --- CLOUD SALARY HISTORY & OLD SLIP DOWNLOADS ---
+            if has_sal_history:
+                st.divider()
+                st.subheader(f"📂 Salary History: {sal_emp_name}")
+                h_df = clean_legacy_salary_columns(df_sal_raw)
+                if 'Month' in h_df.columns:
+                    h_df['Sort_M'] = h_df['Month'].astype(str).str.strip().map(MONTH_DICT)
+                    if 'Year' in h_df.columns:
+                        h_df = h_df.sort_values(['Year', 'Sort_M']).drop(columns=['Sort_M']).reset_index(drop=True)
+                    else:
+                        h_df = h_df.sort_values('Sort_M').drop(columns=['Sort_M']).reset_index(drop=True)
+                h_df = reorder_salary_columns(h_df)
+
+                def highlight_sal_cols(col):
+                    if col.name == 'Net Salary':
+                        return ['background-color: #4a1c1c; color: #ff9999; font-weight: bold'] * len(col)
+                    elif col.name == 'In Hand Salary':
+                        return ['background-color: #1c4a22; color: #99ff99; font-weight: bold'] * len(col)
+                    return [''] * len(col)
+
+                edited_sal_df = st.data_editor(
+                    h_df.style.apply(highlight_sal_cols, axis=0),
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    key=f"sal_editor_{sal_emp_name.lower().replace(' ', '_')}",
+                    column_config=sal_table_config
+                )
+
+                if not h_df.equals(edited_sal_df):
+                    save_salary_history(sal_emp_name, edited_sal_df)
+                    st.toast("✅ Salary Cloud Record updated!")
+                    st.rerun()
+
+                st.write("")
+                with st.container(border=True):
+                    st.markdown("#### 📥 Download Slip from History")
+                    hs1, hs2, hs3, hs_blank = st.columns([2, 1.2, 1.2, 3.6], vertical_alignment="bottom")
+                    with hs1:
+                        hist_opts = list(dict.fromkeys([
+                            f"{str(r.get('Month', '')).strip()} - {int(r.get('Year', current_yr))}"
+                            for _, r in h_df.iterrows()
+                        ]))
+                        sel_hist_opt = st.selectbox("Select Month & Year:", hist_opts, key=f"sal_hist_sel_{sal_emp_name}")
+
+                    if sel_hist_opt:
+                        sm, sy = sel_hist_opt.split(" - ")
+                        h_row = h_df[(h_df['Month'].astype(str).str.strip() == sm) & (h_df['Year'] == int(sy))].iloc[-1]
+
+                        actual_sal_h = float(h_row.get("CTC", 0)) - float(h_row.get("Bonus", 0)) - float(h_row.get("Gratuity", 0))
+                        net_sal_h = float(h_row.get("Net Salary", 0))
+                        in_hand_h = float(h_row.get("In Hand Salary", 0))
+                        diff_h = float(h_row.get("Difference", 0))
+                        ot_sal_h = float(h_row.get("OT Salary", 0))
+
+                        if in_hand_h == 0:
+                            pay_sal_h = round(net_sal_h - diff_h - ot_sal_h)
+                            in_hand_h = pay_sal_h + ot_sal_h
+                        else:
+                            pay_sal_h = in_hand_h - ot_sal_h
+
+                        hist_slip_data = {
+                            "work_hrs_str": f"{int(float(h_row.get('Working Hrs', 0)))}:00",
+                            "ctc": float(h_row.get("CTC", 0)),
+                            "bonus": float(h_row.get("Bonus", 0)),
+                            "gratuity": float(h_row.get("Gratuity", 0)),
+                            "actual_salary": actual_sal_h,
+                            "present_hrs": str(h_row.get("Present Hrs", "0:00")).strip(),
+                            "pl_used": int(float(h_row.get("PL Used", 0))),
+                            "pl_balance": int(float(h_row.get("PL Balance", 0))),
+                            "ot_hrs": str(h_row.get("OT Hrs", "0:00")).strip(),
+                            "late_hrs": str(h_row.get("Late Hrs", "0:00")).strip(),
+                            "out_hrs": str(h_row.get("Out Hrs", "0:00")).strip(),
+                            "pay_hrs": str(h_row.get("Total Pay Hrs", h_row.get("Final Present Hrs", "0:00"))).strip(),
+                            "pt": float(h_row.get("PT", 0)),
+                            "tds": float(h_row.get("TDS", 0)),
+                            "esic": float(h_row.get("ESIC", 0)),
+                            "advance": float(h_row.get("Advance", 0)),
+                            "food": float(h_row.get("Food", 0)),
+                            "lwp_val": float(h_row.get("LWP", 0.0)),
+                            "difference": diff_h,
+                            "pay_salary_val": pay_sal_h,
+                            "ot_sal": ot_sal_h,
+                            "in_hand_salary": in_hand_h,
+                            "bank_salary_val": round(net_sal_h)
+                        }
+
+                        with hs2:
+                            if HAS_XLSXWRITER:
+                                xls_h = generate_excel_slip(hist_slip_data, str(h_row.get("Name", sal_emp_name)), sm, sy)
+                                st.download_button(
+                                    label="📄 Excel Slip",
+                                    data=xls_h,
+                                    file_name=f"{sal_emp_name}_Salary_Slip_{sm}_{sy}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True,
+                                    key=f"sal_dl_xls_{sal_emp_name}"
+                                )
+                            else:
+                                st.caption("⚠️ Add `xlsxwriter`")
+                        with hs3:
+                            if HAS_FPDF:
+                                pdf_h = generate_pdf_slip(hist_slip_data, str(h_row.get("Name", sal_emp_name)), sm, sy, emp_profile_data)
+                                st.download_button(
+                                    label="📕 PDF Slip",
+                                    data=pdf_h,
+                                    file_name=f"{sal_emp_name}_Salary_Slip_{sm}_{sy}.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True,
+                                    key=f"sal_dl_pdf_{sal_emp_name}"
+                                )
+                            else:
+                                st.caption("⚠️ Add `fpdf`")
+
+# ==========================================
+# TAB 6: MANAGE EMPLOYEES (ADMIN ONLY)
 # ==========================================
 elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
     st.subheader("⚙️ Master Employee Control (Passwords & Details)")
@@ -1505,9 +2602,9 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
     st.divider()
 
-    # Emergency Data Fixer
-    st.subheader("🛠️ Emergency Data Fixer (Restore Old Data & Remove Duplicate)")
-    st.error("⚠️ If you changed an employee's name (e.g. 'Kp' to 'Krutin Patel'), this tool updates all their past attendance to the new name, migrates their password, and permanently removes the old name from the dropdown.")
+    # Emergency Data Fixer (Syncs Attendance + Passwords + HRIS Profiles + Salary History)
+    st.subheader("🛠️ Emergency Data Fixer (Sync Attendance, Profile & Salary History)")
+    st.error("⚠️ If you changed an employee's name (e.g. 'Kp' to 'Krutin Patel'), this tool updates ALL their Attendance, Password, HRIS Profile, and Salary History to the new name in one click.")
 
     with st.form("fix_data_form"):
         f_col1, f_col2, f_col3, f_blank = st.columns([2, 2, 2.5, 1.5], vertical_alignment="bottom")
@@ -1516,16 +2613,18 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
         with f_col2:
             new_name_fix = st.text_input("New Name (e.g. Krutin Patel)")
         with f_col3:
-            fix_submit = st.form_submit_button("🚀 Fix History & Remove Old Name", type="primary")
+            fix_submit = st.form_submit_button("🚀 Fix All Data & Remove Old Name", type="primary")
 
     if fix_submit:
         if not old_name_fix or not new_name_fix:
             st.error("Both Old Name and New Name are required!")
         else:
+            old_clean = old_name_fix.strip()
+            clean_new = new_name_fix.strip().title()
             success_count = 0
             sheets_to_check = get_all_sheet_names()
 
-            # Step 1: Fix historical sheets
+            # Step 1: Fix historical Attendance sheets
             for sheet in sheets_to_check:
                 url_sheet = f"{FIREBASE_URL}/{sheet}.json"
                 try:
@@ -1536,8 +2635,8 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
                         if isinstance(sheet_data, dict):
                             for k, v in sheet_data.items():
-                                if v and str(v.get("Employee Name", "")).strip().lower() == old_name_fix.strip().lower():
-                                    sheet_data[k]["Employee Name"] = new_name_fix.strip().title()
+                                if v and str(v.get("Employee Name", "")).strip().lower() == old_clean.lower():
+                                    sheet_data[k]["Employee Name"] = clean_new
                                     updated = True
                             if updated:
                                 requests.put(url_sheet, json=sheet_data, timeout=10)
@@ -1545,8 +2644,8 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
                         elif isinstance(sheet_data, list):
                             for i in range(len(sheet_data)):
-                                if sheet_data[i] and str(sheet_data[i].get("Employee Name", "")).strip().lower() == old_name_fix.strip().lower():
-                                    sheet_data[i]["Employee Name"] = new_name_fix.strip().title()
+                                if sheet_data[i] and str(sheet_data[i].get("Employee Name", "")).strip().lower() == old_clean.lower():
+                                    sheet_data[i]["Employee Name"] = clean_new
                                     updated = True
                             if updated:
                                 requests.put(url_sheet, json=sheet_data, timeout=10)
@@ -1554,10 +2653,9 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
                 except Exception:
                     pass
 
-            # Step 2: Migrate password and remove old name from employee_dict (case-insensitive match)
-            clean_new = new_name_fix.strip().title()
+            # Step 2: Migrate password & employee_dict
             curr_dict = st.session_state.emp_dict.copy()
-            matched_old_keys = [k for k in curr_dict.keys() if k.strip().lower() == old_name_fix.strip().lower() and k != "Administrator"]
+            matched_old_keys = [k for k in curr_dict.keys() if k.strip().lower() == old_clean.lower() and k != "Administrator"]
             for old_key in matched_old_keys:
                 old_details = curr_dict[old_key]
                 if clean_new not in curr_dict:
@@ -1567,14 +2665,49 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
             if matched_old_keys:
                 save_employee_dict(curr_dict)
 
+            # Step 3: Migrate HRIS Profile (/profiles.json)
+            all_profs_fix = load_profiles()
+            matched_prof_keys = [k for k in list(all_profs_fix.keys()) if str(k).strip().lower() == old_clean.lower()]
+            if matched_prof_keys:
+                updated_profs = dict(all_profs_fix)
+                for pk in matched_prof_keys:
+                    if clean_new not in updated_profs:
+                        updated_profs[clean_new] = updated_profs[pk]
+                    if pk != clean_new:
+                        del updated_profs[pk]
+                save_profiles(updated_profs)
+
+            # Step 4: Migrate HRIS Salary History (/salary_history)
+            old_h_key_lower = get_emp_key(old_clean).lower()
+            new_h_key = get_emp_key(clean_new)
+            for hk in load_salary_history_keys():
+                if str(hk).strip().lower() == old_h_key_lower:
+                    try:
+                        res_old_h = requests.get(f"{FIREBASE_URL}/salary_history/{hk}.json", timeout=10)
+                        if res_old_h.status_code == 200 and res_old_h.json():
+                            df_old_h = pd.DataFrame(res_old_h.json())
+                            if not df_old_h.empty:
+                                df_old_h["Name"] = clean_new
+                                res_new_h = requests.get(f"{FIREBASE_URL}/salary_history/{new_h_key}.json", timeout=10)
+                                if hk != new_h_key and res_new_h.status_code == 200 and res_new_h.json():
+                                    df_ex_new = pd.DataFrame(res_new_h.json())
+                                    df_merged = pd.concat([df_old_h, df_ex_new], ignore_index=True).drop_duplicates(subset=["Month", "Year"], keep="last")
+                                else:
+                                    df_merged = df_old_h
+                                save_salary_history(clean_new, df_merged)
+                                if hk != new_h_key:
+                                    requests.delete(f"{FIREBASE_URL}/salary_history/{hk}.json", timeout=10)
+                    except Exception:
+                        pass
+
             st.session_state.cached_data.clear()
-            load_data.clear()
+            st.cache_data.clear()
             st.session_state.form_reset_counter += 1
-            st.session_state.flash_msg = f"✅ Data Restored! '{old_name_fix}' updated to '{new_name_fix}' across {success_count} months. Old name removed from dropdown."
+            st.session_state.flash_msg = f"✅ All Data Synced! '{old_clean}' updated to '{clean_new}' across Attendance ({success_count} months), Profile & Salary History."
             st.rerun()
 
 # ==========================================
-# TAB 6: CHANGE PASSWORD (FOR EVERYONE)
+# TAB 7: CHANGE PASSWORD (FOR EVERYONE)
 # ==========================================
 elif selected_tab == "🔑 Change Password":
     st.subheader(f"🔑 Update Password for: **{st.session_state.current_user}**")
