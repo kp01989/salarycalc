@@ -81,6 +81,34 @@ st.markdown("""
     div[data-testid="column"]:has(#left-column-marker) + div[data-testid="column"] {
         padding-left: 25px;
     }
+
+    /* Bottom hover tooltip for Refresh Cloud Data button */
+    .st-key-refresh_cloud_btn {
+        position: relative !important;
+        overflow: visible !important;
+    }
+    .st-key-refresh_cloud_btn:hover {
+        z-index: 9999 !important;
+    }
+    .st-key-refresh_cloud_btn:hover::after {
+        content: "Sync latest attendance & cloud records";
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        text-align: center;
+        background-color: #262730;
+        color: #ffffff;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: normal;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        z-index: 9999;
+        pointer-events: none;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -682,7 +710,7 @@ with st.sidebar:
     st.header("👤 Profile")
     emp_sidebar_name = st.text_input("Employee Name", placeholder="Enter Name...", label_visibility="collapsed").title()
 
-    if st.button("🔄 Refresh Cloud Data", use_container_width=True, help="Sync latest attendance & cloud records"):
+    if st.button("🔄 Refresh Cloud Data", use_container_width=True, key="refresh_cloud_btn"):
         st.cache_data.clear()
         st.rerun()
 
@@ -786,6 +814,9 @@ with st.sidebar:
 # ==========================================
 if emp_sidebar_name == "Administrator":
     st.markdown("<h1 style='text-align: center;'>👑 Admin Dashboard</h1>", unsafe_allow_html=True)
+    if st.session_state['flash_msg']:
+        st.success(st.session_state['flash_msg'])
+        st.session_state['flash_msg'] = None
     st.divider()
 
     st.subheader("👥 All Employee Master Profiles (Cloud Data)")
@@ -808,6 +839,81 @@ if emp_sidebar_name == "Administrator":
         )
     else:
         st.info("⚠️ No employee profiles found in Cloud Database.")
+
+    st.divider()
+
+    # --- RENAME / MIGRATE HRIS DATA TOOL ---
+    st.subheader("🔄 Rename Employee (Sync Profile & Salary History)")
+    st.info("💡 Attendance Tracker માં નામ બદલ્યા પછી અહીંથી જૂનું નામ સિલેક્ટ કરીને નવું નામ નાખો—Profile અને આખો Salary History નવા નામ પર ટ્રાન્સફર થઈ જશે.")
+
+    hist_keys = []
+    try:
+        res_hk = requests.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
+        if res_hk.status_code == 200 and isinstance(res_hk.json(), dict):
+            hist_keys = list(res_hk.json().keys())
+    except Exception:
+        pass
+
+    existing_hris_names = sorted(list(set(list(all_profiles.keys()) + hist_keys)))
+
+    with st.container(border=True):
+        with st.form("rename_hris_form"):
+            r_col1, r_col2, r_col3 = st.columns([2, 2, 1.5], vertical_alignment="bottom")
+            with r_col1:
+                if existing_hris_names:
+                    old_hris_name = st.selectbox("Select Old Name (HRIS)", options=existing_hris_names)
+                else:
+                    old_hris_name = st.text_input("Old Name (e.g. Kp)")
+            with r_col2:
+                new_hris_name = st.text_input("New Name (e.g. Krutin Patel)")
+            with r_col3:
+                rename_submit = st.form_submit_button("🚀 Transfer Data", type="primary", use_container_width=True)
+
+        if rename_submit:
+            old_n = str(old_hris_name).strip()
+            new_n = str(new_hris_name).strip().title()
+            if not old_n or not new_n:
+                st.error("⚠️ Old Name અને New Name બંને નાખવા જરૂરી છે!")
+            elif old_n == new_n:
+                st.warning("⚠️ બંને નામ સરખા જ છે.")
+            else:
+                # 1. Migrate Profile
+                updated_profiles = dict(all_profiles)
+                matched_prof_keys = [k for k in list(updated_profiles.keys()) if k.strip().lower() == old_n.lower()]
+                prof_moved = False
+                for pk in matched_prof_keys:
+                    if new_n not in updated_profiles:
+                        updated_profiles[new_n] = updated_profiles[pk]
+                    if pk != new_n:
+                        del updated_profiles[pk]
+                    prof_moved = True
+                if prof_moved:
+                    save_profiles(updated_profiles)
+
+                # 2. Migrate Salary History
+                old_key_lower = get_emp_key(old_n).lower()
+                new_key = get_emp_key(new_n)
+                matched_hist_keys = [k for k in hist_keys if k.strip().lower() == old_key_lower]
+                for hk in matched_hist_keys:
+                    res_old = requests.get(f"{FIREBASE_URL}/salary_history/{hk}.json", timeout=10)
+                    if res_old.status_code == 200 and res_old.json():
+                        df_old = pd.DataFrame(res_old.json())
+                        if not df_old.empty:
+                            df_old["Name"] = new_n
+                            res_new = requests.get(f"{FIREBASE_URL}/salary_history/{new_key}.json", timeout=10)
+                            if hk != new_key and res_new.status_code == 200 and res_new.json():
+                                df_existing_new = pd.DataFrame(res_new.json())
+                                df_merged = pd.concat([df_old, df_existing_new], ignore_index=True)
+                                df_merged = df_merged.drop_duplicates(subset=["Month", "Year"], keep="last")
+                            else:
+                                df_merged = df_old
+                            save_salary_history(new_n, df_merged)
+                            if hk != new_key:
+                                requests.delete(f"{FIREBASE_URL}/salary_history/{hk}.json", timeout=10)
+
+                st.cache_data.clear()
+                st.session_state['flash_msg'] = f"✅ '{old_n}' નો Profile અને Salary History સફળતાપૂર્વક '{new_n}' પર ટ્રાન્સફર થઈ ગયો!"
+                st.rerun()
 
     st.divider()
     st.subheader("📝 Manage Profiles")
