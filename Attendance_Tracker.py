@@ -1011,15 +1011,21 @@ elif selected_tab == "📊 Dashboard & History":
 
     available_sheets = ["All Months"] + all_sheets_raw
 
-    col_f1, col_f2, col_f_blank = st.columns([2, 2, 6])
+col_f1, col_f2, col_f_blank = st.columns([2, 3.5, 4.5])
     with col_f1:
         selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
 
     if is_admin_unlocked:
         with col_f2:
-            emp_list = ["All Employees"] + st.session_state.emp_list
-            selected_emp = st.selectbox("Select Master View", emp_list, key="admin_emp_select")
+            selected_emps = st.multiselect(
+                "👤 Select Employee(s)",
+                options=st.session_state.emp_list,
+                placeholder="All Employees (Select 1 or more...)",
+                key="admin_emp_multiselect"
+            )
+        selected_emp = selected_emps[0] if len(selected_emps) == 1 else "All Employees"
     else:
+        selected_emps = [formatted_name]
         selected_emp = formatted_name
 
     if selected_sheet == "All Months":
@@ -1028,6 +1034,43 @@ elif selected_tab == "📊 Dashboard & History":
             if sht not in st.session_state.cached_data:
                 st.session_state.cached_data[sht] = load_data(sht)
             df_temp = st.session_state.cached_data[sht]
+            if not df_temp.empty:
+                df_temp = df_temp.copy()
+                df_temp["_Original_Sheet"] = sht
+                df_temp["_Original_Index"] = df_temp.index
+                df_list.append(df_temp)
+        if df_list:
+            df_display = pd.concat(df_list, ignore_index=True)
+        else:
+            df_display = pd.DataFrame()
+    else:
+        if selected_sheet not in st.session_state.cached_data:
+            st.session_state.cached_data[selected_sheet] = load_data(selected_sheet)
+        df_temp = st.session_state.cached_data[selected_sheet]
+        if not df_temp.empty:
+            df_display = df_temp.copy()
+            df_display["_Original_Sheet"] = selected_sheet
+            df_display["_Original_Index"] = df_display.index
+        else:
+            df_display = pd.DataFrame()
+
+    if not df_display.empty:
+        df_display["RealDate"] = pd.to_datetime(df_display["Date"], format="%d/%m/%Y")
+        df_display = df_display.sort_values(by=["Employee Name", "RealDate"]).drop(columns=["RealDate"])
+        df_display = df_display.reset_index(drop=True)
+        df_display = df_display.fillna("")
+
+        if selected_emps:
+            lower_emps = [e.strip().lower() for e in selected_emps]
+            df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower().isin(lower_emps)]
+
+        final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status", "_Original_Sheet", "_Original_Index"]
+        for c in final_display_columns:
+            if c not in df_display.columns:
+                df_display[c] = ""
+        df_display = df_display[final_display_columns]
+
+        st.divider()
             if not df_temp.empty:
                 df_temp = df_temp.copy()
                 df_temp["_Original_Sheet"] = sht
