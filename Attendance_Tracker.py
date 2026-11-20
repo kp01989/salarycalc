@@ -1012,7 +1012,8 @@ elif selected_tab == "📊 Dashboard & History":
     available_sheets = ["All Months"] + all_sheets_raw
 
 col_f1, col_f2, col_f_blank = st.columns([2, 3.5, 4.5])
-    with col_f1:
+    
+with col_f1:
         selected_sheet = st.selectbox("Select Month to View", available_sheets, key="filter_month_dash")
 
     if is_admin_unlocked:
