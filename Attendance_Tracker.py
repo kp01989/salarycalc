@@ -378,15 +378,25 @@ def load_salary_history(emp_name):
     if not emp_name:
         return pd.DataFrame()
     emp_key = get_emp_key(emp_name)
+
+    def _raw_to_df(raw):
+        if isinstance(raw, dict):
+            rows = [v for v in raw.values() if isinstance(v, dict)]
+        elif isinstance(raw, list):
+            rows = [v for v in raw if isinstance(v, dict)]
+        else:
+            rows = []
+        return pd.DataFrame(rows)
+
     try:
-        res = requests.get(f"{FIREBASE_URL}/salary_history/{emp_key}.json", timeout=10)
+        res = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", timeout=10)
         if res.status_code == 200 and res.json():
-            return pd.DataFrame(res.json())
+            return _raw_to_df(res.json())
         for k in load_salary_history_keys():
             if str(k).strip().lower() == emp_key.lower():
-                res2 = requests.get(f"{FIREBASE_URL}/salary_history/{k}.json", timeout=10)
+                res2 = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(k))}.json", timeout=10)
                 if res2.status_code == 200 and res2.json():
-                    return pd.DataFrame(res2.json())
+                    return _raw_to_df(res2.json())
     except Exception:
         pass
     return pd.DataFrame()
