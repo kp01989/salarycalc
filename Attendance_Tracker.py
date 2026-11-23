@@ -2628,7 +2628,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
     # Emergency Data Fixer (Syncs Attendance + Passwords + HRIS Profiles + Salary History)
     st.subheader("🛠️ Emergency Data Fixer (Sync Attendance, Profile & Salary History)")
-    st.error("⚠️ જો જૂનું નામ (જેમ કે 'KP') માંથી નવું નામ ('Krutin Patel') કર્યું હોય, તો અહીંથી જૂનું નામ અને નવું નામ સિલેક્ટ કરીને ૧ ક્લિકમાં Attendance, Profile અને આખો Salary History ટ્રાન્સફર થઈ જશે.")
+    st.error("⚠️ If you renamed an employee (e.g., 'KP' to 'Krutin Patel'), select the old and new names below to transfer all Attendance, Profile, and Salary History in one click.")
 
     # Fetch fresh keys directly from Firebase (no cache delay)
     fresh_profs_fix = {}
@@ -2654,12 +2654,12 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
     )))
 
     if fresh_hist_keys:
-        st.caption(f"📌 Firebase Salary History માં અત્યારે આ નામો સેવ છે: **{', '.join(sorted(fresh_hist_keys))}**")
+        st.caption(f"📌 Saved names currently in Firebase Salary History: **{', '.join(sorted(fresh_hist_keys))}**")
 
     with st.form("fix_data_form"):
         f_col1, f_col2, f_col3 = st.columns([2, 2, 2], vertical_alignment="bottom")
         with f_col1:
-            old_sel_fix = st.selectbox("Old Name (Dropdown માંથી પસંદ કરો)", options=["-- Type Manually --"] + old_name_candidates)
+            old_sel_fix = st.selectbox("Old Name (Select from Dropdown)", options=["-- Type Manually --"] + old_name_candidates)
             old_manual_fix = st.text_input("Or Type Old Name Manually", placeholder="e.g. KP")
         with f_col2:
             new_sel_fix = st.selectbox("New Name (Employee List)", options=["-- Type Manually --"] + st.session_state.emp_list)
@@ -2672,9 +2672,9 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
         clean_new = new_manual_fix.strip().title() if new_manual_fix.strip() else ("" if new_sel_fix == "-- Type Manually --" else new_sel_fix.strip())
 
         if not old_clean or not clean_new:
-            st.error("⚠️ Old Name અને New Name બંને પસંદ/દાખલ કરવા જરૂરી છે!")
+            st.error("⚠️ Both Old Name and New Name are required!")
         elif old_clean == clean_new:
-            st.warning("⚠️ Old Name અને New Name બંને સરખા જ છે.")
+            st.warning("⚠️ Old Name and New Name cannot be the same.")
         else:
             def _raw_to_df_fix(raw):
                 if isinstance(raw, dict):
