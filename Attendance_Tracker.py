@@ -908,121 +908,118 @@ if 'filter_month_dash' not in st.session_state:
 # ==========================================
 # UI STYLING
 # ==========================================
-st.markdown("""
-    <style>
-        /* --- SUPREME MOBILE SCROLL FIX --- */
-        html, body, .stApp, [data-testid="stAppViewContainer"], .main, .block-container {
-            overscroll-behavior-y: auto !important;
-            -webkit-overflow-scrolling: touch !important;
-        }
-        
-        [data-testid="stAppViewContainer"] {
-            overflow-y: auto !important;
-        }
-        
-        [data-testid="stDataFrame"] canvas, 
-        [data-testid="stDataFrame"] div,
-        [data-testid="stTable"] {
-            touch-action: pan-y pan-x !important;
-            overscroll-behavior: auto !important;
-        }
-        
-        @keyframes instantHide {
-            to {
-                opacity: 0;
-                max-height: 0;
-                padding: 0;
-                margin: 0;
-                border: none;
-                overflow: hidden;
-            }
-        }
-        
-        .auto-hide-success {
-            background-color: rgba(29, 169, 85, 0.2);
-            border: 1px solid rgba(29, 169, 85, 0.5);
-            color: var(--text-color);
-            font-weight: 600;
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            animation: instantHide 0s 5s forwards; 
-        }
-        
-        .auto-hide-error {
-            background-color: rgba(255, 43, 43, 0.2);
-            border: 1px solid rgba(255, 43, 43, 0.5);
-            color: var(--text-color);
-            font-weight: 600;
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            animation: instantHide 0s 5s forwards;
-        }
-        
-        div[data-testid="InputInstructions"] { display: none !important; }
-        
-        div[data-testid="stFormSubmitButton"] button {
-            position: relative !important;
-            top: -5px !important;
-            height: 40px !important;
-            min-height: 40px !important;
-        }
-        
-        /* --- UNDERLINE NAVIGATION TABS --- */
-        .st-key-active_nav_tab div[role="radiogroup"] {
-            gap: 24px !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
-            padding-bottom: 0px !important;
-            margin-bottom: 16px !important;
-            background-color: transparent !important;
-            flex-wrap: wrap !important;
-        }
-        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"] {
-            background-color: transparent !important;
-            border: none !important;
-            border-bottom: 3px solid transparent !important;
-            border-radius: 0px !important;
-            padding: 8px 4px 10px 4px !important;
-            margin: 0px !important;
-            cursor: pointer !important;
-            transition: all 0.2s ease !important;
-            opacity: 0.72;
-        }
-        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {
-            display: none !important;
-        }
-        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"]:hover {
-            opacity: 1;
-            border-bottom: 3px solid rgba(255, 76, 76, 0.45) !important;
-        }
-        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"]:has(input:checked) {
-            opacity: 1 !important;
-            border-bottom: 3px solid #ff4c4c !important;
-        }
-        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"]:has(input:checked) p {
-            color: #ff4c4c !important;
-            font-weight: 700 !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
+st.markdown("""<style>
+html, body, .stApp, [data-testid="stAppViewContainer"], .main, .block-container {
+    overscroll-behavior-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+[data-testid="stAppViewContainer"] {
+    overflow-y: auto !important;
+}
+[data-testid="stDataFrame"] canvas,
+[data-testid="stDataFrame"] div,
+[data-testid="stTable"] {
+    touch-action: pan-y pan-x !important;
+    overscroll-behavior: auto !important;
+}
+@keyframes instantHide {
+    to {
+        opacity: 0;
+        max-height: 0;
+        padding: 0;
+        margin: 0;
+        border: none;
+        overflow: hidden;
+    }
+}
+.auto-hide-success {
+    background-color: rgba(29, 169, 85, 0.2);
+    border: 1px solid rgba(29, 169, 85, 0.5);
+    color: var(--text-color);
+    font-weight: 600;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    animation: instantHide 0s 5s forwards;
+}
+.auto-hide-error {
+    background-color: rgba(255, 43, 43, 0.2);
+    border: 1px solid rgba(255, 43, 43, 0.5);
+    color: var(--text-color);
+    font-weight: 600;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    animation: instantHide 0s 5s forwards;
+}
+div[data-testid="InputInstructions"] {
+    display: none !important;
+}
+div[data-testid="stFormSubmitButton"] button {
+    position: relative !important;
+    top: -5px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+}
+/* --- CLEAN UNDERLINE NAVIGATION TABS --- */
+[class*="st-key-nav_idle_"] button,
+[class*="st-key-nav_active_"] button {
+    background-color: transparent !important;
+    border: none !important;
+    border-radius: 0px !important;
+    padding: 6px 4px 10px 4px !important;
+    box-shadow: none !important;
+    min-height: 0px !important;
+    height: auto !important;
+    transition: all 0.2s ease !important;
+}
+[class*="st-key-nav_idle_"] button {
+    border-bottom: 3px solid transparent !important;
+    opacity: 0.72 !important;
+    color: var(--text-color) !important;
+}
+[class*="st-key-nav_idle_"] button:hover {
+    opacity: 1 !important;
+    border-bottom: 3px solid rgba(255, 76, 76, 0.5) !important;
+    color: var(--text-color) !important;
+}
+[class*="st-key-nav_idle_"] button:focus {
+    box-shadow: none !important;
+}
+[class*="st-key-nav_active_"] button,
+[class*="st-key-nav_active_"] button:hover,
+[class*="st-key-nav_active_"] button:focus {
+    border-bottom: 3px solid #ff4c4c !important;
+    opacity: 1 !important;
+    color: #ff4c4c !important;
+    box-shadow: none !important;
+}
+[class*="st-key-nav_active_"] button p {
+    color: #ff4c4c !important;
+    font-weight: 700 !important;
+}
+[class*="st-key-nav_idle_"] button p,
+[class*="st-key-nav_active_"] button p {
+    font-size: 0.95rem !important;
+    white-space: nowrap !important;
+    margin: 0 !important;
+}
+</style>""", unsafe_allow_html=True)
 
 # ==========================================
 # MASTER LOGIN SYSTEM
 # ==========================================
 if not st.session_state.is_logged_in:
-    st.markdown("""
-        <style>
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.login-card-marker):not(:has(div[data-testid="stVerticalBlockBorderWrapper"] .login-card-marker)),
-            div[data-testid="stVerticalBlock"]:has(.login-card-marker):not(:has(div[data-testid="stVerticalBlock"] .login-card-marker)):not([data-testid="stVerticalBlockBorderWrapper"] div) {
-                border-radius: 20px !important;
-                border: 1px solid rgba(255, 255, 255, 0.2) !important;
-                padding: 35px 30px !important;
-                background-color: rgba(255, 255, 255, 0.03) !important;
-                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45) !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+    st.markdown("""<style>
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.login-card-marker):not(:has(div[data-testid="stVerticalBlockBorderWrapper"] .login-card-marker)),
+div[data-testid="stVerticalBlock"]:has(.login-card-marker):not(:has(div[data-testid="stVerticalBlock"] .login-card-marker)):not([data-testid="stVerticalBlockBorderWrapper"] div) {
+    border-radius: 20px !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    padding: 35px 30px !important;
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45) !important;
+}
+</style>""", unsafe_allow_html=True)
 
     st.write("")
     st.write("")
@@ -1055,7 +1052,7 @@ if st.session_state.flash_msg:
     st.session_state.flash_msg = ""
 
 # ==========================================
-# NAVIGATION MENU (LOGGED IN USER)
+# NAVIGATION MENU (UNDERLINE TABS)
 # ==========================================
 header_col1, header_col2, header_col3 = st.columns([8, 1, 1], vertical_alignment="center")
 with header_col1:
@@ -1082,7 +1079,23 @@ else:
 if 'active_nav_tab' not in st.session_state or st.session_state.active_nav_tab not in nav_options:
     st.session_state.active_nav_tab = nav_options[0]
 
-selected_tab = st.radio("Navigation Menu", nav_options, horizontal=True, key="active_nav_tab", label_visibility="collapsed")
+nav_weights = [len(opt) + 2 for opt in nav_options]
+if len(nav_options) <= 5:
+    nav_weights.append(45)
+else:
+    nav_weights.append(8)
+
+nav_cols = st.columns(nav_weights, gap="small")
+for idx, opt in enumerate(nav_options):
+    is_active = (st.session_state.active_nav_tab == opt)
+    btn_key = f"nav_active_{idx}" if is_active else f"nav_idle_{idx}"
+    with nav_cols[idx]:
+        if st.button(opt, key=btn_key, use_container_width=True):
+            st.session_state.active_nav_tab = opt
+            st.rerun()
+
+st.markdown("<hr style='margin: -16px 0 18px 0; border: none; border-top: 1px solid rgba(255, 255, 255, 0.15);'>", unsafe_allow_html=True)
+selected_tab = st.session_state.active_nav_tab
 
 # ==========================================
 # TAB 1: ADD ATTENDANCE
@@ -2267,19 +2280,17 @@ elif selected_tab == "💰 Salary & Payroll":
                             ot_mins_input = st.number_input("OT Mins", value=int(att_data["ot_m"]), min_value=0, max_value=59, step=1)
 
                 with col_line:
-                    st.markdown("""
-                        <style>
-                            .sal-vline {
-                                width: 2px;
-                                background-color: rgba(255, 255, 255, 0.2);
-                                height: 390px;
-                                margin: 30px auto 0 auto;
-                                border-radius: 2px;
-                            }
-                            @media (max-width: 768px) { .sal-vline { display: none; } }
-                        </style>
-                        <div class="sal-vline"></div>
-                    """, unsafe_allow_html=True)
+                    st.markdown("""<style>
+.sal-vline {
+    width: 2px;
+    background-color: rgba(255, 255, 255, 0.2);
+    height: 390px;
+    margin: 30px auto 0 auto;
+    border-radius: 2px;
+}
+@media (max-width: 768px) { .sal-vline { display: none; } }
+</style>
+<div class="sal-vline"></div>""", unsafe_allow_html=True)
 
                 with col2:
                     st.subheader("📉 Deductions & Additions")
