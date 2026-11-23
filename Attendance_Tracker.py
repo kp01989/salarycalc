@@ -969,31 +969,40 @@ st.markdown("""
             min-height: 40px !important;
         }
         
-        div.row-widget.stRadio > div[role="radiogroup"] {
-            background-color: var(--secondary-background-color);
-            padding: 8px;
-            border-radius: 10px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
+        /* --- UNDERLINE NAVIGATION TABS --- */
+        .st-key-active_nav_tab div[role="radiogroup"] {
+            gap: 24px !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+            padding-bottom: 0px !important;
+            margin-bottom: 16px !important;
+            background-color: transparent !important;
+            flex-wrap: wrap !important;
         }
-        div.row-widget.stRadio > div[role="radiogroup"] > label {
-            background-color: var(--background-color);
-            color: var(--text-color);
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-right: 5px;
-            font-weight: 700;
-            border: 1px solid var(--secondary-background-color);
+        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"] {
+            background-color: transparent !important;
+            border: none !important;
+            border-bottom: 3px solid transparent !important;
+            border-radius: 0px !important;
+            padding: 8px 4px 10px 4px !important;
+            margin: 0px !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+            opacity: 0.72;
         }
-        div.row-widget.stRadio > div[role="radiogroup"] > label[data-checked="true"] {
-            background-color: #ff4c4c;
-            color: white;
-            border-color: #ff4c4c;
+        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child {
+            display: none !important;
         }
-        div.row-widget.stRadio > div[role="radiogroup"] > label > div:first-child {
-            display: none;
+        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"]:hover {
+            opacity: 1;
+            border-bottom: 3px solid rgba(255, 76, 76, 0.45) !important;
+        }
+        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"]:has(input:checked) {
+            opacity: 1 !important;
+            border-bottom: 3px solid #ff4c4c !important;
+        }
+        .st-key-active_nav_tab div[role="radiogroup"] label[data-baseweb="radio"]:has(input:checked) p {
+            color: #ff4c4c !important;
+            font-weight: 700 !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -1074,14 +1083,14 @@ if 'active_nav_tab' not in st.session_state or st.session_state.active_nav_tab n
     st.session_state.active_nav_tab = nav_options[0]
 
 selected_tab = st.radio("Navigation Menu", nav_options, horizontal=True, key="active_nav_tab", label_visibility="collapsed")
-st.divider()
 
 # ==========================================
 # TAB 1: ADD ATTENDANCE
 # ==========================================
 if selected_tab == "📝 Add Attendance":
     entry_mode = st.radio("Choose Entry Method:", ["✏️ Manual Entry", "📂 Bulk Upload (Excel/CSV)"], horizontal=True) if is_admin_unlocked else "✏️ Manual Entry"
-    st.divider()
+    if is_admin_unlocked:
+        st.divider()
 
     if entry_mode == "✏️ Manual Entry":
         if is_admin_unlocked:
@@ -2098,7 +2107,6 @@ elif selected_tab == "💰 Salary & Payroll":
             df_sal_raw = load_salary_history(sal_emp_name)
             has_sal_history = not df_sal_raw.empty
 
-            # Employee Profile Details Expander
             with st.expander(f"📝 Profile Details — {sal_emp_name}", expanded=False):
                 with st.form(f"sal_emp_profile_form_{sal_emp_name}"):
                     p1, p2, p3, p4 = st.columns(4)
@@ -2212,11 +2220,9 @@ elif selected_tab == "💰 Salary & Payroll":
                     form_data["ESIC"] = float(last_r.get("ESIC", 0.0))
                     opening_pl = int(float(last_r.get("PL Balance", 0))) + 1
 
-            # Auto-fetch hours & PL directly from Attendance sheets!
             att_data = fetch_attendance_totals_for_salary(sal_emp_name, selected_month, selected_year)
             default_pl_used = form_data["PL_Used"] if is_editing_past else att_data["pl_days"]
 
-            # --- MAIN SALARY FORM ---
             with st.form(key=f"salary_calc_form_{kb}_{selected_month}_{selected_year}"):
                 col1, col_line, col2 = st.columns([1, 0.04, 1])
 
@@ -2380,7 +2386,6 @@ elif selected_tab == "💰 Salary & Payroll":
                 st.session_state.flash_msg = f"✅ Salary Saved! {sal_emp_name} ({selected_month}'{selected_year}) | PL Bal: {final_pl_balance} | OT: ₹ {int(ot_salary):,} | LWP: ₹ {int(lwp_val):,} | In Hand: ₹ {int(in_hand_salary):,}"
                 st.rerun()
 
-            # --- JUST-SAVED SLIP DOWNLOADS ---
             if st.session_state.get('sal_calc_result') and st.session_state.sal_calc_result['name'] == sal_emp_name:
                 res_s = st.session_state.sal_calc_result
                 _, dl_c1, dl_c2, _ = st.columns([1, 1, 1, 1])
@@ -2410,7 +2415,6 @@ elif selected_tab == "💰 Salary & Payroll":
                     else:
                         st.warning("⚠️ Add `fpdf` to requirements.txt for PDF Slip.")
 
-            # --- CLOUD SALARY HISTORY & OLD SLIP DOWNLOADS ---
             if has_sal_history:
                 st.divider()
                 st.subheader(f"📂 Salary History: {sal_emp_name}")
