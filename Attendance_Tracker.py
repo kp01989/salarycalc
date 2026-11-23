@@ -2629,29 +2629,69 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
     # Emergency Data Fixer (Syncs Attendance + Passwords + HRIS Profiles + Salary History)
     st.subheader("🛠️ Emergency Data Fixer (Sync Attendance, Profile & Salary History)")
-    st.error("⚠️ If you changed an employee's name (e.g. 'Kp' to 'Krutin Patel'), this tool updates ALL their Attendance, Password, HRIS Profile, and Salary History to the new name in one click.")
+    st.error("⚠️ જો જૂનું નામ (જેમ કે 'KP') માંથી નવું નામ ('Krutin Patel') કર્યું હોય, તો અહીંથી જૂનું નામ અને નવું નામ સિલેક્ટ કરીને ૧ ક્લિકમાં Attendance, Profile અને આખો Salary History ટ્રાન્સફર થઈ જશે.")
+
+    # Fetch fresh keys directly from Firebase (no cache delay)
+    fresh_profs_fix = {}
+    try:
+        r_pf = requests.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
+        if r_pf.status_code == 200 and isinstance(r_pf.json(), dict):
+            fresh_profs_fix = r_pf.json()
+    except Exception:
+        pass
+
+    fresh_hist_keys = []
+    try:
+        r_hk = requests.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
+        if r_hk.status_code == 200 and isinstance(r_hk.json(), dict):
+            fresh_hist_keys = list(r_hk.json().keys())
+    except Exception:
+        pass
+
+    old_name_candidates = sorted(list(set(
+        [str(k).strip() for k in fresh_hist_keys if k] +
+        [str(k).strip() for k in fresh_profs_fix.keys() if k] +
+        [str(k).strip() for k in st.session_state.emp_list if k]
+    )))
+
+    if fresh_hist_keys:
+        st.caption(f"📌 Firebase Salary History માં અત્યારે આ નામો સેવ છે: **{', '.join(sorted(fresh_hist_keys))}**")
 
     with st.form("fix_data_form"):
-        f_col1, f_col2, f_col3, f_blank = st.columns([2, 2, 2.5, 1.5], vertical_alignment="bottom")
+        f_col1, f_col2, f_col3 = st.columns([2, 2, 2], vertical_alignment="bottom")
         with f_col1:
-            old_name_fix = st.text_input("Old Name (e.g. Kp)")
+            old_sel_fix = st.selectbox("Old Name (Dropdown માંથી પસંદ કરો)", options=["-- Type Manually --"] + old_name_candidates)
+            old_manual_fix = st.text_input("Or Type Old Name Manually", placeholder="e.g. KP")
         with f_col2:
-            new_name_fix = st.text_input("New Name (e.g. Krutin Patel)")
+            new_sel_fix = st.selectbox("New Name (Employee List)", options=["-- Type Manually --"] + st.session_state.emp_list)
+            new_manual_fix = st.text_input("Or Type New Name Manually", placeholder="e.g. Krutin Patel")
         with f_col3:
-            fix_submit = st.form_submit_button("🚀 Fix All Data & Remove Old Name", type="primary")
+            fix_submit = st.form_submit_button("🚀 Fix All Data & Transfer History", type="primary", use_container_width=True)
 
     if fix_submit:
-        if not old_name_fix or not new_name_fix:
-            st.error("Both Old Name and New Name are required!")
+        old_clean = old_manual_fix.strip() if old_manual_fix.strip() else ("" if old_sel_fix == "-- Type Manually --" else old_sel_fix.strip())
+        clean_new = new_manual_fix.strip().title() if new_manual_fix.strip() else ("" if new_sel_fix == "-- Type Manually --" else new_sel_fix.strip())
+
+        if not old_clean or not clean_new:
+            st.error("⚠️ Old Name અને New Name બંને પસંદ/દાખલ કરવા જરૂરી છે!")
+        elif old_clean == clean_new:
+            st.warning("⚠️ Old Name અને New Name બંને સરખા જ છે.")
         else:
-            old_clean = old_name_fix.strip()
-            clean_new = new_name_fix.strip().title()
+            def _raw_to_df_fix(raw):
+                if isinstance(raw, dict):
+                    return pd.DataFrame([v for v in raw.values() if isinstance(v, dict)])
+                elif isinstance(raw, list):
+                    return pd.DataFrame([v for v in raw if isinstance(v, dict)])
+                return pd.DataFrame()
+
             success_count = 0
+            prof_transferred = False
+            sal_records_moved = 0
             sheets_to_check = get_all_sheet_names()
 
             # Step 1: Fix historical Attendance sheets
             for sheet in sheets_to_check:
-                url_sheet = f"{FIREBASE_URL}/{sheet}.json"
+                url_sheet = f"{FIREBASE_URL}/{requests.utils.quote(str(sheet))}.json"
                 try:
                     res_sheet = requests.get(url_sheet, timeout=10)
                     if res_sheet.status_code == 200 and res_sheet.json():
@@ -2690,45 +2730,65 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
             if matched_old_keys:
                 save_employee_dict(curr_dict)
 
-            # Step 3: Migrate HRIS Profile (/profiles.json)
-            all_profs_fix = load_profiles()
-            matched_prof_keys = [k for k in list(all_profs_fix.keys()) if str(k).strip().lower() == old_clean.lower()]
+            # Step 3: Migrate HRIS Profile (/profiles.json) with smart merge
+            matched_prof_keys = [k for k in list(fresh_profs_fix.keys()) if str(k).strip().lower() == old_clean.lower()]
             if matched_prof_keys:
-                updated_profs = dict(all_profs_fix)
+                updated_profs = dict(fresh_profs_fix)
                 for pk in matched_prof_keys:
-                    if clean_new not in updated_profs:
-                        updated_profs[clean_new] = updated_profs[pk]
+                    old_p = updated_profs.get(pk, {})
+                    if clean_new in updated_profs and isinstance(updated_profs[clean_new], dict):
+                        merged_p = dict(old_p)
+                        for fld, val in updated_profs[clean_new].items():
+                            if val not in ("", None, 0, 0.0, "-"):
+                                merged_p[fld] = val
+                        updated_profs[clean_new] = merged_p
+                    else:
+                        updated_profs[clean_new] = old_p
                     if pk != clean_new:
                         del updated_profs[pk]
+                    prof_transferred = True
                 save_profiles(updated_profs)
 
             # Step 4: Migrate HRIS Salary History (/salary_history)
             old_h_key_lower = get_emp_key(old_clean).lower()
             new_h_key = get_emp_key(clean_new)
-            for hk in load_salary_history_keys():
-                if str(hk).strip().lower() == old_h_key_lower:
-                    try:
-                        res_old_h = requests.get(f"{FIREBASE_URL}/salary_history/{hk}.json", timeout=10)
-                        if res_old_h.status_code == 200 and res_old_h.json():
-                            df_old_h = pd.DataFrame(res_old_h.json())
-                            if not df_old_h.empty:
-                                df_old_h["Name"] = clean_new
-                                res_new_h = requests.get(f"{FIREBASE_URL}/salary_history/{new_h_key}.json", timeout=10)
-                                if hk != new_h_key and res_new_h.status_code == 200 and res_new_h.json():
-                                    df_ex_new = pd.DataFrame(res_new_h.json())
-                                    df_merged = pd.concat([df_old_h, df_ex_new], ignore_index=True).drop_duplicates(subset=["Month", "Year"], keep="last")
-                                else:
-                                    df_merged = df_old_h
-                                save_salary_history(clean_new, df_merged)
-                                if hk != new_h_key:
-                                    requests.delete(f"{FIREBASE_URL}/salary_history/{hk}.json", timeout=10)
-                    except Exception:
-                        pass
+            matched_hist_keys = [hk for hk in fresh_hist_keys if str(hk).strip().lower() == old_h_key_lower]
+
+            for hk in matched_hist_keys:
+                try:
+                    res_old_h = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(hk))}.json", timeout=10)
+                    if res_old_h.status_code == 200 and res_old_h.json():
+                        df_old_h = _raw_to_df_fix(res_old_h.json())
+                        if not df_old_h.empty:
+                            df_old_h["Name"] = clean_new
+                            df_merged = df_old_h
+                            if hk != new_h_key:
+                                res_new_h = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(new_h_key)}.json", timeout=10)
+                                if res_new_h.status_code == 200 and res_new_h.json():
+                                    df_ex_new = _raw_to_df_fix(res_new_h.json())
+                                    if not df_ex_new.empty:
+                                        df_merged = pd.concat([df_old_h, df_ex_new], ignore_index=True)
+
+                            df_merged = clean_legacy_salary_columns(df_merged)
+                            if "Month" in df_merged.columns and "Year" in df_merged.columns:
+                                df_merged["Month"] = df_merged["Month"].astype(str).str.strip()
+                                df_merged["Year"] = pd.to_numeric(df_merged["Year"], errors="coerce").fillna(get_ist_now().year).astype(int)
+                                df_merged = df_merged.drop_duplicates(subset=["Month", "Year"], keep="last")
+                                df_merged["_m_sort"] = df_merged["Month"].map(MONTH_DICT).fillna(0)
+                                df_merged = df_merged.sort_values(["Year", "_m_sort"]).drop(columns=["_m_sort"]).reset_index(drop=True)
+
+                            save_salary_history(clean_new, df_merged)
+                            sal_records_moved = len(df_merged)
+                            if hk != new_h_key:
+                                requests.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(hk))}.json", timeout=10)
+                except Exception as e:
+                    st.error(f"Salary History error for '{hk}': {e}")
 
             st.session_state.cached_data.clear()
             st.cache_data.clear()
             st.session_state.form_reset_counter += 1
-            st.session_state.flash_msg = f"✅ All Data Synced! '{old_clean}' updated to '{clean_new}' across Attendance ({success_count} months), Profile & Salary History."
+            st.session_state.sal_form_key += 1
+            st.session_state.flash_msg = f"✅ Done! '{old_clean}' → '{clean_new}' | Attendance: {success_count} months | Profile: {'Synced' if prof_transferred else 'Not Found'} | Salary History: {sal_records_moved} records transferred!"
             st.rerun()
 
 # ==========================================
