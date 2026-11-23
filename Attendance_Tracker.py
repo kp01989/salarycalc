@@ -980,7 +980,7 @@ div[data-testid="stFormSubmitButton"] button {
 }
 [class*="st-key-nav_idle_"] button:hover {
     opacity: 1 !important;
-    border-bottom: 3px solid rgba(255, 76, 76, 0.5) !important;
+    border-bottom: 3px solid rgba(46, 204, 113, 0.5) !important;
     color: var(--text-color) !important;
 }
 [class*="st-key-nav_idle_"] button:focus {
@@ -989,13 +989,13 @@ div[data-testid="stFormSubmitButton"] button {
 [class*="st-key-nav_active_"] button,
 [class*="st-key-nav_active_"] button:hover,
 [class*="st-key-nav_active_"] button:focus {
-    border-bottom: 3px solid #ff4c4c !important;
+    border-bottom: 3px solid #2ecc71 !important;
     opacity: 1 !important;
-    color: #ff4c4c !important;
+    color: var(--text-color) !important;
     box-shadow: none !important;
 }
 [class*="st-key-nav_active_"] button p {
-    color: #ff4c4c !important;
+    color: var(--text-color) !important;
     font-weight: 700 !important;
 }
 [class*="st-key-nav_idle_"] button p,
