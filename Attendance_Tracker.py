@@ -2073,7 +2073,7 @@ elif selected_tab == "💰 Salary & Payroll":
 
         st.divider()
         st.subheader("📝 Add / Edit Employee Profile")
-        merged_names = sorted(list(set(st.session_state.emp_list + list(all_profiles.keys()))))
+        merged_names = st.session_state.emp_list
         with st.container(border=True):
             c_pe, _ = st.columns([3, 7])
             with c_pe:
@@ -2115,8 +2115,7 @@ elif selected_tab == "💰 Salary & Payroll":
     # --- SUB-MODE B: SALARY CALCULATOR, SLIPS & HISTORY ---
     else:
         if is_admin_unlocked:
-            sal_emp_opts = sorted(list(set(st.session_state.emp_list + list(all_profiles.keys()) + hist_keys_all)))
-            sal_emp_opts = [e for e in sal_emp_opts if str(e).strip().lower() != "administrator"]
+            sal_emp_opts = st.session_state.emp_list
             c_se1, c_se2 = st.columns([3, 7], vertical_alignment="bottom")
             with c_se1:
                 sal_emp_name = st.selectbox("👤 Select Employee for Salary", options=sal_emp_opts, key="sal_emp_select") if sal_emp_opts else ""
