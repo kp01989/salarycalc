@@ -267,7 +267,7 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
 @st.cache_data(ttl=300, show_spinner=False)
 def load_data(sheet_name):
     columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
-    url = f"{FIREBASE_URL}/{sheet_name}.json"
+    url = f"{FIREBASE_URL}/{requests.utils.quote(str(sheet_name))}.json"
     holidays_dict = get_flat_holiday_dates()
 
     try:
@@ -321,7 +321,7 @@ def load_data(sheet_name):
 
 def save_data(df, sheet_name):
     df_clean = df.fillna("")
-    url = f"{FIREBASE_URL}/{sheet_name}.json"
+    url = f"{FIREBASE_URL}/{requests.utils.quote(str(sheet_name))}.json"
     data = df_clean.to_dict(orient='records')
     try:
         requests.put(url, json=data, timeout=10)
@@ -405,7 +405,7 @@ def save_salary_history(emp_name, df):
     emp_key = get_emp_key(emp_name)
     try:
         records = json.loads(df.to_json(orient='records'))
-        requests.put(f"{FIREBASE_URL}/salary_history/{emp_key}.json", json=records, timeout=10)
+        requests.put(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", json=records, timeout=10)
         load_salary_history.clear()
         load_salary_history_keys.clear()
     except Exception as e:
@@ -414,10 +414,10 @@ def save_salary_history(emp_name, df):
 def delete_salary_history(emp_name):
     emp_key = get_emp_key(emp_name)
     try:
-        requests.delete(f"{FIREBASE_URL}/salary_history/{emp_key}.json", timeout=10)
+        requests.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", timeout=10)
         for k in load_salary_history_keys():
             if str(k).strip().lower() == emp_key.lower() and k != emp_key:
-                requests.delete(f"{FIREBASE_URL}/salary_history/{k}.json", timeout=10)
+                requests.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(k))}.json", timeout=10)
         load_salary_history.clear()
         load_salary_history_keys.clear()
     except Exception as e:
@@ -885,6 +885,7 @@ def logout():
     st.session_state.user_role = None
     st.session_state.pop("synced_emp_sig", None)
     st.session_state.pop("synced_date_sig", None)
+    st.session_state.pop("missing_past_date", None)
     st.session_state['sal_calc_result'] = None
 
 is_admin_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Admin")
@@ -916,7 +917,7 @@ if 'filter_month_dash' not in st.session_state:
     st.session_state.filter_month_dash = current_month_str
 
 # ==========================================
-# UI STYLING
+# UI STYLING (DESKTOP UNCHANGED + MOBILE-FIRST)
 # ==========================================
 st.markdown("""<style>
 html, body, .stApp, [data-testid="stAppViewContainer"], .main, .block-container {
@@ -971,7 +972,7 @@ div[data-testid="stFormSubmitButton"] button {
     height: 40px !important;
     min-height: 40px !important;
 }
-/* --- CLEAN UNDERLINE NAVIGATION TABS --- */
+/* --- CLEAN UNDERLINE NAVIGATION TABS (GREEN ACTIVE) --- */
 [class*="st-key-nav_idle_"] button,
 [class*="st-key-nav_active_"] button {
     background-color: transparent !important;
@@ -1013,6 +1014,180 @@ div[data-testid="stFormSubmitButton"] button {
     font-size: 0.95rem !important;
     white-space: nowrap !important;
     margin: 0 !important;
+}
+
+/* ==========================================
+   MOBILE-ONLY RESPONSIVE DESIGN (<= 768px)
+   (PC / Desktop > 768px is 100% untouched)
+   ========================================== */
+@media (max-width: 768px) {
+    /* 1. Compact page spacing & headings */
+    .block-container {
+        padding-top: 2.3rem !important;
+        padding-left: 0.7rem !important;
+        padding-right: 0.7rem !important;
+        padding-bottom: 2.5rem !important;
+    }
+    h1 {
+        font-size: 1.4rem !important;
+        line-height: 1.25 !important;
+        margin-bottom: 0.25rem !important;
+    }
+    h2 {
+        font-size: 1.2rem !important;
+    }
+    h3 {
+        font-size: 1.05rem !important;
+    }
+    hr {
+        margin: 0.6rem 0 !important;
+    }
+
+    /* 2. Hide empty spacer columns & vertical divider on mobile */
+    [data-testid="stColumn"]:has(.sal-vline),
+    [data-testid="column"]:has(.sal-vline),
+    [data-testid="stColumn"]:not(:has(input, button, select, textarea, table, canvas, [role="combobox"], [data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stAlert"], [data-testid="stFileUploader"], [data-testid="stExpander"])),
+    [data-testid="column"]:not(:has(input, button, select, textarea, table, canvas, [role="combobox"], [data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stAlert"], [data-testid="stFileUploader"], [data-testid="stExpander"])) {
+        display: none !important;
+    }
+
+    /* 3. Top header: user info on line 1, Sync & Logout side-by-side */
+    div[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_btn) {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        margin-bottom: 6px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_btn) > [data-testid="stColumn"]:first-child,
+    div[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_btn) > [data-testid="column"]:first-child {
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_btn) > [data-testid="stColumn"]:not(:first-child),
+    div[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_btn) > [data-testid="column"]:not(:first-child) {
+        flex: 1 1 46% !important;
+        min-width: 45% !important;
+    }
+    .st-key-hdr_sync_btn button,
+    .st-key-hdr_logout_btn button {
+        min-height: 36px !important;
+        height: 36px !important;
+        padding: 4px 10px !important;
+        font-size: 0.85rem !important;
+    }
+
+    /* 4. Horizontal scrollable app-style navigation bar */
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_active_"]) {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        gap: 16px !important;
+        padding: 2px 2px 0px 2px !important;
+        margin-bottom: 4px !important;
+        scrollbar-width: none !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_active_"])::-webkit-scrollbar {
+        display: none !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_active_"]) > [data-testid="stColumn"],
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_active_"]) > [data-testid="column"] {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: max-content !important;
+    }
+    [class*="st-key-nav_idle_"] button p,
+    [class*="st-key-nav_active_"] button p {
+        font-size: 0.88rem !important;
+    }
+
+    /* 5. Dashboard 5 metrics in clean 2-column card grid */
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"],
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="column"] {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"]:nth-child(5),
+    div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="column"]:nth-child(5) {
+        grid-column: 1 / -1 !important;
+    }
+    [data-testid="stMetric"] {
+        background-color: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 10px !important;
+        padding: 10px 12px !important;
+    }
+    [data-testid="stMetricLabel"] p {
+        font-size: 0.78rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.25rem !important;
+    }
+
+    /* 6. Attendance record cards: Info on top, Edit & Del side-by-side */
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-e_"]) {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-e_"]) > [data-testid="stColumn"]:first-child,
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-e_"]) > [data-testid="column"]:first-child {
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-e_"]) > [data-testid="stColumn"]:not(:first-child),
+    div[data-testid="stHorizontalBlock"]:has([class*="st-key-e_"]) > [data-testid="column"]:not(:first-child) {
+        flex: 1 1 45% !important;
+        min-width: 45% !important;
+    }
+
+    /* 7. Keep Hrs & Mins inputs side-by-side inside Salary form */
+    [data-testid="stForm"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 8px !important;
+    }
+    [data-testid="stForm"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+    [data-testid="stForm"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        flex: 1 1 48% !important;
+        min-width: 0 !important;
+    }
+    button[data-testid="stNumberInputStepDown"],
+    button[data-testid="stNumberInputStepUp"] {
+        width: 28px !important;
+        padding: 0 !important;
+    }
+
+    /* 8. Full-width tap-friendly buttons & compact containers */
+    div[data-testid="stFormSubmitButton"] button,
+    [class*="st-key-save_btn_"] button,
+    div[data-testid="stDownloadButton"] button {
+        width: 100% !important;
+        top: 0px !important;
+        min-height: 44px !important;
+        height: 44px !important;
+        margin-top: 6px !important;
+    }
+    div:has(.login-card-marker) .stButton > button {
+        width: 100% !important;
+        min-height: 44px !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 0.65rem !important;
+    }
+    div[role="radiogroup"] {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
 }
 </style>""", unsafe_allow_html=True)
 
@@ -1068,7 +1243,7 @@ header_col1, header_col2, header_col3 = st.columns([8, 1, 1], vertical_alignment
 with header_col1:
     st.markdown(f"👤 Logged in as: **{st.session_state.current_user}** ({st.session_state.user_role})")
 with header_col2:
-    if st.button("🔄 Sync", use_container_width=True):
+    if st.button("🔄 Sync", use_container_width=True, key="hdr_sync_btn"):
         st.cache_data.clear()
         st.session_state.cached_data.clear()
         st.session_state.cached_holidays = None
@@ -1077,7 +1252,7 @@ with header_col2:
         st.session_state.flash_msg = "✅ Cloud data synced!"
         st.rerun()
 with header_col3:
-    if st.button("🚪 Logout", use_container_width=True):
+    if st.button("🚪 Logout", use_container_width=True, key="hdr_logout_btn"):
         logout()
         st.rerun()
 
@@ -2065,7 +2240,6 @@ elif selected_tab == "📊 Dashboard & History":
 # ==========================================
 elif selected_tab == "💰 Salary & Payroll":
     all_profiles = load_profiles()
-    hist_keys_all = load_salary_history_keys()
 
     money_cols = ["CTC", "OT Salary", "Net Salary", "In Hand Salary", "Food", "Gratuity", "PT", "ESIC", "Advance", "Bonus", "Difference"]
     sal_table_config = {col: st.column_config.NumberColumn(format="₹ %,.0f") for col in money_cols}
@@ -2665,7 +2839,6 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
     st.subheader("🛠️ Emergency Data Fixer (Sync Attendance, Profile & Salary History)")
     st.error("⚠️ If you renamed an employee (e.g., 'KP' to 'Krutin Patel'), select the old and new names below to transfer all Attendance, Profile, and Salary History in one click.")
 
-    # Fetch fresh keys directly from Firebase (no cache delay)
     fresh_profs_fix = {}
     try:
         r_pf = requests.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
