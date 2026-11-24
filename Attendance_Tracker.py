@@ -917,21 +917,37 @@ if 'filter_month_dash' not in st.session_state:
     st.session_state.filter_month_dash = current_month_str
 
 # ==========================================
-# UI STYLING (DESKTOP UNCHANGED + MOBILE-FIRST)
+# UI STYLING (DESKTOP UNCHANGED + MOBILE-FIRST + SMOOTH SCROLL)
 # ==========================================
 st.markdown("""<style>
-html, body, .stApp, [data-testid="stAppViewContainer"], .main, .block-container {
-    overscroll-behavior-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
+/* --- SINGLE SMOOTH SCROLL CONTAINER FIX (NO STUCK SCROLL / NO PULL-TO-REFRESH HIJACK) --- */
+html, body {
+    overscroll-behavior-y: none !important;
+    overflow: hidden !important;
+    height: 100% !important;
 }
-[data-testid="stAppViewContainer"] {
+.stApp, [data-testid="stAppViewContainer"] {
+    overflow: hidden !important;
+    overscroll-behavior-y: none !important;
+    height: 100% !important;
+}
+[data-testid="stMain"], section.main {
+    height: 100vh !important;
+    height: 100dvh !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-y: contain !important;
+}
+.block-container {
+    overflow: visible !important;
+    height: auto !important;
 }
 [data-testid="stDataFrame"] canvas,
 [data-testid="stDataFrame"] div,
 [data-testid="stTable"] {
-    touch-action: pan-y pan-x !important;
-    overscroll-behavior: auto !important;
+    touch-action: pan-x pan-y !important;
+    overscroll-behavior: contain !important;
 }
 @keyframes instantHide {
     to {
@@ -1083,6 +1099,7 @@ div[data-testid="stFormSubmitButton"] button {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         overflow-x: auto !important;
+        overflow-y: hidden !important;
         -webkit-overflow-scrolling: touch !important;
         gap: 16px !important;
         padding: 2px 2px 0px 2px !important;
