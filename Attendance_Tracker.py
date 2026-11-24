@@ -1128,75 +1128,75 @@ if selected_tab == "📝 Add Attendance":
         today_ist = now_ist.date()
 
 emp_sig = (target_emp, st.session_state.form_reset_counter)
-        if st.session_state.get("synced_emp_sig") != emp_sig or "manual_entry_date" not in st.session_state:
-            default_date = today_ist
-            missing_past_date = None
-            holidays_dict = get_flat_holiday_dates()
+if st.session_state.get("synced_emp_sig") != emp_sig or "manual_entry_date" not in st.session_state:
+    default_date = today_ist
+    missing_past_date = None
+    holidays_dict = get_flat_holiday_dates()
 
-            if target_emp:
-                today_sheet = get_sheet_name(today_ist)
-                if today_sheet not in st.session_state.cached_data:
-                    st.session_state.cached_data[today_sheet] = load_data(today_sheet)
-                df_month_check = st.session_state.cached_data[today_sheet]
+    if target_emp:
+        today_sheet = get_sheet_name(today_ist)
+        if today_sheet not in st.session_state.cached_data:
+            st.session_state.cached_data[today_sheet] = load_data(today_sheet)
+        df_month_check = st.session_state.cached_data[today_sheet]
 
-                if not df_month_check.empty:
-                    df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
-                    if not df_emp.empty:
-                        df_emp = df_emp.copy()
-                        df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y", errors="coerce")
-                        df_emp = df_emp.dropna(subset=["RealDate"])
+        if not df_month_check.empty:
+            df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
+            if not df_emp.empty:
+                df_emp = df_emp.copy()
+                df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y", errors="coerce")
+                df_emp = df_emp.dropna(subset=["RealDate"])
 
-                    if not df_emp.empty:
-                        existing_dates = set(df_emp["RealDate"].dt.date.tolist())
-                        min_date = min(existing_dates)
-                        latest_date = max(existing_dates)
+            if not df_emp.empty:
+                existing_dates = set(df_emp["RealDate"].dt.date.tolist())
+                min_date = min(existing_dates)
+                latest_date = max(existing_dates)
 
-                        def _is_shift_done(d_obj):
-                            d_rows = df_emp[df_emp["RealDate"].dt.date == d_obj]
-                            for _, r in d_rows.iterrows():
-                                st_val = str(r.get("Status", "Regular"))
-                                if st_val in ["PL", "LWP", "Absent"]:
-                                    return True
-                                outs = [parse_time(t) for t in str(r.get("Out Time", "")).split(',') if t.strip()]
-                                if outs and max(outs).time() >= time(18, 0):
-                                    return True
-                            return False
+                def _is_shift_done(d_obj):
+                    d_rows = df_emp[df_emp["RealDate"].dt.date == d_obj]
+                    for _, r in d_rows.iterrows():
+                        st_val = str(r.get("Status", "Regular"))
+                        if st_val in ["PL", "LWP", "Absent"]:
+                            return True
+                        outs = [parse_time(t) for t in str(r.get("Out Time", "")).split(',') if t.strip()]
+                        if outs and max(outs).time() >= time(18, 0):
+                            return True
+                    return False
 
-                        # Scan from first entry of the month up to Today (skipping only Sundays & Holidays)
-                        pending_date = None
-                        check_d = min_date
-                        while check_d <= today_ist:
-                            is_sun = (check_d.weekday() == 6)
-                            is_hol = (check_d.strftime("%d/%m/%Y") in holidays_dict)
+                # Scan from first entry of the month up to Today (skipping only Sundays & Holidays)
+                pending_date = None
+                check_d = min_date
+                while check_d <= today_ist:
+                    is_sun = (check_d.weekday() == 6)
+                    is_hol = (check_d.strftime("%d/%m/%Y") in holidays_dict)
 
-                            if not is_sun and not is_hol:
-                                if check_d not in existing_dates:
-                                    pending_date = check_d
-                                    break
-                                elif check_d == today_ist and not _is_shift_done(check_d):
-                                    pending_date = check_d
-                                    break
-                            check_d += timedelta(days=1)
+                    if not is_sun and not is_hol:
+                        if check_d not in existing_dates:
+                            pending_date = check_d
+                            break
+                        elif check_d == today_ist and not _is_shift_done(check_d):
+                            pending_date = check_d
+                            break
+                    check_d += timedelta(days=1)
 
-                        if pending_date is not None:
-                            default_date = pending_date
-                            if pending_date < today_ist:
-                                missing_past_date = pending_date
-                        else:
-                            if latest_date > today_ist and not _is_shift_done(latest_date):
-                                default_date = latest_date
-                            else:
-                                next_d = max(today_ist, latest_date) + timedelta(days=1)
-                                while next_d.strftime("%d/%m/%Y") in holidays_dict or next_d.weekday() == 6:
-                                    next_d += timedelta(days=1)
-                                default_date = next_d
+                if pending_date is not None:
+                    default_date = pending_date
+                    if pending_date < today_ist:
+                        missing_past_date = pending_date
+                else:
+                    if latest_date > today_ist and not _is_shift_done(latest_date):
+                        default_date = latest_date
+                    else:
+                        next_d = max(today_ist, latest_date) + timedelta(days=1)
+                        while next_d.strftime("%d/%m/%Y") in holidays_dict or next_d.weekday() == 6:
+                            next_d += timedelta(days=1)
+                        default_date = next_d
 
-            st.session_state["manual_entry_date"] = default_date
-            st.session_state["missing_past_date"] = missing_past_date
-            st.session_state["synced_emp_sig"] = emp_sig
+    st.session_state["manual_entry_date"] = default_date
+    st.session_state["missing_past_date"] = missing_past_date
+    st.session_state["synced_emp_sig"] = emp_sig
 
-        if st.session_state.get("missing_past_date") and st.session_state.get("manual_entry_date") == st.session_state.get("missing_past_date"):
-            st.warning(f"⚠️ Pending attendance entry found for **{st.session_state['missing_past_date'].strftime('%d/%m/%Y')}** (auto-selected below).")
+if st.session_state.get("missing_past_date") and st.session_state.get("manual_entry_date") == st.session_state.get("missing_past_date"):
+    st.warning(f"⚠️ Pending attendance entry found for **{st.session_state['missing_past_date'].strftime('%d/%m/%Y')}** (auto-selected below).")
 
         with st.container(border=True):
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5], vertical_alignment="bottom")
