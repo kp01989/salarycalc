@@ -885,7 +885,6 @@ def logout():
     st.session_state.user_role = None
     st.session_state.pop("synced_emp_sig", None)
     st.session_state.pop("synced_date_sig", None)
-    st.session_state.pop("missing_past_date", None)
     st.session_state['sal_calc_result'] = None
 
 is_admin_unlocked = (st.session_state.is_logged_in and st.session_state.user_role == "Admin")
@@ -1318,77 +1317,67 @@ if selected_tab == "📝 Add Attendance":
 
         now_ist = get_ist_now()
         today_ist = now_ist.date()
+        today_sheet = get_sheet_name(today_ist)
+        if today_sheet not in st.session_state.cached_data:
+            st.session_state.cached_data[today_sheet] = load_data(today_sheet)
+        df_month_check = st.session_state.cached_data[today_sheet]
+        holidays_dict_curr = get_flat_holiday_dates()
+
+        def _is_emp_shift_done(sub_df, d_obj):
+            d_rows = sub_df[sub_df["RealDate"].dt.date == d_obj]
+            for _, r in d_rows.iterrows():
+                st_val = str(r.get("Status", "Regular"))
+                if st_val in ["PL", "LWP", "Absent"]:
+                    return True
+                outs = [parse_time(t) for t in str(r.get("Out Time", "")).split(',') if t.strip()]
+                if outs and max(outs).time() >= time(18, 0):
+                    return True
+            return False
 
         emp_sig = (target_emp, st.session_state.form_reset_counter)
         if st.session_state.get("synced_emp_sig") != emp_sig or "manual_entry_date" not in st.session_state:
             default_date = today_ist
-            missing_past_date = None
-            holidays_dict = get_flat_holiday_dates()
 
-            if target_emp:
-                today_sheet = get_sheet_name(today_ist)
-                if today_sheet not in st.session_state.cached_data:
-                    st.session_state.cached_data[today_sheet] = load_data(today_sheet)
-                df_month_check = st.session_state.cached_data[today_sheet]
+            if target_emp and not df_month_check.empty:
+                df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()].copy()
+                if not df_emp.empty:
+                    df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y", errors="coerce")
+                    df_emp = df_emp.dropna(subset=["RealDate"])
 
-                if not df_month_check.empty:
-                    df_emp = df_month_check[df_month_check["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()]
-                    if not df_emp.empty:
-                        df_emp = df_emp.copy()
-                        df_emp["RealDate"] = pd.to_datetime(df_emp["Date"], format="%d/%m/%Y", errors="coerce")
-                        df_emp = df_emp.dropna(subset=["RealDate"])
+                if not df_emp.empty:
+                    existing_dates = set(df_emp["RealDate"].dt.date.tolist())
+                    min_date = min(existing_dates)
+                    latest_date = max(existing_dates)
 
-                    if not df_emp.empty:
-                        existing_dates = set(df_emp["RealDate"].dt.date.tolist())
-                        min_date = min(existing_dates)
-                        latest_date = max(existing_dates)
+                    # Scan from first entry of the month up to Today (skipping only Sundays & Holidays)
+                    pending_date = None
+                    check_d = min_date
+                    while check_d <= today_ist:
+                        is_sun = (check_d.weekday() == 6)
+                        is_hol = (check_d.strftime("%d/%m/%Y") in holidays_dict_curr)
 
-                        def _is_shift_done(d_obj):
-                            d_rows = df_emp[df_emp["RealDate"].dt.date == d_obj]
-                            for _, r in d_rows.iterrows():
-                                st_val = str(r.get("Status", "Regular"))
-                                if st_val in ["PL", "LWP", "Absent"]:
-                                    return True
-                                outs = [parse_time(t) for t in str(r.get("Out Time", "")).split(',') if t.strip()]
-                                if outs and max(outs).time() >= time(18, 0):
-                                    return True
-                            return False
+                        if not is_sun and not is_hol:
+                            if check_d not in existing_dates:
+                                pending_date = check_d
+                                break
+                            elif check_d == today_ist and not _is_emp_shift_done(df_emp, check_d):
+                                pending_date = check_d
+                                break
+                        check_d += timedelta(days=1)
 
-                        # Scan from first entry of the month up to Today (skipping only Sundays & Holidays)
-                        pending_date = None
-                        check_d = min_date
-                        while check_d <= today_ist:
-                            is_sun = (check_d.weekday() == 6)
-                            is_hol = (check_d.strftime("%d/%m/%Y") in holidays_dict)
-
-                            if not is_sun and not is_hol:
-                                if check_d not in existing_dates:
-                                    pending_date = check_d
-                                    break
-                                elif check_d == today_ist and not _is_shift_done(check_d):
-                                    pending_date = check_d
-                                    break
-                            check_d += timedelta(days=1)
-
-                        if pending_date is not None:
-                            default_date = pending_date
-                            if pending_date < today_ist:
-                                missing_past_date = pending_date
+                    if pending_date is not None:
+                        default_date = pending_date
+                    else:
+                        if latest_date > today_ist and not _is_emp_shift_done(df_emp, latest_date):
+                            default_date = latest_date
                         else:
-                            if latest_date > today_ist and not _is_shift_done(latest_date):
-                                default_date = latest_date
-                            else:
-                                next_d = max(today_ist, latest_date) + timedelta(days=1)
-                                while next_d.strftime("%d/%m/%Y") in holidays_dict or next_d.weekday() == 6:
-                                    next_d += timedelta(days=1)
-                                default_date = next_d
+                            next_d = max(today_ist, latest_date) + timedelta(days=1)
+                            while next_d.strftime("%d/%m/%Y") in holidays_dict_curr or next_d.weekday() == 6:
+                                next_d += timedelta(days=1)
+                            default_date = next_d
 
             st.session_state["manual_entry_date"] = default_date
-            st.session_state["missing_past_date"] = missing_past_date
             st.session_state["synced_emp_sig"] = emp_sig
-
-        if st.session_state.get("missing_past_date") and st.session_state.get("manual_entry_date") == st.session_state.get("missing_past_date"):
-            st.warning(f"⚠️ Pending attendance entry found for **{st.session_state['missing_past_date'].strftime('%d/%m/%Y')}** (auto-selected below).")
 
         with st.container(border=True):
             c1, c2, c3, c4, c5, c_blank = st.columns([1.5, 1.5, 1, 1, 1.5, 2.5], vertical_alignment="bottom")
@@ -1513,6 +1502,64 @@ if selected_tab == "📝 Add Attendance":
                     st.session_state.last_edited = f"{target_emp}_{date_str}"
                     st.session_state.form_reset_counter += 1
                     st.rerun()
+
+        # --- USER-WISE PENDING ATTENDANCE TABLE ---
+        emps_for_pending = st.session_state.emp_list if is_admin_unlocked else ([target_emp] if target_emp else [])
+        pending_rows = []
+
+        for emp_check in emps_for_pending:
+            emp_dates_set = set()
+            df_e_sub = pd.DataFrame()
+            if not df_month_check.empty:
+                df_e_sub = df_month_check[
+                    df_month_check["Employee Name"].astype(str).str.strip().str.lower() == emp_check.strip().lower()
+                ].copy()
+                if not df_e_sub.empty:
+                    df_e_sub["RealDate"] = pd.to_datetime(df_e_sub["Date"], format="%d/%m/%Y", errors="coerce")
+                    df_e_sub = df_e_sub.dropna(subset=["RealDate"])
+                    emp_dates_set = set(df_e_sub["RealDate"].dt.date.tolist())
+
+            if emp_dates_set:
+                scan_d = min(emp_dates_set)
+                while scan_d <= today_ist:
+                    is_sun = (scan_d.weekday() == 6)
+                    is_hol = (scan_d.strftime("%d/%m/%Y") in holidays_dict_curr)
+                    if not is_sun and not is_hol:
+                        if scan_d not in emp_dates_set:
+                            pending_rows.append({
+                                "Employee Name": emp_check,
+                                "Pending Date": scan_d.strftime("%d/%m/%Y"),
+                                "Day": scan_d.strftime("%a"),
+                                "Status": "Pending (Today)" if scan_d == today_ist else "Missing"
+                            })
+                        elif scan_d == today_ist and not _is_emp_shift_done(df_e_sub, scan_d):
+                            pending_rows.append({
+                                "Employee Name": emp_check,
+                                "Pending Date": scan_d.strftime("%d/%m/%Y"),
+                                "Day": scan_d.strftime("%a"),
+                                "Status": "Incomplete Shift"
+                            })
+                    scan_d += timedelta(days=1)
+            else:
+                is_sun = (today_ist.weekday() == 6)
+                is_hol = (today_ist.strftime("%d/%m/%Y") in holidays_dict_curr)
+                if not is_sun and not is_hol:
+                    pending_rows.append({
+                        "Employee Name": emp_check,
+                        "Pending Date": today_ist.strftime("%d/%m/%Y"),
+                        "Day": today_ist.strftime("%a"),
+                        "Status": "Pending (Today)"
+                    })
+
+        st.write("")
+        st.subheader(f"⏳ Pending Attendance ({today_sheet})")
+        pend_col, _ = st.columns([6, 4])
+        with pend_col:
+            if pending_rows:
+                df_pending = pd.DataFrame(pending_rows)
+                st.dataframe(df_pending, use_container_width=True, hide_index=True)
+            else:
+                st.success("✅ All working days up to today are marked!")
 
     elif entry_mode == "📂 Bulk Upload (Excel/CSV)" and is_admin_unlocked:
         st.subheader("📂 Upload Monthly Excel/CSV")
