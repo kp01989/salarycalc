@@ -2727,8 +2727,8 @@ elif selected_tab == "💰 Salary & Payroll":
                         esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f")
                         difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
 
-                       st.markdown('<style>[data-testid="stForm"]:has(.sal-btn-center) div[data-testid="stFormSubmitButton"]{display:flex!important;justify-content:center!important;width:100%!important;}</style><span class="sal-btn-center"></span>', unsafe_allow_html=True)
-                       sal_save_clicked = st.form_submit_button("💾 Calculate & Save Salary to Cloud", type="primary", use_container_width=False)
+                st.markdown('<style>[data-testid="stForm"]:has(.sal-btn-center) div[data-testid="stFormSubmitButton"]{display:flex!important;justify-content:center!important;width:100%!important;}</style><span class="sal-btn-center"></span>', unsafe_allow_html=True)            
+                sal_save_clicked = st.form_submit_button("💾 Calculate & Save Salary to Cloud", type="primary", use_container_width=False)
 
             if sal_save_clicked:
                 final_pl_balance = int(opening_pl) - int(used_pl)
