@@ -2727,7 +2727,7 @@ elif selected_tab == "💰 Salary & Payroll":
                         esic = st.number_input("ESIC (₹)", value=float(form_data["ESIC"]), format="%.0f")
                         difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
 
-                st.markdown('<style>[data-testid="stForm"]:has(.sal-btn-center) [data-testid="stElementContainer"]:has([data-testid="stFormSubmitButton"]),[data-testid="stForm"]:has(.sal-btn-center) .element-container:has([data-testid="stFormSubmitButton"]),[data-testid="stForm"]:has(.sal-btn-center) div:has(> [data-testid="stFormSubmitButton"]),[data-testid="stForm"]:has(.sal-btn-center) [data-testid="stFormSubmitButton"]{width:100%!important;max-width:100%!important;display:flex!important;justify-content:center!important;}</style><span class="sal-btn-center"></span>', unsafe_allow_html=True)
+                st.markdown('<style>@media (min-width: 769px){[data-testid="stForm"]:has(.sal-btn-center) [data-testid="stElementContainer"]:has([data-testid="stFormSubmitButton"]),[data-testid="stForm"]:has(.sal-btn-center) .element-container:has([data-testid="stFormSubmitButton"]),[data-testid="stForm"]:has(.sal-btn-center) [data-testid="stFormSubmitButton"]{width:100%!important;max-width:100%!important;display:flex!important;justify-content:center!important;}[data-testid="stForm"]:has(.sal-btn-center) [data-testid="stFormSubmitButton"] button{width:auto!important;flex:0 0 auto!important;padding:0 22px!important;}}</style><span class="sal-btn-center"></span>', unsafe_allow_html=True)
                 sal_save_clicked = st.form_submit_button("💾 Calculate & Save Salary to Cloud", type="primary", use_container_width=False)
 
             if sal_save_clicked:
