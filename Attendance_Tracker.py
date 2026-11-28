@@ -1345,36 +1345,16 @@ if selected_tab == "📝 Add Attendance":
                     df_emp = df_emp.dropna(subset=["RealDate"])
 
                 if not df_emp.empty:
-                    existing_dates = set(df_emp["RealDate"].dt.date.tolist())
-                    min_date = min(existing_dates)
-                    latest_date = max(existing_dates)
-
-                    # Scan from first entry of the month up to Today (skipping only Sundays & Holidays)
-                    pending_date = None
-                    check_d = min_date
-                    while check_d <= today_ist:
-                        is_sun = (check_d.weekday() == 6)
-                        is_hol = (check_d.strftime("%d/%m/%Y") in holidays_dict_curr)
-
-                        if not is_sun and not is_hol:
-                            if check_d not in existing_dates:
-                                pending_date = check_d
-                                break
-                            elif check_d == today_ist and not _is_emp_shift_done(df_emp, check_d):
-                                pending_date = check_d
-                                break
-                        check_d += timedelta(days=1)
-
-                    if pending_date is not None:
-                        default_date = pending_date
-                    else:
-                        if latest_date > today_ist and not _is_emp_shift_done(df_emp, latest_date):
-                            default_date = latest_date
+                    latest_date = df_emp["RealDate"].dt.date.max()
+                    if latest_date >= today_ist:
+                        if _is_emp_shift_done(df_emp, latest_date):
+                            default_date = latest_date + timedelta(days=1)
+                            while default_date.strftime("%d/%m/%Y") in holidays_dict_curr or default_date.weekday() == 6:
+                                default_date += timedelta(days=1)
                         else:
-                            next_d = max(today_ist, latest_date) + timedelta(days=1)
-                            while next_d.strftime("%d/%m/%Y") in holidays_dict_curr or next_d.weekday() == 6:
-                                next_d += timedelta(days=1)
-                            default_date = next_d
+                            default_date = latest_date
+                    else:
+                        default_date = today_ist
 
             st.session_state["manual_entry_date"] = default_date
             st.session_state["synced_emp_sig"] = emp_sig
