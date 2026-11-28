@@ -6,6 +6,7 @@ import io
 import os
 import json
 import calendar
+import hashlib
 from openpyxl.styles import Alignment, PatternFill, Border, Side, Font
 from openpyxl.utils import get_column_letter
 import uuid
@@ -52,10 +53,22 @@ def get_emp_key(name):
         return "Unknown"
     return str(name).replace(".", "").replace("#", "").replace("$", "").replace("[", "").replace("]", "").strip()
 
+def hash_pwd(pwd_str):
+    return hashlib.sha256(str(pwd_str).encode("utf-8")).hexdigest()
+
+def get_query_param(key):
+    try:
+        val = st.query_params.get(key)
+        if isinstance(val, list):
+            return val[0] if val else None
+        return val
+    except Exception:
+        return None
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_all_sheet_names():
     url = f"{FIREBASE_URL}.json?shallow=true"
-    excluded = {"holidays_list", "employee_list", "employee_dict", "profiles", "salary_history"}
+    excluded = {"holidays_list", "employee_list", "employee_dict", "profiles", "salary_history", "active_sessions"}
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
@@ -128,6 +141,71 @@ def save_employee_dict(emp_dict):
 if 'emp_dict' not in st.session_state or not st.session_state.emp_dict:
     st.session_state.emp_dict = fetch_employee_dict()
     st.session_state.emp_list = sorted([k for k in st.session_state.emp_dict.keys() if k != "Administrator"])
+
+# ==========================================
+# PERSISTENT CLOUD SESSION (SURVIVES PAGE REFRESH)
+# ==========================================
+def create_cloud_session(user_name, role, pwd_plain):
+    token = uuid.uuid4().hex
+    expires_str = (get_ist_today() + timedelta(days=30)).isoformat()
+    payload = {
+        "user": user_name,
+        "role": role,
+        "pwd": hash_pwd(pwd_plain),
+        "expires": expires_str
+    }
+    try:
+        requests.put(f"{FIREBASE_URL}/active_sessions/{token}.json", json=payload, timeout=10)
+        st.query_params["sid"] = token
+    except Exception:
+        pass
+    return token
+
+def delete_cloud_session(token):
+    if not token:
+        return
+    try:
+        requests.delete(f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(token))}.json", timeout=10)
+    except Exception:
+        pass
+
+def update_cloud_session_pwd(token, new_pwd_plain):
+    if not token:
+        return
+    try:
+        requests.patch(
+            f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(token))}.json",
+            json={"pwd": hash_pwd(new_pwd_plain)},
+            timeout=10
+        )
+    except Exception:
+        pass
+
+def try_restore_cloud_session():
+    sid = get_query_param("sid")
+    if not sid:
+        return None
+    try:
+        res = requests.get(f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(sid))}.json", timeout=10)
+        if res.status_code == 200 and isinstance(res.json(), dict):
+            sdata = res.json()
+            s_user = sdata.get("user")
+            s_role = sdata.get("role")
+            s_pwd_hash = sdata.get("pwd")
+            s_exp = sdata.get("expires", "")
+
+            if s_user in st.session_state.emp_dict and s_exp >= get_ist_today().isoformat():
+                actual_pwd = st.session_state.emp_dict[s_user].get("password", "123")
+                if hash_pwd(actual_pwd) == s_pwd_hash:
+                    return s_user, s_role, sid
+        delete_cloud_session(sid)
+        try:
+            st.query_params.pop("sid", None)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return None
 
 # ==========================================
 # HOLIDAYS LOGIC
@@ -878,11 +956,28 @@ if 'is_logged_in' not in st.session_state:
     st.session_state.is_logged_in = False
 if 'user_role' not in st.session_state:
     st.session_state.user_role = None
+if 'session_token' not in st.session_state:
+    st.session_state.session_token = None
+
+# Auto-restore session after browser refresh using ?sid= token
+if not st.session_state.is_logged_in:
+    restored = try_restore_cloud_session()
+    if restored:
+        st.session_state.current_user, st.session_state.user_role, st.session_state.session_token = restored
+        st.session_state.is_logged_in = True
 
 def logout():
+    tok = st.session_state.get("session_token") or get_query_param("sid")
+    delete_cloud_session(tok)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
     st.session_state.current_user = "-- Select Employee --"
     st.session_state.is_logged_in = False
     st.session_state.user_role = None
+    st.session_state.session_token = None
+    st.session_state.pop("active_nav_tab", None)
     st.session_state.pop("synced_emp_sig", None)
     st.session_state.pop("synced_date_sig", None)
     st.session_state['sal_calc_result'] = None
@@ -1238,9 +1333,11 @@ div[data-testid="stVerticalBlock"]:has(.login-card-marker):not(:has(div[data-tes
                 if st.button("Unlock", type="primary"):
                     correct_pwd = st.session_state.emp_dict.get(login_user, {}).get("password", "123")
                     if pwd == correct_pwd:
+                        role_val = "Admin" if login_user == "Administrator" else "Employee"
                         st.session_state.is_logged_in = True
-                        st.session_state.user_role = "Admin" if login_user == "Administrator" else "Employee"
+                        st.session_state.user_role = role_val
                         st.session_state.current_user = login_user
+                        st.session_state.session_token = create_cloud_session(login_user, role_val, correct_pwd)
                         st.rerun()
                     else:
                         st.error("❌ Incorrect Password!")
@@ -1278,7 +1375,11 @@ else:
     nav_options = ["📝 Add Attendance", "🌴 Holiday Calendar", "📊 Dashboard & History", "💰 Salary & Payroll", "🔑 Change Password"]
 
 if 'active_nav_tab' not in st.session_state or st.session_state.active_nav_tab not in nav_options:
-    st.session_state.active_nav_tab = nav_options[0]
+    t_idx = get_query_param("tab")
+    if t_idx is not None and str(t_idx).isdigit() and 0 <= int(t_idx) < len(nav_options):
+        st.session_state.active_nav_tab = nav_options[int(t_idx)]
+    else:
+        st.session_state.active_nav_tab = nav_options[0]
 
 nav_weights = [len(opt) + 2 for opt in nav_options]
 if len(nav_options) <= 5:
@@ -1293,6 +1394,10 @@ for idx, opt in enumerate(nav_options):
     with nav_cols[idx]:
         if st.button(opt, key=btn_key, use_container_width=True):
             st.session_state.active_nav_tab = opt
+            try:
+                st.query_params["tab"] = str(idx)
+            except Exception:
+                pass
             st.rerun()
 
 st.markdown("<hr style='margin: -16px 0 18px 0; border: none; border-top: 1px solid rgba(255, 255, 255, 0.15);'>", unsafe_allow_html=True)
@@ -3069,6 +3174,8 @@ elif selected_tab == "🔑 Change Password":
             elif old_pwd == new_pwd.strip():
                 st.warning("⚠️ New password cannot be the same as the current password.")
             else:
-                curr_dict[st.session_state.current_user]["password"] = new_pwd.strip()
+                new_pwd_clean = new_pwd.strip()
+                curr_dict[st.session_state.current_user]["password"] = new_pwd_clean
                 save_employee_dict(curr_dict)
+                update_cloud_session_pwd(st.session_state.get("session_token"), new_pwd_clean)
                 st.success("✅ Your new password has been successfully updated!")
