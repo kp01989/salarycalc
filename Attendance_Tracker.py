@@ -2728,9 +2728,9 @@ elif selected_tab == "💰 Salary & Payroll":
                         difference = st.number_input("Difference (₹)", value=float(form_data["Difference"]), format="%.0f")
 
                 st.write("")
-                _, sal_btn_col, _ = st.columns([1, 2, 1])
+                _, sal_btn_col, _ = st.columns([2.2, 1.6, 2.2])
                 with sal_btn_col:
-                    sal_save_clicked = st.form_submit_button("💾 Calculate & Save Salary to Cloud", type="primary", use_container_width=True)
+                    sal_save_clicked = st.form_submit_button("💾 Calculate & Save Salary to Cloud", type="primary", use_container_width=False)
 
             if sal_save_clicked:
                 final_pl_balance = int(opening_pl) - int(used_pl)
@@ -2882,7 +2882,7 @@ elif selected_tab == "💰 Salary & Payroll":
                 st.write("")
                 with st.container(border=True):
                     st.markdown("#### 📥 Download Slip from History")
-                    hs1, hs2, hs3, hs_blank = st.columns([2, 1.2, 1.2, 3.6], vertical_alignment="bottom")
+                    hs1, hs2, hs3, hs_blank = st.columns([2, 0.8, 0.8, 4.4], vertical_alignment="bottom")
                     with hs1:
                         hist_opts = list(dict.fromkeys([
                             f"{str(r.get('Month', '')).strip()} - {int(r.get('Year', current_yr))}"
