@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date, time, timedelta, timezone
 import io
 import os
@@ -29,15 +31,26 @@ st.set_page_config(page_title="Advanced Attendance & Salary System", layout="wid
 # ---------------------------------------------------------
 
 # ==========================================
-# 1. SETTINGS & CONSTANTS
+# 1. SETTINGS, CONSTANTS & FAST HTTP SESSION
 # ==========================================
 FIREBASE_URL = "https://attendence-ec921-default-rtdb.firebaseio.com"
 
 STANDARD_IN = "08:00"
 STANDARD_OUT = "18:00"
 
+ATT_COLUMNS = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
 MONTH_ORDER = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 MONTH_DICT = {m: i + 1 for i, m in enumerate(MONTH_ORDER)}
+
+@st.cache_resource
+def get_http_session():
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=2)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+http = get_http_session()
 
 def get_ist_now():
     return datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
@@ -70,7 +83,7 @@ def get_all_sheet_names():
     url = f"{FIREBASE_URL}.json?shallow=true"
     excluded = {"holidays_list", "employee_list", "employee_dict", "profiles", "salary_history", "active_sessions"}
     try:
-        response = requests.get(url, timeout=10)
+        response = http.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
@@ -94,7 +107,7 @@ def get_all_sheet_names():
 def migrate_old_list_to_dict():
     old_list = []
     try:
-        res = requests.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/employee_list.json", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
             if isinstance(data, list):
@@ -110,10 +123,10 @@ def migrate_old_list_to_dict():
             new_dict[emp] = {"password": "123", "details": ""}
     return new_dict
 
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_employee_dict():
     try:
-        cb = uuid.uuid4().hex
-        res = requests.get(f"{FIREBASE_URL}/employee_dict.json?_={cb}", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/employee_dict.json", timeout=10)
         if res.status_code == 200 and res.json():
             data = res.json()
             if isinstance(data, dict):
@@ -132,7 +145,8 @@ def fetch_employee_dict():
 
 def save_employee_dict(emp_dict):
     try:
-        requests.put(f"{FIREBASE_URL}/employee_dict.json", json=emp_dict, timeout=10)
+        http.put(f"{FIREBASE_URL}/employee_dict.json", json=emp_dict, timeout=10)
+        fetch_employee_dict.clear()
     except Exception:
         pass
     st.session_state.emp_dict = emp_dict
@@ -155,7 +169,7 @@ def create_cloud_session(user_name, role, pwd_plain):
         "expires": expires_str
     }
     try:
-        requests.put(f"{FIREBASE_URL}/active_sessions/{token}.json", json=payload, timeout=10)
+        http.put(f"{FIREBASE_URL}/active_sessions/{token}.json", json=payload, timeout=10)
         st.query_params["sid"] = token
     except Exception:
         pass
@@ -165,7 +179,7 @@ def delete_cloud_session(token):
     if not token:
         return
     try:
-        requests.delete(f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(token))}.json", timeout=10)
+        http.delete(f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(token))}.json", timeout=10)
     except Exception:
         pass
 
@@ -173,7 +187,7 @@ def update_cloud_session_pwd(token, new_pwd_plain):
     if not token:
         return
     try:
-        requests.patch(
+        http.patch(
             f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(token))}.json",
             json={"pwd": hash_pwd(new_pwd_plain)},
             timeout=10
@@ -186,7 +200,7 @@ def try_restore_cloud_session():
     if not sid:
         return None
     try:
-        res = requests.get(f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(sid))}.json", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/active_sessions/{requests.utils.quote(str(sid))}.json", timeout=10)
         if res.status_code == 200 and isinstance(res.json(), dict):
             sdata = res.json()
             s_user = sdata.get("user")
@@ -208,28 +222,19 @@ def try_restore_cloud_session():
     return None
 
 # ==========================================
-# HOLIDAYS LOGIC
+# HOLIDAYS LOGIC (CACHED)
 # ==========================================
 @st.cache_data(ttl=300, show_spinner=False)
 def load_holidays_data():
     try:
-        cb = uuid.uuid4().hex
-        res = requests.get(f"{FIREBASE_URL}/holidays_list.json?_={cb}", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/holidays_list.json", timeout=10)
         if res.status_code == 200 and res.json():
             return res.json()
     except Exception:
         pass
     return {}
 
-def save_holidays_data(data):
-    try:
-        requests.put(f"{FIREBASE_URL}/holidays_list.json", json=data, timeout=10)
-        load_holidays_data.clear()
-        if 'cached_holidays' in st.session_state:
-            del st.session_state.cached_holidays
-    except Exception:
-        pass
-
+@st.cache_data(ttl=300, show_spinner=False)
 def get_flat_holiday_dates():
     hol_data = load_holidays_data()
     flat_dict = {}
@@ -244,6 +249,15 @@ def get_flat_holiday_dates():
         except Exception:
             pass
     return flat_dict
+
+def save_holidays_data(data):
+    try:
+        http.put(f"{FIREBASE_URL}/holidays_list.json", json=data, timeout=10)
+        load_holidays_data.clear()
+        get_flat_holiday_dates.clear()
+        st.session_state.cached_holidays = data
+    except Exception:
+        pass
 
 # ==========================================
 # TIME CALCULATIONS
@@ -344,13 +358,11 @@ def calculate_times(in_time_str, out_time_str, day_str, status="Regular", is_pub
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_data(sheet_name):
-    columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status"]
     url = f"{FIREBASE_URL}/{requests.utils.quote(str(sheet_name))}.json"
     holidays_dict = get_flat_holiday_dates()
 
     try:
-        cb = uuid.uuid4().hex
-        response = requests.get(f"{url}?_={cb}", timeout=10)
+        response = http.get(url, timeout=10)
         data = response.json()
         if data:
             if isinstance(data, dict):
@@ -358,7 +370,7 @@ def load_data(sheet_name):
             else:
                 df = pd.DataFrame([row for row in data if row is not None])
 
-            for col in columns:
+            for col in ATT_COLUMNS:
                 if col not in df.columns:
                     df[col] = ""
                     if col == "Status":
@@ -391,22 +403,26 @@ def load_data(sheet_name):
                 except Exception:
                     pass
 
-            return df[columns]
+            return df[ATT_COLUMNS]
         else:
-            return pd.DataFrame(columns=columns)
+            return pd.DataFrame(columns=ATT_COLUMNS)
     except Exception:
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=ATT_COLUMNS)
 
 def save_data(df, sheet_name):
-    df_clean = df.fillna("")
+    df_clean = df.fillna("").reset_index(drop=True)
+    for col in ATT_COLUMNS:
+        if col not in df_clean.columns:
+            df_clean[col] = ""
+    df_clean = df_clean[ATT_COLUMNS]
     url = f"{FIREBASE_URL}/{requests.utils.quote(str(sheet_name))}.json"
     data = df_clean.to_dict(orient='records')
     try:
-        requests.put(url, json=data, timeout=10)
+        http.put(url, json=data, timeout=10)
         load_data.clear()
         get_all_sheet_names.clear()
         if 'cached_data' in st.session_state:
-            st.session_state.cached_data.clear()
+            st.session_state.cached_data[sheet_name] = df_clean.copy()
     except Exception:
         pass
 
@@ -416,7 +432,7 @@ def save_data(df, sheet_name):
 @st.cache_data(ttl=300, show_spinner=False)
 def load_profiles():
     try:
-        res = requests.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
         if res.status_code == 200 and isinstance(res.json(), dict):
             return res.json()
     except Exception:
@@ -436,7 +452,7 @@ def find_profile_data(all_profiles, emp_name):
 
 def save_profiles(profiles):
     try:
-        requests.put(f"{FIREBASE_URL}/profiles.json", json=profiles, timeout=10)
+        http.put(f"{FIREBASE_URL}/profiles.json", json=profiles, timeout=10)
         load_profiles.clear()
     except Exception as e:
         st.error(f"Failed to save profile to cloud: {e}")
@@ -444,7 +460,7 @@ def save_profiles(profiles):
 @st.cache_data(ttl=300, show_spinner=False)
 def load_salary_history_keys():
     try:
-        res = requests.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
         if res.status_code == 200 and isinstance(res.json(), dict):
             return list(res.json().keys())
     except Exception:
@@ -467,12 +483,12 @@ def load_salary_history(emp_name):
         return pd.DataFrame(rows)
 
     try:
-        res = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", timeout=10)
+        res = http.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", timeout=10)
         if res.status_code == 200 and res.json():
             return _raw_to_df(res.json())
         for k in load_salary_history_keys():
             if str(k).strip().lower() == emp_key.lower():
-                res2 = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(k))}.json", timeout=10)
+                res2 = http.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(k))}.json", timeout=10)
                 if res2.status_code == 200 and res2.json():
                     return _raw_to_df(res2.json())
     except Exception:
@@ -483,7 +499,7 @@ def save_salary_history(emp_name, df):
     emp_key = get_emp_key(emp_name)
     try:
         records = json.loads(df.to_json(orient='records'))
-        requests.put(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", json=records, timeout=10)
+        http.put(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", json=records, timeout=10)
         load_salary_history.clear()
         load_salary_history_keys.clear()
     except Exception as e:
@@ -492,10 +508,10 @@ def save_salary_history(emp_name, df):
 def delete_salary_history(emp_name):
     emp_key = get_emp_key(emp_name)
     try:
-        requests.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", timeout=10)
+        http.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(emp_key)}.json", timeout=10)
         for k in load_salary_history_keys():
             if str(k).strip().lower() == emp_key.lower() and k != emp_key:
-                requests.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(k))}.json", timeout=10)
+                http.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(k))}.json", timeout=10)
         load_salary_history.clear()
         load_salary_history_keys.clear()
     except Exception as e:
@@ -608,7 +624,7 @@ def get_company_logo_path():
     logo_path = "temp_logo.png"
     if not os.path.exists(logo_path):
         try:
-            res = requests.get(logo_url, timeout=4)
+            res = http.get(logo_url, timeout=4)
             if res.status_code == 200:
                 with open(logo_path, "wb") as f:
                     f.write(res.content)
@@ -1131,7 +1147,6 @@ div[data-testid="stFormSubmitButton"] button {
    (PC / Desktop > 768px is 100% untouched)
    ========================================== */
 @media (max-width: 768px) {
-    /* 1. Compact page spacing & headings */
     .block-container {
         padding-top: 2.3rem !important;
         padding-left: 0.7rem !important;
@@ -1152,16 +1167,12 @@ div[data-testid="stFormSubmitButton"] button {
     hr {
         margin: 0.6rem 0 !important;
     }
-
-    /* 2. Hide empty spacer columns & vertical divider on mobile */
     [data-testid="stColumn"]:has(.sal-vline),
     [data-testid="column"]:has(.sal-vline),
     [data-testid="stColumn"]:not(:has(input, button, select, textarea, table, canvas, [role="combobox"], [data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stAlert"], [data-testid="stFileUploader"], [data-testid="stExpander"])),
     [data-testid="column"]:not(:has(input, button, select, textarea, table, canvas, [role="combobox"], [data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stAlert"], [data-testid="stFileUploader"], [data-testid="stExpander"])) {
         display: none !important;
     }
-
-    /* 3. Top header: user info on line 1, Sync & Logout side-by-side */
     div[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_btn) {
         display: flex !important;
         flex-direction: row !important;
@@ -1186,8 +1197,6 @@ div[data-testid="stFormSubmitButton"] button {
         padding: 4px 10px !important;
         font-size: 0.85rem !important;
     }
-
-    /* 4. Horizontal scrollable app-style navigation bar */
     div[data-testid="stHorizontalBlock"]:has([class*="st-key-nav_active_"]) {
         display: flex !important;
         flex-direction: row !important;
@@ -1213,8 +1222,6 @@ div[data-testid="stFormSubmitButton"] button {
     [class*="st-key-nav_active_"] button p {
         font-size: 0.88rem !important;
     }
-
-    /* 5. Dashboard 5 metrics in clean 2-column card grid */
     div[data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -1241,8 +1248,6 @@ div[data-testid="stFormSubmitButton"] button {
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
     }
-
-    /* 6. Attendance record cards: Info on top, Edit & Del side-by-side */
     div[data-testid="stHorizontalBlock"]:has([class*="st-key-e_"]) {
         display: flex !important;
         flex-direction: row !important;
@@ -1259,8 +1264,6 @@ div[data-testid="stFormSubmitButton"] button {
         flex: 1 1 45% !important;
         min-width: 45% !important;
     }
-
-    /* 7. Keep Hrs & Mins inputs side-by-side inside Salary form */
     [data-testid="stForm"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] [data-testid="stHorizontalBlock"] {
         display: flex !important;
         flex-direction: row !important;
@@ -1277,8 +1280,6 @@ div[data-testid="stFormSubmitButton"] button {
         width: 28px !important;
         padding: 0 !important;
     }
-
-    /* 8. Full-width tap-friendly buttons & compact containers */
     div[data-testid="stFormSubmitButton"] button,
     [class*="st-key-save_btn_"] button,
     div[data-testid="stDownloadButton"] button {
@@ -1521,13 +1522,14 @@ if selected_tab == "📝 Add Attendance":
                 st.error("Out Time cannot be before In Time for a single shift!")
             else:
                 target_sheet = get_sheet_name(entry_date)
-                df_month = load_data(target_sheet).copy()
+                if target_sheet not in st.session_state.cached_data:
+                    st.session_state.cached_data[target_sheet] = load_data(target_sheet)
+                df_month = st.session_state.cached_data[target_sheet].copy()
                 day_str = entry_date.strftime("%a")
                 date_str = entry_date.strftime("%d/%m/%Y")
 
                 existing_match = df_month[(df_month["Employee Name"].astype(str).str.strip().str.lower() == target_emp.lower()) & (df_month["Date"] == date_str)]
-                holidays_dict = get_flat_holiday_dates()
-                is_pub_hol = date_str in holidays_dict
+                is_pub_hol = date_str in holidays_dict_curr
 
                 if entry_status in ["PL", "LWP", "Absent"]:
                     in_t_str, out_t_str = "00:00", "00:00"
@@ -1707,7 +1709,9 @@ if selected_tab == "📝 Add Attendance":
                                     date_s = d_obj.strftime("%d/%m/%Y")
                                     is_pub_hol = date_s in holidays_dict
 
-                                    df_db = load_data(sheet_n).copy()
+                                    if sheet_n not in st.session_state.cached_data:
+                                        st.session_state.cached_data[sheet_n] = load_data(sheet_n)
+                                    df_db = st.session_state.cached_data[sheet_n].copy()
                                     new_rows = []
 
                                     for _, r in group.iterrows():
@@ -1960,7 +1964,7 @@ elif selected_tab == "🌴 Holiday Calendar":
             st.write("No holidays declared yet.")
 
 # ==========================================
-# TAB 4: DASHBOARD & HISTORY
+# TAB 4: DASHBOARD & HISTORY (PARALLEL FETCH)
 # ==========================================
 elif selected_tab == "📊 Dashboard & History":
     formatted_name = st.session_state.current_user
@@ -1989,20 +1993,71 @@ elif selected_tab == "📊 Dashboard & History":
         selected_emp = formatted_name
 
     if selected_sheet == "All Months":
+        sheets_all = get_all_sheet_names()
+        missing_sheets = [s for s in sheets_all if s not in st.session_state.cached_data]
+        if missing_sheets:
+            holidays_for_par = get_flat_holiday_dates()
+
+            def _fetch_raw_sheet(sht_name):
+                try:
+                    u = f"{FIREBASE_URL}/{requests.utils.quote(str(sht_name))}.json"
+                    r = http.get(u, timeout=10)
+                    return sht_name, r.json() if r.status_code == 200 else None
+                except Exception:
+                    return sht_name, None
+
+            with ThreadPoolExecutor(max_workers=min(8, len(missing_sheets))) as executor:
+                fetched_results = list(executor.map(_fetch_raw_sheet, missing_sheets))
+
+            for sht_name, raw_d in fetched_results:
+                if raw_d:
+                    if isinstance(raw_d, dict):
+                        df_p = pd.DataFrame(list(raw_d.values()))
+                    else:
+                        df_p = pd.DataFrame([row for row in raw_d if row is not None])
+                    for col in ATT_COLUMNS:
+                        if col not in df_p.columns:
+                            if col == "Status":
+                                df_p[col] = "Regular"
+                            elif col in ["Late Hours", "Out Hours", "Total Hours", "OT Hours"]:
+                                df_p[col] = "00:00"
+                            elif col == "In Time":
+                                df_p[col] = "08:00"
+                            elif col == "Out Time":
+                                df_p[col] = "18:00"
+                            else:
+                                df_p[col] = ""
+                    for idx_p, row_p in df_p.iterrows():
+                        in_t = str(row_p.get("In Time", "08:00"))
+                        if pd.isna(row_p.get("In Time")) or in_t.lower() == 'nan':
+                            continue
+                        try:
+                            tot, late, out_e, ot = calculate_times(
+                                in_t,
+                                str(row_p.get("Out Time", "18:00")),
+                                str(row_p.get("Day", "Mon")),
+                                str(row_p.get("Status", "Regular")),
+                                str(row_p.get("Date", "")) in holidays_for_par
+                            )
+                            df_p.at[idx_p, "Total Hours"] = tot
+                            df_p.at[idx_p, "Late Hours"] = late
+                            df_p.at[idx_p, "Out Hours"] = out_e
+                            df_p.at[idx_p, "OT Hours"] = ot
+                        except Exception:
+                            pass
+                    st.session_state.cached_data[sht_name] = df_p[ATT_COLUMNS]
+                else:
+                    st.session_state.cached_data[sht_name] = pd.DataFrame(columns=ATT_COLUMNS)
+
         df_list = []
-        for sht in get_all_sheet_names():
-            if sht not in st.session_state.cached_data:
-                st.session_state.cached_data[sht] = load_data(sht)
-            df_temp = st.session_state.cached_data[sht]
+        for sht in sheets_all:
+            df_temp = st.session_state.cached_data.get(sht, pd.DataFrame())
             if not df_temp.empty:
                 df_temp = df_temp.copy()
                 df_temp["_Original_Sheet"] = sht
                 df_temp["_Original_Index"] = df_temp.index
                 df_list.append(df_temp)
-        if df_list:
-            df_display = pd.concat(df_list, ignore_index=True)
-        else:
-            df_display = pd.DataFrame()
+        df_display = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
     else:
         if selected_sheet not in st.session_state.cached_data:
             st.session_state.cached_data[selected_sheet] = load_data(selected_sheet)
@@ -2024,7 +2079,7 @@ elif selected_tab == "📊 Dashboard & History":
             lower_emps = [e.strip().lower() for e in selected_emps]
             df_display = df_display[df_display["Employee Name"].astype(str).str.strip().str.lower().isin(lower_emps)]
 
-        final_display_columns = ["Employee Name", "Date", "Day", "In Time", "Out Time", "Late Hours", "Out Hours", "Total Hours", "OT Hours", "Status", "_Original_Sheet", "_Original_Index"]
+        final_display_columns = ATT_COLUMNS + ["_Original_Sheet", "_Original_Index"]
         for c in final_display_columns:
             if c not in df_display.columns:
                 df_display[c] = ""
@@ -2092,6 +2147,8 @@ elif selected_tab == "📊 Dashboard & History":
         st.write("")
         st.divider()
 
+        hol_dict_hl = get_flat_holiday_dates()
+
         head_col1, head_col2 = st.columns([8, 2], vertical_alignment="center")
         with head_col1:
             st.subheader("📋 Attendance Records")
@@ -2148,7 +2205,6 @@ elif selected_tab == "📊 Dashboard & History":
                     day_col_idx = 2
                     status_col_idx = 9
                     max_data_row = 3 + len(df_export)
-                    holidays_dict_xls = get_flat_holiday_dates()
 
                     for row_idx in range(4, max_data_row + 1):
                         date_val_xls = worksheet.cell(row=row_idx, column=1).value
@@ -2156,7 +2212,7 @@ elif selected_tab == "📊 Dashboard & History":
                         status_val = worksheet.cell(row=row_idx, column=status_col_idx).value
 
                         is_sunday = (day_val == "Sun")
-                        is_holiday = (status_val == "Holiday") or (str(date_val_xls) in holidays_dict_xls)
+                        is_holiday = (status_val == "Holiday") or (str(date_val_xls) in hol_dict_hl)
 
                         for col_idx in range(1, 10):
                             cell = worksheet.cell(row=row_idx, column=col_idx)
@@ -2230,7 +2286,6 @@ elif selected_tab == "📊 Dashboard & History":
 
         st.markdown("💡 **Tip:** Click Edit or Delete to manage individual records.")
 
-        hol_dict_hl = get_flat_holiday_dates()
         for index, row in df_display.iterrows():
             status_color = "#5cd65c"
 
@@ -2321,8 +2376,7 @@ elif selected_tab == "📊 Dashboard & History":
                                         st.error("⚠️ An entry for this employee on this date already exists!")
                                     else:
                                         day_str_e = e_date.strftime("%a")
-                                        holidays_dict = get_flat_holiday_dates()
-                                        is_pub_hol = date_str_e in holidays_dict
+                                        is_pub_hol = date_str_e in hol_dict_hl
                                         t_hrs, l_hrs, o_hrs, ot_hrs = calculate_times(e_in, e_out, day_str_e, e_stat, is_pub_hol)
 
                                         if e_stat in ["PL", "LWP", "Absent"]:
@@ -2984,34 +3038,21 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
     st.divider()
 
-    # Emergency Data Fixer (Syncs Attendance + Passwords + HRIS Profiles + Salary History)
+    # Emergency Data Fixer (Cached on render, live fetch only on submit)
     st.subheader("🛠️ Emergency Data Fixer (Sync Attendance, Profile & Salary History)")
     st.error("⚠️ If you renamed an employee (e.g., 'KP' to 'Krutin Patel'), select the old and new names below to transfer all Attendance, Profile, and Salary History in one click.")
 
-    fresh_profs_fix = {}
-    try:
-        r_pf = requests.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
-        if r_pf.status_code == 200 and isinstance(r_pf.json(), dict):
-            fresh_profs_fix = r_pf.json()
-    except Exception:
-        pass
-
-    fresh_hist_keys = []
-    try:
-        r_hk = requests.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
-        if r_hk.status_code == 200 and isinstance(r_hk.json(), dict):
-            fresh_hist_keys = list(r_hk.json().keys())
-    except Exception:
-        pass
+    cached_profs_fix = load_profiles()
+    cached_hist_keys = load_salary_history_keys()
 
     old_name_candidates = sorted(list(set(
-        [str(k).strip() for k in fresh_hist_keys if k] +
-        [str(k).strip() for k in fresh_profs_fix.keys() if k] +
+        [str(k).strip() for k in cached_hist_keys if k] +
+        [str(k).strip() for k in cached_profs_fix.keys() if k] +
         [str(k).strip() for k in st.session_state.emp_list if k]
     )))
 
-    if fresh_hist_keys:
-        st.caption(f"📌 Saved names currently in Firebase Salary History: **{', '.join(sorted(fresh_hist_keys))}**")
+    if cached_hist_keys:
+        st.caption(f"📌 Saved names currently in Firebase Salary History: **{', '.join(sorted(cached_hist_keys))}**")
 
     with st.form("fix_data_form"):
         f_col1, f_col2, f_col3 = st.columns([2, 2, 2], vertical_alignment="bottom")
@@ -3040,6 +3081,23 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
                     return pd.DataFrame([v for v in raw if isinstance(v, dict)])
                 return pd.DataFrame()
 
+            # Fetch fresh copies on submit to avoid stale writes
+            fresh_profs_fix = {}
+            try:
+                r_pf = http.get(f"{FIREBASE_URL}/profiles.json", timeout=10)
+                if r_pf.status_code == 200 and isinstance(r_pf.json(), dict):
+                    fresh_profs_fix = r_pf.json()
+            except Exception:
+                fresh_profs_fix = dict(cached_profs_fix)
+
+            fresh_hist_keys = []
+            try:
+                r_hk = http.get(f"{FIREBASE_URL}/salary_history.json?shallow=true", timeout=10)
+                if r_hk.status_code == 200 and isinstance(r_hk.json(), dict):
+                    fresh_hist_keys = list(r_hk.json().keys())
+            except Exception:
+                fresh_hist_keys = list(cached_hist_keys)
+
             success_count = 0
             prof_transferred = False
             sal_records_moved = 0
@@ -3049,7 +3107,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
             for sheet in sheets_to_check:
                 url_sheet = f"{FIREBASE_URL}/{requests.utils.quote(str(sheet))}.json"
                 try:
-                    res_sheet = requests.get(url_sheet, timeout=10)
+                    res_sheet = http.get(url_sheet, timeout=10)
                     if res_sheet.status_code == 200 and res_sheet.json():
                         sheet_data = res_sheet.json()
                         updated = False
@@ -3060,7 +3118,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
                                     sheet_data[k]["Employee Name"] = clean_new
                                     updated = True
                             if updated:
-                                requests.put(url_sheet, json=sheet_data, timeout=10)
+                                http.put(url_sheet, json=sheet_data, timeout=10)
                                 success_count += 1
 
                         elif isinstance(sheet_data, list):
@@ -3069,7 +3127,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
                                     sheet_data[i]["Employee Name"] = clean_new
                                     updated = True
                             if updated:
-                                requests.put(url_sheet, json=sheet_data, timeout=10)
+                                http.put(url_sheet, json=sheet_data, timeout=10)
                                 success_count += 1
                 except Exception:
                     pass
@@ -3112,14 +3170,14 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
 
             for hk in matched_hist_keys:
                 try:
-                    res_old_h = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(hk))}.json", timeout=10)
+                    res_old_h = http.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(hk))}.json", timeout=10)
                     if res_old_h.status_code == 200 and res_old_h.json():
                         df_old_h = _raw_to_df_fix(res_old_h.json())
                         if not df_old_h.empty:
                             df_old_h["Name"] = clean_new
                             df_merged = df_old_h
                             if hk != new_h_key:
-                                res_new_h = requests.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(new_h_key)}.json", timeout=10)
+                                res_new_h = http.get(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(new_h_key)}.json", timeout=10)
                                 if res_new_h.status_code == 200 and res_new_h.json():
                                     df_ex_new = _raw_to_df_fix(res_new_h.json())
                                     if not df_ex_new.empty:
@@ -3136,7 +3194,7 @@ elif selected_tab == "⚙️ Manage Employees" and is_admin_unlocked:
                             save_salary_history(clean_new, df_merged)
                             sal_records_moved = len(df_merged)
                             if hk != new_h_key:
-                                requests.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(hk))}.json", timeout=10)
+                                http.delete(f"{FIREBASE_URL}/salary_history/{requests.utils.quote(str(hk))}.json", timeout=10)
                 except Exception as e:
                     st.error(f"Salary History error for '{hk}': {e}")
 
